@@ -8,6 +8,19 @@ The page carries its own build number (`MJ_PAGE_VERSION` in
 `src/game/Laptop/Mahjong.cc`), shown on the home page, the ladder and the
 table footer. Bump it when the site changes.
 
+## Parked ideas
+
+Not built, kept on the record:
+
+- **Skill-tiered rooms.** The lobby currently offers one table. A beginner /
+  intermediate / high-stakes split would let the buy-in, the rake and the
+  opponents' error rates scale with the room — and give the permanently
+  "under construction" Beginner Room joke somewhere real to land.
+- **Choosing your table.** Different rooms seat different people: A.I.M.
+  mercs at the low table (loose, chatty, beatable), the San Mona regulars in
+  the middle, the Queen and Kingpin only at the top. Opponent skill becomes a
+  choice the player makes rather than a fixed property of the site.
+
 ## 0.4.2 — Ordering, light and profiles
 
 - Chat delivery unified into **one ordered lane**. Speech was queued while
