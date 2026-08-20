@@ -1,14 +1,23 @@
-# San Mona Mahjong Parlour
+# ja2-stracciatella-www
 
-*A minigame expansion for [JA2 Stracciatella](https://github.com/ja2-stracciatella/ja2-stracciatella) — the first title in a growing collection of in-game websites for Jagged Alliance 2's laptop browser.*
-
-> est. 1999 — a Kingpin establishment. Games are fair because Mr. Klaus says so.
+*New websites for Jagged Alliance 2's in-game laptop browser, built on
+[JA2 Stracciatella](https://github.com/ja2-stracciatella/ja2-stracciatella).
+Arulco's internet, circa 1999, expanded.*
 
 ![The Parlour lobby](docs/screenshots/lobby.png)
 
 ## What is this?
 
-An unofficial fan fork of JA2 Stracciatella that adds a fully playable **online mahjong parlour** to the in-game laptop, run by San Mona's mob boss Kingpin. You discover it the way you discovered everything in 1999: an escalating spam-mail campaign that will not take silence for an answer.
+An unofficial fan fork that adds new sites to the laptop's web browser —
+playable, written, and dressed in the worst web design 1999 had to offer.
+Each one is discovered the way you discovered anything back then: it emails
+you first.
+
+**Now live: the San Mona Mahjong Parlour** — a fully playable online mahjong
+room run by mob boss Peter "Kingpin" Klaus, where you face Enrico, Deidranna
+and Elliot for real campaign money.
+
+> est. 1999 — a Kingpin establishment. Games are fair because Mr. Klaus says so.
 
 Face **Enrico**, **Deidranna** and **Elliot** (plus a rotating cast of San Mona regulars) over dial-up, for real campaign money.
 
@@ -74,8 +83,9 @@ See [docs/mahjong-changelog.md](docs/mahjong-changelog.md) for what changed and 
 
 ## Roadmap
 
-More minigames for the laptop browser. San Mona has room for another establishment or two.
+More sites for the browser. San Mona has room for another establishment or
+two, and Arulco's other institutions have not been online yet at all.
 
 ## Credits & license
 
-Built on [JA2 Stracciatella](https://github.com/ja2-stracciatella/ja2-stracciatella) — all credit for the port, engine and tooling belongs to that project and its contributors. This fork's mahjong additions follow the same terms as upstream: changes are released to the public domain; the original Jagged Alliance 2 source was released by Strategy First Inc. in 2004 under the SFI Source Code License Agreement (see *SFI Source Code license agreement.txt*). Jagged Alliance 2 and its characters are the property of their respective rights holders; this is an unofficial fan project and requires an original copy of the game.
+Built on [JA2 Stracciatella](https://github.com/ja2-stracciatella/ja2-stracciatella) — all credit for the port, engine and tooling belongs to that project and its contributors. This fork's additions follow the same terms as upstream: changes are released to the public domain; the original Jagged Alliance 2 source was released by Strategy First Inc. in 2004 under the SFI Source Code License Agreement (see *SFI Source Code license agreement.txt*). Jagged Alliance 2 and its characters are the property of their respective rights holders; this is an unofficial fan project and requires an original copy of the game.
