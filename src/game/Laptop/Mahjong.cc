@@ -85,8 +85,8 @@
 #define MJ_POND_TOP_Y		77
 #define MJ_POND_BOTTOM_Y	181
 #define MJ_POND_SIDE_ROWS	5
-#define MJ_SIDE_Y		65 // side seats sit low: their feet meet your pond
-#define MJ_POND_SIDE_Y		65 // side ponds align with the panel tops
+#define MJ_SIDE_Y		5  // side seats sit flush with the top edge
+#define MJ_POND_SIDE_Y		5  // side ponds align with the panel tops
 #define MJ_POND_LEFT_X		72
 #define MJ_POND_RIGHT_X		408
 
@@ -1097,6 +1097,9 @@ struct MahjongPendingLine { INT8 who; ST::string text; UINT32 dueTime; bool ghos
 static std::vector<MahjongPendingLine> gMJPending;
 static UINT32 guiMJQueueTail = 0; // when the last queued line will land
 static UINT32 guiMJAwayUntil[5] = {}; // stepped away from the keyboard
+// what each speaker has actually said lately, whole lines. the chat log
+// holds burst fragments, so it cannot answer "have you said this before"
+static std::vector<ST::string> gMJRecentSaid[5];
 // moderation: Elliot has one duty at this table and he takes it seriously
 static UINT32 guiMJMutedUntil = 0;
 static UINT8 gubMJOffences = 0;
@@ -1169,19 +1172,18 @@ static void MahjongFlushPending()
 
 static void MahjongSay(int who, const ST::string& text)
 {
-	// a bot repeating itself reads terribly. a recent duplicate becomes a
-	// non-answer ("...") at most, and usually just silence.
+	// a speaker repeating themselves reads terribly. checked against whole
+	// lines they have said recently, not against the fragments in the log
 	ST::string say = text;
-	if (who > 0)
+	if (who > 0 && who < 5)
 	{
-		std::size_t const from = gMJChat.size() > 12 ? gMJChat.size() - 12 : 0;
-		for (std::size_t i = from; i < gMJChat.size(); ++i)
+		for (ST::string const& prev : gMJRecentSaid[who])
 		{
-			if (gMJChat[i].who != who || gMJChat[i].text != text) continue;
-			if (text == "..." || text.size() % 3 != 0) return;
-			say = "...";
-			break;
+			if (prev != text) continue;
+			return; // they have said this. they say nothing instead
 		}
+		gMJRecentSaid[who].push_back(text);
+		if (gMJRecentSaid[who].size() > 16) gMJRecentSaid[who].erase(gMJRecentSaid[who].begin());
 	}
 	// somebody who just said "brb" is not at their keyboard: they miss the
 	// next stretch of conversation entirely, then come back to it
@@ -1761,6 +1763,10 @@ static void MahjongEnterState(MahjongUiState state)
 	{
 		case MJUI_DEALING:
 			guiMJDealStep = 0;
+			if (gGame && gGame->handNumber() == 0)
+			{
+				for (std::vector<ST::string>& said : gMJRecentSaid) said.clear();
+			}
 			gfMJDecreeChecked = FALSE;
 			gfMJSaidWallLow = FALSE;
 			for (int i = 0; i < 4; ++i)
@@ -2594,6 +2600,28 @@ static bool MahjongTextContains(const std::string& haystack, const char* needle)
 
 static void MahjongBotQueueReply(int who, const char* line, UINT32 hash)
 {
+	// ask the same question twice and you get told so, rather than hearing
+	// the same sentence again
+	if (who > 0 && who < 5)
+	{
+		for (ST::string const& prev : gMJRecentSaid[who])
+		{
+			if (prev != ST::string(line)) continue;
+			static const char* const brushOff[8] =
+			{
+				"you asked me that already",
+				"asked and answered",
+				"my answer has not improved",
+				"same as last time",
+				"I already told you that",
+				"we did this bit",
+				"still true, still boring",
+				"ask me something else",
+			};
+			line = brushOff[hash % 8];
+			break;
+		}
+	}
 	giMJBotWho = who;
 	gMJBotLine = line;
 	guiMJBotDueTime = MahjongNow() + 700 + hash % 900;

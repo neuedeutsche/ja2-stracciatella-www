@@ -546,6 +546,24 @@ namespace
 		fPausedReDrawScreenFlag = TRUE;
 	}
 
+	// The card's regions sit above the board, so they are only live while it is
+	// up - otherwise they would swallow clicks on the squares underneath.
+	void ChessSetModal(bool up)
+	{
+		gfChessModal = up;
+		if (!gfChessRegionsUp) return;
+		if (up)
+		{
+			gChessModalCloseRegion.Enable();
+			gChessModalArchiveRegion.Enable();
+		}
+		else
+		{
+			gChessModalCloseRegion.Disable();
+			gChessModalArchiveRegion.Disable();
+		}
+	}
+
 	void ChessRecordSolved()
 	{
 		const UINT16 today = ChessToday();
@@ -555,7 +573,7 @@ namespace
 		gubChessBestStreak = std::max(gubChessBestStreak, gubChessStreak);
 		gusChessLastSolved = today;
 		gubChessFlags |= CH_FLAG_SOLVED;
-		gfChessModal = true;
+		ChessSetModal(true);
 		gChessState  = CHUI_SOLVED;
 		giChessSaid = CHS_ST_DONE;
 	}
@@ -563,7 +581,7 @@ namespace
 	void ChessRecordFailed()
 	{
 		gubChessFlags |= CH_FLAG_FAILED;
-		gfChessModal   = true;
+		ChessSetModal(true);
 		gubChessStreak = 0;
 		ChessPlayOutSolution();
 		gChessState  = CHUI_FAILED;
@@ -725,6 +743,23 @@ namespace
 		ChessRedraw();
 	}
 
+	void ChessModalCloseCallback(MOUSE_REGION* region, UINT32 reason)
+	{
+		if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
+		if (!gfChessModal) return;
+		ChessSetModal(false);
+		ChessRedraw();
+	}
+
+	void ChessModalArchiveCallback(MOUSE_REGION* region, UINT32 reason)
+	{
+		if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
+		if (!gfChessModal) return;
+		ChessSetModal(false);
+		ChessShowDay(giChessViewDay - 1);
+		ChessRedraw();
+	}
+
 	void ChessPlaceRegions()
 	{
 		MSYS_DefineRegion(&gChessDropRegion,
@@ -766,7 +801,21 @@ namespace
 		                  MSYS_PRIORITY_HIGH, CURSOR_WWW, MSYS_NO_CALLBACK, ChessDayCallback);
 		MSYS_SetRegionUserData(&gChessNextDayRegion, 0, 1);
 
+		MSYS_DefineRegion(&gChessModalCloseRegion,
+		                  UINT16(CH_X(CH_MODAL_X + CH_MODAL_W - 20)), UINT16(CH_Y(CH_MODAL_Y + 2)),
+		                  UINT16(CH_X(CH_MODAL_X + CH_MODAL_W - 2)),  UINT16(CH_Y(CH_MODAL_Y + 20)),
+		                  MSYS_PRIORITY_HIGHEST, CURSOR_WWW, MSYS_NO_CALLBACK,
+		                  ChessModalCloseCallback);
+		MSYS_DefineRegion(&gChessModalArchiveRegion,
+		                  UINT16(CH_X(CH_MODAL_X + 12)), UINT16(CH_Y(CH_MODAL_Y + 46)),
+		                  UINT16(CH_X(CH_MODAL_X + CH_MODAL_W - 12)), UINT16(CH_Y(CH_MODAL_Y + 68)),
+		                  MSYS_PRIORITY_HIGHEST, CURSOR_WWW, MSYS_NO_CALLBACK,
+		                  ChessModalArchiveCallback);
+		gChessModalCloseRegion.Disable();
+		gChessModalArchiveRegion.Disable();
+
 		gfChessRegionsUp = true;
+		if (gfChessModal) ChessSetModal(true);
 	}
 
 	void ChessRemoveRegions()
@@ -775,6 +824,8 @@ namespace
 		for (MOUSE_REGION& r : gChessSquare) MSYS_RemoveRegion(&r);
 		MSYS_RemoveRegion(&gChessDropRegion);
 		MSYS_RemoveRegion(&gChessHintRegion);
+		MSYS_RemoveRegion(&gChessModalCloseRegion);
+		MSYS_RemoveRegion(&gChessModalArchiveRegion);
 		MSYS_RemoveRegion(&gChessPrevDayRegion);
 		MSYS_RemoveRegion(&gChessNextDayRegion);
 		gfChessRegionsUp = false;
@@ -1204,6 +1255,9 @@ void EnterChess()
 		}
 	}
 
+	// a card left up when the player navigated away does not greet them on the
+	// way back in
+	gfChessModal = false;
 	ChessBeginSession();
 	ChessPlaceRegions();
 }
