@@ -1,0 +1,173 @@
+#ifndef CHESSGAME_H
+#define CHESSGAME_H
+
+// Engine-free chess core for the chach.com laptop minigame.
+//
+// 0x88 board representation: squares are rank * 16 + file, so a square is off
+// the board exactly when (sq & 0x88) is non-zero. That makes slider and knight
+// bounds checks a single mask instead of a pair of comparisons.
+//
+// Move generation is pseudo-legal followed by make / king-attacked / unmake,
+// which is slower than pin-aware generation but short enough to read and to
+// trust. Perft is the proof: see ChessGame_unittest.cc.
+//
+// No JA2 headers on purpose: everything here is deterministic given the seed
+// passed to the search, so the whole engine is unit-testable.
+
+#include <cstdint>
+#include <string>
+#include <vector>
+
+class ChessGame
+{
+public:
+	enum Piece : std::uint8_t
+	{
+		NoPiece = 0, Pawn, Knight, Bishop, Rook, Queen, King
+	};
+
+	enum Color : std::uint8_t { White = 0, Black = 1 };
+
+	static constexpr std::uint8_t NO_SQUARE  = 0x7F;
+	static constexpr int MAX_MOVES           = 256;
+
+	// castling rights bitmask
+	static constexpr std::uint8_t CASTLE_WK = 0x01;
+	static constexpr std::uint8_t CASTLE_WQ = 0x02;
+	static constexpr std::uint8_t CASTLE_BK = 0x04;
+	static constexpr std::uint8_t CASTLE_BQ = 0x08;
+
+	// move flags
+	static constexpr std::uint8_t MF_CAPTURE     = 0x01;
+	static constexpr std::uint8_t MF_DOUBLE_PUSH = 0x02;
+	static constexpr std::uint8_t MF_EN_PASSANT  = 0x04;
+	static constexpr std::uint8_t MF_CASTLE      = 0x08;
+
+	struct Move
+	{
+		std::uint8_t from  = NO_SQUARE;
+		std::uint8_t to    = NO_SQUARE;
+		std::uint8_t promo = NoPiece;   // Queen / Rook / Bishop / Knight, else NoPiece
+		std::uint8_t flags = 0;
+
+		bool IsNull() const { return from == NO_SQUARE; }
+		bool operator==(const Move& o) const
+		{
+			return from == o.from && to == o.to && promo == o.promo;
+		}
+	};
+
+	enum class Result : std::uint8_t
+	{
+		Ongoing,
+		WhiteMates,
+		BlackMates,
+		Stalemate,
+		DrawFiftyMove,
+		DrawRepetition,
+		DrawInsufficient,
+	};
+
+	ChessGame() { SetStartPosition(); }
+
+	void SetStartPosition();
+	// Accepts standard FEN. Returns false and leaves the position untouched on
+	// anything malformed - puzzle corpora are loaded through here.
+	bool SetFen(const std::string& fen);
+	std::string Fen() const;
+
+	// board access
+	std::uint8_t PieceAt(std::uint8_t sq) const { return mBoard[sq] & 0x07; }
+	Color        ColorAt(std::uint8_t sq) const { return Color((mBoard[sq] >> 3) & 1); }
+	bool         IsEmpty(std::uint8_t sq) const { return mBoard[sq] == 0; }
+	Color        SideToMove() const             { return mSide; }
+	std::uint8_t CastlingRights() const         { return mCastling; }
+	std::uint8_t EnPassantSquare() const        { return mEp; }
+	int          HalfmoveClock() const          { return mHalfmove; }
+	int          FullmoveNumber() const         { return mFullmove; }
+	std::uint8_t KingSquare(Color c) const      { return mKingSq[c]; }
+
+	// generation and play. Generation is not const: legality is decided by
+	// making the move, testing the king, and unmaking. Copying the board per
+	// candidate instead would cost more than the whole search budget.
+	int  GenerateLegal(Move* out);
+	int  GenerateLegalCaptures(Move* out);
+	bool MakeMove(const Move& m);
+	void Unmake();
+	bool IsInCheck(Color c) const;
+	bool IsSquareAttacked(std::uint8_t sq, Color by) const;
+
+	Result GetResult();
+	static bool IsDraw(Result r)
+	{
+		return r == Result::Stalemate || r == Result::DrawFiftyMove ||
+		       r == Result::DrawRepetition || r == Result::DrawInsufficient;
+	}
+
+	// search: negamax with alpha-beta and a quiescence tail.
+	// errorPercent models a weaker opponent - that share of the time it plays a
+	// random legal move instead of the best one, which is what gives the bot
+	// ladder its rating spread.
+	// Not const: the search makes and unmakes moves on this board. It always
+	// restores the position before returning.
+	Move Search(int depth, int errorPercent, std::uint32_t& seed);
+	// Static evaluation in centipawns, positive meaning good for White.
+	int Evaluate() const;
+
+	// notation
+	std::string San(const Move& m);              // needs the move to be legal here
+	std::string Uci(const Move& m) const;
+	Move        ParseUci(const std::string& uci);        // null Move if illegal
+
+	std::uint64_t Perft(int depth);
+	std::uint64_t ZobristKey() const { return mKey; }
+
+	// squares
+	static std::uint8_t MakeSquare(int file, int rank) { return std::uint8_t(rank * 16 + file); }
+	static int  FileOf(std::uint8_t sq)  { return sq & 7; }
+	static int  RankOf(std::uint8_t sq)  { return sq >> 4; }
+	static bool OnBoard(int sq)          { return (sq & 0x88) == 0; }
+
+private:
+	struct Undo
+	{
+		Move         move;
+		std::uint8_t captured;   // encoded piece, 0 if none
+		std::uint8_t castling;
+		std::uint8_t ep;
+		std::uint16_t halfmove;
+		std::uint64_t key;
+		bool         pushedKey;  // false when the move was rejected as illegal
+	};
+
+	// encoded board: 0 empty, else (color << 3) | type
+	std::uint8_t mBoard[128] = {};
+	Color        mSide     = White;
+	std::uint8_t mCastling = 0;
+	std::uint8_t mEp       = NO_SQUARE;
+	std::uint16_t mHalfmove = 0;
+	std::uint16_t mFullmove = 1;
+	std::uint8_t mKingSq[2] = { NO_SQUARE, NO_SQUARE };
+	std::uint64_t mKey      = 0;
+
+	std::vector<Undo>          mHistory;
+	// One key per made move plus the starting position. Never cleared, so an
+	// Unmake can always restore it; repetition scans stop at the halfmove
+	// clock, which is what bounds them to the current irreversible span.
+	std::vector<std::uint64_t> mKeyHistory;
+
+	static std::uint8_t Encode(Color c, std::uint8_t type) { return std::uint8_t((c << 3) | type); }
+
+	void Clear();
+	void PlacePiece(std::uint8_t sq, std::uint8_t encoded);
+	void RemovePiece(std::uint8_t sq);
+	void RecomputeKey();
+
+	int  GeneratePseudo(Move* out, bool capturesOnly) const;
+	void AddPawnMoves(Move* out, int& n, std::uint8_t from, std::uint8_t to, std::uint8_t flags) const;
+
+	int  Quiesce(int alpha, int beta);
+	int  Negamax(int depth, int alpha, int beta);
+};
+
+#endif
