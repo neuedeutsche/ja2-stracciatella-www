@@ -1,0 +1,110 @@
+# San Mona Mahjong Parlour
+
+> **Spoilers.** This page describes the site in full — how you find it, who
+> you meet, what it costs. If you would rather discover it in game, stop here
+> and just play; the parlour will introduce itself.
+
+An online mahjong room run out of San Mona by Peter "Kingpin" Klaus, where
+you face Enrico Chivaldori, Queen Deidranna and her adjutant Elliot for real
+campaign money.
+
+> est. 1999 — a Kingpin establishment. Games are fair because Mr. Klaus says so.
+
+## Finding it
+
+The parlour is not in your bookmarks when the campaign starts. It advertises
+itself: a spam campaign arrives by email and escalates over several days as
+it goes unanswered, growing less "spam" and more "Kingpin" with each notice.
+The bookmark appears with the first one. Visit the site and the campaign
+stops. Saves that are already underway get the notices they would have
+received, dated to the days they would have arrived on.
+
+## The game
+
+Full Sichuan rules — 血战到底, "bloody to the end":
+
+- 108 tiles, suits only. No winds, no dragons, no chi.
+- **Huan san zhang**: after the deal every player passes three tiles of one
+  suit to a neighbour; the direction changes each hand.
+- **Que yi men**: every player declares a void suit and cannot win while
+  holding a single tile of it. Void tiles show red in your hand.
+- **Pong** and **kong**, with replacement draws, added kongs, and **robbing
+  the kong** — an added kong's fourth tile can be claimed as a winning tile.
+- **Fan scoring**: pure suit, all triplets, seven pairs, plus roots
+  (four-of-a-kind), capped at four fan, payments doubling per fan.
+- **Kong bonuses** (刮风下雨): instant payments on declaration.
+- **Bloody battle**: winners retire and the hand continues until three
+  players have won or the wall is exhausted. At exhaustion the unready pay
+  the ready, and anyone still holding void-suit tiles pays everyone as the
+  flower pig.
+- A match is four hands.
+
+The rules core (`MahjongGame`) has no JA2 headers, is deterministic given its
+seed, and is covered by unit tests. The opponents differ: error rates per
+character, a grudge model that makes them avoid feeding a player who has been
+beating them, and skill that shifts by table.
+
+## The stakes
+
+Real campaign money, settled through the Finances screen.
+
+- $250 buy-in, points settle at 20:1, the house rakes 10% of winnings.
+- Short on cash? Kingpin fronts the buy-in at 20% vig, due at close.
+- Every seventh day is the **Bloody Invitational**: triple stakes.
+- Winnings and debts arrive by email, delayed by strategic events rather
+  than landing the instant you stand up.
+- Your record persists in the save: matches, wins, hands, biggest hand, net
+  dollars, and the grudge you have accumulated.
+
+## Who you meet
+
+The three seats rotate with the campaign calendar.
+
+| Seat | Usually | Sometimes |
+|---|---|---|
+| Right | Enrico Chivaldori | — |
+| Across | Queen Deidranna | Darren van Haussen, Madame Layla |
+| Left | Elliot | Kingpin, Tony |
+
+They talk. Around a thousand authored lines of it: greetings, idle chatter,
+reactions to your wins, complaints about their hands, tenpai leaks, claims,
+taunts, and commentary that tracks how your war is actually going. Enrico and
+Deidranna bicker like the divorced heads of state they are. Characters speak
+in their own mined voice samples, staggered so nobody talks over anybody.
+
+If the Queen is dead, her account keeps playing. Nobody at the table wants to
+discuss it.
+
+## The 1999 of it all
+
+- An AIM-style home page with a warning block and live table preview.
+- A Yahoo-style ratings ladder — yours derives from your record; one player
+  is permanently banned, and one rating is disputed.
+- House rules as a paged modal, closing with a signed letter from the
+  proprietor.
+- A guestbook and a hit counter.
+- A chat client that behaves like one: people type before they speak, take
+  pauses, say "brb" and actually leave for a while, occasionally type
+  something and never send it, and get muted on an escalating scale by the
+  room's moderator if you flood the channel. Type into it and it answers.
+- Webcam portrait feeds that blink, tick, and occasionally drop the
+  connection entirely behind a dial-up spinner.
+- A Player of the Month who drops in to talk trash and leaves.
+- When nobody is seated, the House plays an exhibition you can watch — it is
+  already mid-game when you arrive.
+
+## Under the hood
+
+| Where | What |
+|---|---|
+| `src/game/Laptop/MahjongGame.{h,cc}` | engine-free rules core, no JA2 headers |
+| `src/game/Laptop/MahjongGame_unittest.cc` | gtest coverage for those rules |
+| `src/game/Laptop/Mahjong.{h,cc}` | the site: pages, chat, layout, input, audio |
+| `docs/custom_artworks_source/laptop/generate_mahjong_tiles.py` | every art asset, generated as indexed STI |
+| `src/game/Laptop/{Laptop,EMail}.*`, `src/game/Strategic/Game_Event_Hook.*` | registration, discovery mail, delayed events, save persistence |
+
+All art is generated by script — tiles, felt, the neon sign, chips, dragons,
+TV static, the wooden rail, the table light, even the proprietor's signature —
+so the site rebuilds from source with no binary assets to misplace.
+
+See the [changelog](../mahjong-changelog.md) for what changed and when.

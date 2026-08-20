@@ -1,8 +1,9 @@
 # San Mona Mahjong Parlour — changelog
 
-All notable changes to the mahjong minigame, newest first. The parlour is a
-laptop website added on top of JA2 Stracciatella; see the project README for
-what it is and how to build it.
+All notable changes to the San Mona Mahjong Parlour, newest first.
+
+**Spoilers throughout.** See [docs/sites/mahjong.md](sites/mahjong.md) for
+what the site is, or the project README for what this repo is.
 
 The page carries its own build number (`MJ_PAGE_VERSION` in
 `src/game/Laptop/Mahjong.cc`), shown on the home page, the ladder and the
