@@ -289,7 +289,6 @@ namespace
 	#define CH_SND_CASTLE   SOUNDSDIR "/laptop/chach-castle.mp3"
 	#define CH_SND_PROMOTE  SOUNDSDIR "/laptop/chach-promote.mp3"
 	#define CH_SND_WRONG    SOUNDSDIR "/laptop/chach-incorrect.mp3"
-	#define CH_SND_LIFT     SOUNDSDIR "/laptop/chach-premove.mp3"
 
 	void ChessPlay(const char* file, UINT32 volume = MIDVOLUME)
 	{
@@ -616,8 +615,8 @@ namespace
 
 		if (ours)
 		{
-			// lift it: a click is just a drag that never moved
-			if (gbChessSelected != INT8(sq)) ChessPlay(CH_SND_LIFT, LOWVOLUME);
+			// lift it: a click is just a drag that never moved. Silent - only
+			// a move that lands on the board makes a sound.
 			gbChessSelected  = INT8(sq);
 			gfChessDragging  = true;
 			gubChessDragFrom = sq;
