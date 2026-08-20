@@ -73,6 +73,8 @@
 #define CH_DATE_Y       34
 #define CH_COACH_Y      78
 #define CH_COACH_TILE   36
+#define CH_HINT_Y       (CH_PAGE_H - 34)
+#define CH_HINT_H       22
 
 // The day stepper's arrows sit at fixed points on the panel edges while the
 // chip between them is centred and changes width with the day number. Glyphs
@@ -87,8 +89,6 @@
 #define CH_NEXT_X       (CH_CHIP_X + CH_CHIP_W + 2)
 
 // rail furniture, measured down from the page foot
-#define CH_RAIL_SEARCH_Y  (CH_PAGE_H - 118)
-#define CH_RAIL_LANG_Y    (CH_PAGE_H - 102)
 #define CH_AVATAR_SIZE    33
 
 // frame indices into chessicons.sti
@@ -191,7 +191,6 @@ namespace
 	MOUSE_REGION gChessHintRegion;
 	MOUSE_REGION gChessPrevDayRegion;
 	MOUSE_REGION gChessNextDayRegion;
-	MOUSE_REGION gChessLangRegion;
 	MOUSE_REGION gChessModalCloseRegion;
 	MOUSE_REGION gChessModalArchiveRegion;
 	// sits behind everything and catches a piece released off the board, which
@@ -199,8 +198,9 @@ namespace
 	MOUSE_REGION gChessDropRegion;
 	bool         gfChessRegionsUp = false;
 
-	// The site is English by default and the proprietor is not, so the rail
-	// carries a switch. Umlauts are spelled out: the laptop fonts are ASCII.
+	// The site is English. The German column is kept because the proprietor is
+	// German and it costs nothing, but nothing reaches it now that the rail
+	// switch is gone. Umlauts are spelled out: the laptop fonts are ASCII.
 	enum ChessStr
 	{
 		CHS_TITLE, CHS_DAY, CHS_RATING, CHS_WHITE_MOVES, CHS_BLACK_MOVES,
@@ -714,13 +714,6 @@ namespace
 		ChessRedraw();
 	}
 
-	void ChessLangCallback(MOUSE_REGION* region, UINT32 reason)
-	{
-		if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
-		gfChessGerman = !gfChessGerman;
-		ChessRedraw();
-	}
-
 	// releasing anywhere that is not a square just puts the piece back; it stays
 	// selected, so the click-to-move path can still finish the job
 	void ChessDropCallback(MOUSE_REGION* region, UINT32 reason)
@@ -756,8 +749,8 @@ namespace
 		}
 
 		MSYS_DefineRegion(&gChessHintRegion,
-		                  UINT16(CH_X(CH_PANEL_X + 10)), UINT16(CH_Y(CH_PAGE_H - 46)),
-		                  UINT16(CH_X(CH_PANEL_X + CH_PANEL_W - 10)), UINT16(CH_Y(CH_PAGE_H - 24)),
+		                  UINT16(CH_X(CH_PANEL_X + 10)), UINT16(CH_Y(CH_HINT_Y)),
+		                  UINT16(CH_X(CH_PANEL_X + CH_PANEL_W - 10)), UINT16(CH_Y(CH_HINT_Y + CH_HINT_H)),
 		                  MSYS_PRIORITY_HIGH, CURSOR_WWW, MSYS_NO_CALLBACK, ChessHintCallback);
 		gChessHintRegion.SetFastHelpText("Costs one attempt");
 
@@ -773,12 +766,6 @@ namespace
 		                  MSYS_PRIORITY_HIGH, CURSOR_WWW, MSYS_NO_CALLBACK, ChessDayCallback);
 		MSYS_SetRegionUserData(&gChessNextDayRegion, 0, 1);
 
-		MSYS_DefineRegion(&gChessLangRegion,
-		                  UINT16(CH_X(CH_NAV_X + 4)), UINT16(CH_Y(CH_RAIL_LANG_Y - 2)),
-		                  UINT16(CH_X(CH_NAV_X + CH_NAV_W - 4)), UINT16(CH_Y(CH_RAIL_LANG_Y + 12)),
-		                  MSYS_PRIORITY_HIGH, CURSOR_WWW, MSYS_NO_CALLBACK, ChessLangCallback);
-		gChessLangRegion.SetFastHelpText("English / Deutsch");
-
 		gfChessRegionsUp = true;
 	}
 
@@ -790,7 +777,6 @@ namespace
 		MSYS_RemoveRegion(&gChessHintRegion);
 		MSYS_RemoveRegion(&gChessPrevDayRegion);
 		MSYS_RemoveRegion(&gChessNextDayRegion);
-		MSYS_RemoveRegion(&gChessLangRegion);
 		gfChessRegionsUp = false;
 	}
 }
@@ -862,15 +848,6 @@ namespace
 			PrintAt(FONT10ARIAL, active ? FONT_MCOLOR_WHITE : FONT_GRAY2,
 			        CH_NAV_X + 20, rowY + 1, T(items[i]));
 		}
-
-		PrintAt(FONT10ARIAL, FONT_GRAY4, CH_NAV_X + 6, CH_RAIL_SEARCH_Y, T(CHS_SEARCH));
-
-		// language switch, because the proprietor is not English
-		PrintAt(FONT10ARIAL, gfChessGerman ? FONT_GRAY7 : FONT_MCOLOR_LTGREEN,
-		        CH_NAV_X + 6, CH_RAIL_LANG_Y, "EN");
-		PrintAt(FONT10ARIAL, FONT_GRAY7, CH_NAV_X + 24, CH_RAIL_LANG_Y, "|");
-		PrintAt(FONT10ARIAL, gfChessGerman ? FONT_MCOLOR_LTGREEN : FONT_GRAY7,
-		        CH_NAV_X + 32, CH_RAIL_LANG_Y, "DE");
 
 		// The account row: your I.M.P. portrait as the site avatar, with the
 		// nickname suggested by two grey bars rather than set in type. The
@@ -1068,9 +1045,9 @@ namespace
 		// arrows grey out at the ends of the run; centred in their own hit
 		// regions rather than hung off the chip, which changes width
 		ChessDrawChevron(CH_PREV_X + CH_ARROW_W / 2, CH_DATE_Y + 10, true,
-		                 giChessViewDay > 1 ? FROMRGB(232, 230, 227) : FROMRGB(110, 104, 98));
+		                 giChessViewDay > 1 ? FROMRGB(148, 142, 136) : FROMRGB( 74,  69,  64));
 		ChessDrawChevron(CH_NEXT_X + CH_ARROW_W / 2, CH_DATE_Y + 10, false,
-		                 giChessViewDay < ChessToday() ? FROMRGB(232, 230, 227) : FROMRGB(110, 104, 98));
+		                 giChessViewDay < ChessToday() ? FROMRGB(148, 142, 136) : FROMRGB( 74,  69,  64));
 
 		// the day's title, under the stepper. Titles run with the rating sort,
 		// so they escalate from contract work to the war itself.
@@ -1081,7 +1058,7 @@ namespace
 
 		// tries, directly under the coach: she is the one keeping count. The
 		// hearts are the label.
-		const INT32 heartY = CH_COACH_Y + CH_COACH_TILE + 16;
+		const INT32 heartY = CH_COACH_Y + CH_COACH_TILE + 7;
 		for (int i = 0; i < CH_MAX_HEARTS; ++i)
 		{
 			ChessDrawHeart(CH_PANEL_X + 10 + i * CH_HEART_PITCH, heartY,
@@ -1104,10 +1081,10 @@ namespace
 
 		// the hint button greys out once it has been spent
 		const bool hintLive = gChessState == CHUI_PUZZLE && !(gubChessFlags & CH_FLAG_HINT_USED);
-		FillRounded(CH_PANEL_X + 10, CH_PAGE_H - 46, CH_PANEL_W - 20, 22,
+		FillRounded(CH_PANEL_X + 10, CH_HINT_Y, CH_PANEL_W - 20, CH_HINT_H,
 		            hintLive ? CH_RGB_PANEL_UP : CH_RGB_PANEL_SUNK, 3, CH_RGB_PANEL);
 		PrintCentred(FONT10ARIAL, hintLive ? FONT_MCOLOR_WHITE : FONT_GRAY7,
-		             cx, CH_PAGE_H - 40, T(CHS_HINT));
+		             cx, CH_HINT_Y + (CH_HINT_H - GetFontHeight(FONT10ARIAL)) / 2, T(CHS_HINT));
 	}
 
 	// The result card, over a scanline-dimmed board. Square corners on purpose:
