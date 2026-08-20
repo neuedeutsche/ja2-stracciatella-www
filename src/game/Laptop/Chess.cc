@@ -1001,13 +1001,17 @@ namespace
 	// no caption - the portrait is the label.
 	void ChessRenderCoach(INT32 y)
 	{
+		// Her portrait's real width, not an assumed 29: guessing it is what left
+		// the bubble sitting a gap clear of her.
 		const INT32 faceX = CH_PANEL_X + 4;
+		INT32 faceW = 26;
 		if (guiChessCoach)
 		{
+			faceW = guiChessCoach->SubregionProperties(0).usWidth;
 			BltVideoObject(FRAME_BUFFER, guiChessCoach, 0, CH_X(faceX), CH_Y(y));
 		}
 
-		const INT32 bubbleX = faceX + 29 + 5;
+		const INT32 bubbleX = faceX + faceW + 4;
 		const INT32 bubbleW = CH_PANEL_X + CH_PANEL_W - 4 - bubbleX;
 		FillRounded(bubbleX, y, bubbleW, CH_COACH_TILE, CH_RGB_BUBBLE, 3, CH_RGB_PANEL);
 
