@@ -288,7 +288,6 @@ namespace
 	#define CH_SND_CHECK    SOUNDSDIR "/laptop/chach-move-check.mp3"
 	#define CH_SND_CASTLE   SOUNDSDIR "/laptop/chach-castle.mp3"
 	#define CH_SND_PROMOTE  SOUNDSDIR "/laptop/chach-promote.mp3"
-	#define CH_SND_ILLEGAL  SOUNDSDIR "/laptop/chach-illegal.mp3"
 	#define CH_SND_WRONG    SOUNDSDIR "/laptop/chach-incorrect.mp3"
 	#define CH_SND_LIFT     SOUNDSDIR "/laptop/chach-premove.mp3"
 
@@ -601,10 +600,8 @@ namespace
 			ChessSpendHeart();
 			if (gChessState == CHUI_PUZZLE) ChessCoachSay(-2);
 		}
-		else
-		{
-			ChessPlay(CH_SND_ILLEGAL, LOWVOLUME);
-		}
+		// an illegal drop is silent, as it is on the live site: the piece just
+		// goes back
 		gbChessSelected = -1;
 	}
 
