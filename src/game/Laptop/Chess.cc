@@ -903,31 +903,31 @@ namespace
 		}
 	}
 
-	// chess.com's coach block: her portrait, and a white speech bubble alongside
-	// with a tail pointing back at her.
+	// The coach: her portrait, bare, with a white bubble beside it. No tile and
+	// no caption - the portrait is the label.
 	void ChessRenderCoach(INT32 y)
 	{
-		const INT32 tileX = CH_PANEL_X + 8;
-		FillRect(tileX, y, CH_COACH_TILE, CH_COACH_TILE + 11, CH_RGB_PANEL_UP);
+		const INT32 faceX = CH_PANEL_X + 8;
 		if (guiChessCoach)
 		{
-			BltVideoObject(FRAME_BUFFER, guiChessCoach, 0,
-			               CH_X(tileX + (CH_COACH_TILE - 29) / 2), CH_Y(y + 2));
+			BltVideoObject(FRAME_BUFFER, guiChessCoach, 0, CH_X(faceX), CH_Y(y));
 		}
-		PrintCentred(FONT10ARIAL, FONT_GRAY2, tileX + CH_COACH_TILE / 2,
-		             y + CH_COACH_TILE - 1, "COACH");
 
-		const INT32 bubbleX = tileX + CH_COACH_TILE + 6;
+		const INT32 bubbleX = faceX + 29 + 7;
 		const INT32 bubbleW = CH_PANEL_X + CH_PANEL_W - 8 - bubbleX;
 		FillRounded(bubbleX, y, bubbleW, CH_COACH_TILE, CH_RGB_BUBBLE, 3, CH_RGB_PANEL);
-		// the tail: three stacked slivers stepping out to a point
-		for (int i = 0; i < 3; ++i)
+
+		// The tail narrows to a point as it travels away from the bubble and
+		// towards her: each sliver further left is shorter, not taller.
+		const INT32 tailY = y + 13;
+		for (int i = 0; i < 4; ++i)
 		{
-			FillRect(bubbleX - 1 - i, y + 12 - i, 2, 2 + i * 2, CH_RGB_BUBBLE);
+			const INT32 h = 8 - 2 * i;
+			if (h <= 0) break;
+			FillRect(bubbleX - 1 - i, tailY - h / 2, 1, h, CH_RGB_BUBBLE);
 		}
 
-		// on white, the verdict has to read dark; black by default, and the
-		// win/loss states keep their colour but drop to the readable shades
+		// on white, the verdict has to read dark
 		const UINT8 colour = gChessState == CHUI_SOLVED ? FONT_DKGREEN
 		                   : gChessState == CHUI_FAILED ? FONT_DKRED
 		                   : FONT_MCOLOR_BLACK;
