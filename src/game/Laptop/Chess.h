@@ -16,8 +16,17 @@ struct ChessPersist
 	UINT8  ubStreak;
 	UINT8  ubBestStreak;
 	UINT8  ubHearts;        // attempts left on usDay
-	UINT8  ubFlags;         // bit0 solved, bit1 failed, bit2 hint used, bit3 discovered
+	UINT8  ubFlags;         // see the CHESS_FLAG_* bits below
 };
+
+// Mirrors ChessDaily's flag bits, exposed so the laptop can gate discovery
+// without pulling the whole daily module in.
+#define CHESS_FLAG_SOLVED     0x01
+#define CHESS_FLAG_FAILED     0x02
+#define CHESS_FLAG_HINT_USED  0x04
+#define CHESS_FLAG_DISCOVERED 0x08
+#define CHESS_FLAG_INVITED    0x10
+#define CHESS_FLAG_DOWN_NOTED 0x20
 ChessPersist ChessGetPersist();
 void ChessSetPersist(const ChessPersist& p);
 

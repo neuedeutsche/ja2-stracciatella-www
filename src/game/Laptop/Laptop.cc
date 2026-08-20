@@ -519,9 +519,22 @@ static void EnterLaptop(void)
 
 	gfShowBookmarks = FALSE;
 	SetBookMark(AIM_BOOKMARK);
-	// chach.com is a merc's personal homepage, linked from his A.I.M. profile,
-	// so it is simply there from the moment you have a browser
-	SetBookMark(CHESS_BOOKMARK);
+	// chach.com is a merc's personal homepage, linked in small type at the foot
+	// of his A.I.M. profile. He mails you about it once, unprompted, a few days
+	// in - and that mail is what puts the bookmark in the browser.
+	{
+		ChessPersist ch = ChessGetPersist();
+		if (!(ch.ubFlags & CHESS_FLAG_INVITED))
+		{
+			ch.ubFlags |= CHESS_FLAG_INVITED;
+			ChessSetPersist(ch);
+			UINT32 const uiNow = GetWorldTotalMin();
+			// day four, late evening: he writes when he is not working
+			UINT32 const uiDue = 3 * 1440 + 1290;
+			AddStrategicEvent(EVENT_CHESS_GRUNTY_EMAIL,
+					std::max(uiDue, uiNow + 120), 0);
+		}
+	}
 	// the parlour has been spamming since day 2: on first online contact,
 	// backfill every notice that "already arrived" (stamped on its day) and
 	// schedule the rest to keep escalating until the site is visited

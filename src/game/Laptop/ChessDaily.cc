@@ -18,7 +18,7 @@ namespace ChessDaily
 		state.day    = stamp;
 		state.hearts = MAX_HEARTS;
 		// FLAG_DISCOVERED and FLAG_INVITED describe the player, not the day
-		state.flags &= std::uint8_t(FLAG_DISCOVERED | FLAG_INVITED);
+		state.flags &= std::uint8_t(FLAG_DISCOVERED | FLAG_INVITED | FLAG_DOWN_NOTED);
 		return true;
 	}
 
@@ -51,5 +51,18 @@ namespace ChessDaily
 	bool IsFinished(const State& state)
 	{
 		return (state.flags & (FLAG_SOLVED | FLAG_FAILED)) != 0;
+	}
+
+	int LapsedStreak(const State& state, int today)
+	{
+		if (state.streak == 0 || state.lastSolvedDay == 0) return 0;
+		// solved today, or yesterday and today still to play: the run stands
+		if (state.lastSolvedDay + 1 >= today) return 0;
+		return state.streak;
+	}
+
+	void ClearStreak(State& state)
+	{
+		state.streak = 0;
 	}
 }

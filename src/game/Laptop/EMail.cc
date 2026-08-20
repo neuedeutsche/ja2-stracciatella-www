@@ -549,6 +549,22 @@ void AddEmailMessage(INT32 iMessageOffset, INT32 iMessageLength, INT32 iDate, UI
 	{
 		pSubject = "please delete after reading";
 	}
+	else if (iMessageOffset == CHESS_EMAIL_INVITE)
+	{
+		pSubject = "chach.com";
+	}
+	else if (iMessageOffset == CHESS_EMAIL_STREAK)
+	{
+		pSubject = "ze streak";
+	}
+	else if (iMessageOffset == CHESS_EMAIL_LAPSED)
+	{
+		pSubject = "you missed a day";
+	}
+	else if (iMessageOffset == CHESS_EMAIL_OFFLINE)
+	{
+		pSubject = "server notice";
+	}
 	else if (iMessageOffset == MAHJONG_EMAIL_SPAM)
 	{
 		switch (pTempEmail->iFirstData)
@@ -1700,6 +1716,7 @@ static void ReDisplayBoxes(void)
 
 static void HandleIMPCharProfileResultsMessage(void);
 static void HandleMahjongKingpinMessage(UINT16 usMessageId, const Email* pMail);
+static void HandleChessGruntyMessage(UINT16 usMessageId, const Email* pMail);
 static void ModifyInsuranceEmails(UINT16 usMessageId, Email* pMail, UINT8 ubNumberOfRecords);
 
 
@@ -1722,6 +1739,13 @@ static void HandleMailSpecialMessages(UINT16 usMessageId, Email* pMail)
 		case MAHJONG_EMAIL_ELLIOT_SECRET:
 		case MAHJONG_EMAIL_SPAM:
 			HandleMahjongKingpinMessage(usMessageId, pMail);
+			break;
+
+		case CHESS_EMAIL_INVITE:
+		case CHESS_EMAIL_STREAK:
+		case CHESS_EMAIL_LAPSED:
+		case CHESS_EMAIL_OFFLINE:
+			HandleChessGruntyMessage(usMessageId, pMail);
 			break;
 
 
@@ -1901,6 +1925,69 @@ enum PhysicalBits
 };
 ENUM_BITSET(PhysicalBits)
 
+
+// chach.com is one man's site, so it writes like one man: short, and only when
+// something happened.
+static void HandleChessGruntyMessage(UINT16 usMessageId, const Email* pMail)
+{
+	if (pMessageRecordList != NULL) return;
+	auto const blank = []() { AddEmailRecordToList(" "); };
+
+	if (usMessageId == CHESS_EMAIL_INVITE)
+	{
+		AddEmailRecordToList("You have my A.I.M. page open often enough that I assume you saw ze link at ze bottom. Nobody clicks ze link.");
+		blank();
+		AddEmailRecordToList("It is my site. I run it from ze apartment. One puzzle every day, five tries, no charge. Ze bookmark is in your browser now, I took ze liberty.");
+		blank();
+		AddEmailRecordToList("Do not e-mail me about ze name.");
+		blank();
+		AddEmailRecordToList("- Grunty");
+		return;
+	}
+
+	if (usMessageId == CHESS_EMAIL_STREAK)
+	{
+		AddEmailRecordToList(ST::format("{} days in a row. I checked ze log twice.", pMail->iFirstData));
+		blank();
+		if (pMail->iFirstData >= 7)
+		{
+			AddEmailRecordToList("Nobody else on ze server has done zis. I am not saying it to flatter you. I am saying it because ze number is on my screen and it is yours.");
+		}
+		else
+		{
+			AddEmailRecordToList("Most people stop at two. Zey solve one, zey feel clever, zey go and do a war.");
+		}
+		blank();
+		AddEmailRecordToList("Keep going. Ze puzzles get harder, zis is deliberate.");
+		blank();
+		AddEmailRecordToList("- Grunty");
+		return;
+	}
+
+	if (usMessageId == CHESS_EMAIL_LAPSED)
+	{
+		AddEmailRecordToList(ST::format("Your streak was {} days. It is now nothing.", pMail->iFirstData));
+		blank();
+		AddEmailRecordToList("I am not angry. Ze counter is automatic, it does not care about your reasons, and neither does ze board.");
+		blank();
+		AddEmailRecordToList("Ze puzzle is still zere. Zey are always still zere.");
+		blank();
+		AddEmailRecordToList("- Grunty");
+		return;
+	}
+
+	if (usMessageId == CHESS_EMAIL_OFFLINE)
+	{
+		AddEmailRecordToList("I have taken a contract. Yours, in fact, so you know zis already.");
+		blank();
+		AddEmailRecordToList("Ze machine is in my apartment and ze apartment is not in Arulco, so ze site is down until my contract ends. Zis is what happens when ze whole operation is one man and one modem.");
+		blank();
+		AddEmailRecordToList("Ze daily puzzle continues without you. It does not continue without me.");
+		blank();
+		AddEmailRecordToList("- Grunty");
+		return;
+	}
+}
 
 static void HandleMahjongKingpinMessage(UINT16 usMessageId, const Email* pMail)
 {
@@ -2478,7 +2565,8 @@ static void PreProcessEmail(Email* const m)
 
 	Record* start = pMessageRecordList;
 	if (start && m->usOffset != IMP_EMAIL_PROFILE_RESULTS &&
-		!(m->usOffset >= MAHJONG_EMAIL_KINGPIN_WIN && m->usOffset <= MAHJONG_EMAIL_SPAM))
+		!(m->usOffset >= MAHJONG_EMAIL_KINGPIN_WIN && m->usOffset <= MAHJONG_EMAIL_SPAM) &&
+		!(m->usOffset >= CHESS_EMAIL_INVITE && m->usOffset <= CHESS_EMAIL_OFFLINE))
 	{ // pass the subject line (programmatic bodies have no subject record)
 		start = start->Next;
 	}

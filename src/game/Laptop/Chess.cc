@@ -16,9 +16,11 @@
 #include "Button_System.h"
 #include "Cursors.h"
 #include "Directories.h"
+#include "EMail.h"
 #include "Font.h"
 #include "Font_Control.h"
 #include "Game_Clock.h"
+#include "Game_Event_Hook.h"
 #include "HImage.h"
 #include "IMP_Compile_Character.h"
 #include "Input.h"
@@ -168,6 +170,15 @@ namespace
 	// tested without a laptop or a save game in sight
 	ChessDaily::State gChessDay;
 
+	// Chess.h repeats these bits so the laptop can read them without pulling
+	// the daily module in. They must not drift.
+	static_assert(CHESS_FLAG_SOLVED     == ChessDaily::FLAG_SOLVED,     "flag drift");
+	static_assert(CHESS_FLAG_FAILED     == ChessDaily::FLAG_FAILED,     "flag drift");
+	static_assert(CHESS_FLAG_HINT_USED  == ChessDaily::FLAG_HINT_USED,  "flag drift");
+	static_assert(CHESS_FLAG_DISCOVERED == ChessDaily::FLAG_DISCOVERED, "flag drift");
+	static_assert(CHESS_FLAG_INVITED    == ChessDaily::FLAG_INVITED,    "flag drift");
+	static_assert(CHESS_FLAG_DOWN_NOTED == ChessDaily::FLAG_DOWN_NOTED, "flag drift");
+
 	SGPVObject* guiChessPieces = nullptr;  // 12 frames, 34x34
 	SGPVObject* guiChessCoach  = nullptr;  // Grunty, 29x33
 	SGPVObject* guiChessIcons  = nullptr;  // 7 nav and panel icons, 14x14
@@ -202,6 +213,7 @@ namespace
 		CHS_ST_ALREADY, CHS_ST_OUT, CHS_ST_DONE, CHS_ST_YOUR_MOVE, CHS_ST_ARCHIVE,
 		CHS_MODAL_PERFECT, CHS_MODAL_SOLVED, CHS_MODAL_FAILED, CHS_MODAL_ARCHIVE,
 		CHS_MODAL_STREAK, CHS_MODAL_BEST,
+		CHS_DOWN_TITLE, CHS_DOWN_1, CHS_DOWN_2, CHS_DOWN_3,
 		CHS_COUNT
 	};
 
@@ -219,6 +231,10 @@ namespace
 			"from the archive. this one is finished.",
 			"PERFECT!", "SOLVED", "OUT OF TRIES", "OLDER PUZZLES",
 			"STREAK", "BEST",
+			"SERVER DOWN",
+			"ze machine is in my apartment.",
+			"ze apartment is not in Arulco.",
+			"back when my contract ends. - G.",
 		},
 		{
 			"TAGESRAETSEL", "TAG", "WERTUNG", "WEISS ZIEHT", "SCHWARZ ZIEHT",
@@ -232,6 +248,10 @@ namespace
 			"aus dem Archiv. dieses ist erledigt.",
 			"PERFEKT!", "GELOEST", "KEINE VERSUCHE", "AELTERE RAETSEL",
 			"SERIE", "BESTE",
+			"SERVER OFFLINE",
+			"der Rechner steht in meiner Wohnung.",
+			"die Wohnung steht nicht in Arulco.",
+			"zurueck nach dem Vertrag. - G.",
 		},
 	};
 
@@ -305,6 +325,15 @@ namespace
 		if (m.flags & ChessGame::MF_CAPTURE) return CH_SND_CAPTURE;
 		return byUs ? CH_SND_MOVE : CH_SND_OPPONENT;
 	}
+
+	// The whole operation is one man and one modem, and the modem is in his
+	// apartment. Hire him and the site goes with him.
+	bool ChessProprietorAway()
+	{
+		return FindSoldierByProfileIDOnPlayerTeam(GRUNTY) != NULL;
+	}
+
+	bool gfChessOffline = false;
 
 	UINT32 ChessNow() { return GetJA2Clock(); }
 
@@ -484,9 +513,26 @@ namespace
 	}
 
 	// Roll the daily state over when the campaign has moved on to a new day.
+	// He answers on the strategic clock, not the instant you click - which is
+	// the only honest way for a man with one modem to reply.
+	void ChessMail(int kind, int streak)
+	{
+		AddStrategicEvent(EVENT_CHESS_GRUNTY_EMAIL,
+		                  GetWorldTotalMin() + 90 + Random(240),
+		                  (UINT32(kind) << 16) | UINT32(streak & 0xFFFF));
+	}
+
 	void ChessRollOverDay()
 	{
-		ChessDaily::RollOverDay(gChessDay, ChessToday());
+		const int today  = ChessToday();
+		const int lapsed = ChessDaily::LapsedStreak(gChessDay, today);
+		if (lapsed > 0)
+		{
+			// only a run worth remarking on earns a letter
+			if (lapsed >= 3) ChessMail(2, lapsed);
+			ChessDaily::ClearStreak(gChessDay);
+		}
+		ChessDaily::RollOverDay(gChessDay, today);
 	}
 
 	// Show one day. Today is playable; anything earlier is archive, opened with
@@ -553,6 +599,9 @@ namespace
 	void ChessRecordSolved()
 	{
 		ChessDaily::RecordSolved(gChessDay, ChessToday());
+		// he notices a run at three, and again every week it survives
+		const int streak = gChessDay.streak;
+		if (streak == 3 || (streak >= 7 && streak % 7 == 0)) ChessMail(1, streak);
 		ChessSetModal(true);
 		gChessState  = CHUI_SOLVED;
 		giChessSaid = CHS_ST_DONE;
@@ -622,7 +671,7 @@ namespace
 	void ChessSquareCallback(MOUSE_REGION* region, UINT32 reason)
 	{
 		if (!(reason & MSYS_CALLBACK_REASON_POINTER_DWN)) return;
-		if (gfChessModal) return;
+		if (gfChessModal || gfChessOffline) return;
 		if (gChessState != CHUI_PUZZLE || guiChessReplyDue != 0) return;
 
 		const UINT8 sq = UINT8(MSYS_GetRegionUserData(region, 0));
@@ -794,6 +843,16 @@ namespace
 
 		gfChessRegionsUp = true;
 		if (gfChessModal) ChessSetModal(true);
+	}
+
+	// Everything clickable, in one switch: used when the site is down.
+	void ChessEnableRegions(bool on)
+	{
+		if (!gfChessRegionsUp) return;
+		for (MOUSE_REGION& r : gChessSquare) { if (on) r.Enable(); else r.Disable(); }
+		if (on) gChessHintRegion.Enable();    else gChessHintRegion.Disable();
+		if (on) gChessPrevDayRegion.Enable(); else gChessPrevDayRegion.Disable();
+		if (on) gChessNextDayRegion.Enable(); else gChessNextDayRegion.Disable();
 	}
 
 	void ChessRemoveRegions()
@@ -1119,6 +1178,26 @@ namespace
 	// The result card, over a scanline-dimmed board. Square corners on purpose:
 	// rounding it would need the board colour behind each corner, and the board
 	// is not one colour.
+	// What the site is when its one man is in the field.
+	void ChessRenderOffline()
+	{
+		FillRounded(CH_BOARD_X, CH_BOARD_Y, CH_BOARD_SIZE, CH_BOARD_SIZE,
+		            CH_RGB_PANEL, CH_RADIUS, CH_RGB_CHROME);
+		const INT32 cx = CH_BOARD_X + CH_BOARD_SIZE / 2;
+		const INT32 top = CH_BOARD_Y + CH_BOARD_SIZE / 2 - 46;
+
+		if (guiChessCoach)
+		{
+			// his own portrait, since it is his apartment
+			BltVideoObject(FRAME_BUFFER, guiChessSelf ? guiChessSelf : guiChessCoach, 0,
+			               CH_X(cx - 13), CH_Y(top));
+		}
+		PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_LTRED, cx, top + 44, T(CHS_DOWN_TITLE));
+		PrintCentred(FONT10ARIAL, FONT_GRAY2, cx, top + 62, T(CHS_DOWN_1));
+		PrintCentred(FONT10ARIAL, FONT_GRAY2, cx, top + 74, T(CHS_DOWN_2));
+		PrintCentred(FONT10ARIAL, FONT_GRAY4, cx, top + 92, T(CHS_DOWN_3));
+	}
+
 	void ChessRenderModal()
 	{
 		if (!gfChessModal) return;
@@ -1236,8 +1315,21 @@ void EnterChess()
 	// a card left up when the player navigated away does not greet them on the
 	// way back in
 	gfChessModal = false;
+	gfChessOffline = ChessProprietorAway();
+	// he explains the outage once per contract, and can explain it again the
+	// next time you hire him
+	if (gfChessOffline && !(gChessDay.flags & ChessDaily::FLAG_DOWN_NOTED))
+	{
+		gChessDay.flags |= ChessDaily::FLAG_DOWN_NOTED;
+		ChessMail(3, 0);
+	}
+	else if (!gfChessOffline)
+	{
+		gChessDay.flags &= UINT8(~ChessDaily::FLAG_DOWN_NOTED);
+	}
 	ChessBeginSession();
 	ChessPlaceRegions();
+	if (gfChessOffline) ChessEnableRegions(false);
 }
 
 void ExitChess()
@@ -1254,10 +1346,18 @@ void RenderChess()
 {
 	FillRect(0, 0, LAPTOP_SCREEN_WIDTH, CH_PAGE_H, CH_RGB_CHROME);
 	ChessRenderNav();
-	ChessRenderBoard();
-	ChessRenderPanel();
-	ChessRenderFooter();
-	ChessRenderModal();
+	if (gfChessOffline)
+	{
+		ChessRenderOffline();
+		ChessRenderFooter();
+	}
+	else
+	{
+		ChessRenderBoard();
+		ChessRenderPanel();
+		ChessRenderFooter();
+		ChessRenderModal();
+	}
 
 	MarkButtonsDirty();
 	RenderWWWProgramTitleBar();

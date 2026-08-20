@@ -319,6 +319,22 @@ BOOLEAN ExecuteStrategicEvent( STRATEGICEVENT *pEvent )
 			break;
 		}
 
+		case EVENT_CHESS_GRUNTY_EMAIL:
+		{
+			// param: low 16 bits carry the streak length, the top byte the kind
+			UINT16 const usKind   = UINT16(pEvent->uiParam >> 16);
+			INT32  const iStreak  = INT32(pEvent->uiParam & 0xFFFF);
+			UINT16 const usMessage = usKind == 1 ? CHESS_EMAIL_STREAK
+			                       : usKind == 2 ? CHESS_EMAIL_LAPSED
+			                       : usKind == 3 ? CHESS_EMAIL_OFFLINE
+			                                     : CHESS_EMAIL_INVITE;
+			// the invitation is what puts the bookmark in the browser
+			if (usMessage == CHESS_EMAIL_INVITE) SetBookMark(CHESS_BOOKMARK);
+			AddEmailWithSpecialData(usMessage, 0, CHESS_GRUNTY_SENDER,
+						pEvent->uiTimeStamp, iStreak, 0);
+			break;
+		}
+
 		case EVENT_HAVENT_MADE_IMP_CHARACTER_EMAIL:
 			HaventMadeImpMercEmailCallBack();
 			break;

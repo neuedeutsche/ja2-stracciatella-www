@@ -174,6 +174,13 @@ enum {
 #define MAHJONG_EMAIL_SPAM 5003 // the parlour advertises itself
 #define MAHJONG_ELLIOT_SENDER 51 // appended to pSenderNameList
 
+// chach.com: the proprietor writes rarely, and only when he has a reason
+#define CHESS_EMAIL_INVITE  5100 // the one invitation, linked off his A.I.M. page
+#define CHESS_EMAIL_STREAK  5101 // he has noticed a run; iFirstData is its length
+#define CHESS_EMAIL_LAPSED  5102 // the run ended; iFirstData is what it was
+#define CHESS_EMAIL_OFFLINE 5103 // he has taken a contract, so the site is down
+#define CHESS_GRUNTY_SENDER 52   // appended to pSenderNameList
+
 extern BOOLEAN fUnReadMailFlag;
 extern BOOLEAN fNewMailFlag;
 extern BOOLEAN  fOldNewMailFlag;

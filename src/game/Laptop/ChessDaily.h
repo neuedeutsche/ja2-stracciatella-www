@@ -18,6 +18,7 @@ namespace ChessDaily
 	constexpr std::uint8_t FLAG_HINT_USED  = 0x04;  // the hint is gone for today
 	constexpr std::uint8_t FLAG_DISCOVERED = 0x08;  // the player has been here
 	constexpr std::uint8_t FLAG_INVITED    = 0x10;  // the invitation has gone out
+	constexpr std::uint8_t FLAG_DOWN_NOTED = 0x20;  // the outage mail has gone out
 
 	// Eight bytes, matching the laptop save blob exactly.
 	struct State
@@ -52,6 +53,14 @@ namespace ChessDaily
 
 	// Today is over, one way or the other.
 	bool IsFinished(const State& state);
+
+	// How long the run was that just died, or 0 if it is still alive. A run
+	// survives being continued today or yesterday; anything older means a day
+	// went by unsolved and it is over. Checked on arrival, before the day rolls
+	// over, so the site can remark on it.
+	int LapsedStreak(const State& state, int today);
+
+	void ClearStreak(State& state);
 }
 
 #endif

@@ -36,7 +36,8 @@ TEST(ChessDaily, RollOverResetsTheDayButNotThePlayer)
 	s.day    = 8;
 	s.hearts = 1;
 	s.flags  = ChessDaily::FLAG_SOLVED | ChessDaily::FLAG_HINT_USED |
-	           ChessDaily::FLAG_DISCOVERED | ChessDaily::FLAG_INVITED;
+	           ChessDaily::FLAG_DISCOVERED | ChessDaily::FLAG_INVITED |
+	           ChessDaily::FLAG_DOWN_NOTED;
 
 	EXPECT_FALSE(ChessDaily::RollOverDay(s, 8));  // same day is a no-op
 	EXPECT_EQ(1, s.hearts);
@@ -49,6 +50,8 @@ TEST(ChessDaily, RollOverResetsTheDayButNotThePlayer)
 	// these describe the player and have to survive the night
 	EXPECT_TRUE(s.flags & ChessDaily::FLAG_DISCOVERED);
 	EXPECT_TRUE(s.flags & ChessDaily::FLAG_INVITED);
+	EXPECT_TRUE(s.flags & ChessDaily::FLAG_DOWN_NOTED)
+		<< "an outage spans days, so its notice must not re-send every morning";
 }
 
 TEST(ChessDaily, StreakCountsConsecutiveDaysOnly)
@@ -164,4 +167,32 @@ TEST(ChessDaily, AWeekOfPlay)
 	ChessDaily::RecordSolved(s, 5);
 	EXPECT_EQ(1, s.streak) << "day 4 was failed, not solved, so this is a fresh run";
 	EXPECT_TRUE(s.flags & ChessDaily::FLAG_DISCOVERED);
+}
+
+TEST(ChessDaily, LapsedStreakOnlyFiresWhenADayWentBy)
+{
+	State s;
+	ChessDaily::RecordSolved(s, 5);
+	ChessDaily::RecordSolved(s, 6);
+	ChessDaily::RecordSolved(s, 7);
+	EXPECT_EQ(3, s.streak);
+
+	// still day 7, or arriving on day 8 with yesterday solved: the run stands
+	EXPECT_EQ(0, ChessDaily::LapsedStreak(s, 7));
+	EXPECT_EQ(0, ChessDaily::LapsedStreak(s, 8));
+
+	// arriving on day 9 with nothing solved since day 7: the run is dead
+	EXPECT_EQ(3, ChessDaily::LapsedStreak(s, 9));
+	EXPECT_EQ(3, ChessDaily::LapsedStreak(s, 40));
+
+	ChessDaily::ClearStreak(s);
+	EXPECT_EQ(0, s.streak);
+	EXPECT_EQ(0, ChessDaily::LapsedStreak(s, 40));
+	EXPECT_EQ(3, s.bestStreak) << "clearing the run leaves the record alone";
+}
+
+TEST(ChessDaily, NeverSolvedHasNoRunToLose)
+{
+	State s;
+	EXPECT_EQ(0, ChessDaily::LapsedStreak(s, 50));
 }
