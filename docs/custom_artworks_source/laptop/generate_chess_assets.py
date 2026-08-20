@@ -97,11 +97,13 @@ PIECES = {
     # Neo's grammar, read off the set: a short body, a collar ring, a skirt
     # that flares, and every piece standing on the same flat base slab. The
     # mass sits low - these are not tall thin Staunton silhouettes.
+    # the original pawn read best: a big head, a real collar, a stepped foot
     "pawn": [
-        ("circle", 50, 24, 14),
-        # no separate collar ring: at 34px it only spikes the silhouette
-        ("poly", [(41, 34), (59, 34), (71, 78), (29, 78)]),
-        ("rect", 21, 75, 79, 92, 4),
+        ("circle", 50, 29, 16),
+        ("poly", [(42, 41), (58, 41), (64, 64), (36, 64)]),
+        ("rect", 31, 58, 69, 69, 5),
+        ("poly", [(33, 69), (67, 69), (75, 81), (25, 81)]),
+        ("rect", 19, 79, 81, 94, 5),
     ],
     "rook": [
         ("rect", 21, 13, 79, 32, 2),
@@ -116,33 +118,32 @@ PIECES = {
         ("poly", [(38, 52), (62, 52), (72, 78), (28, 78)]),
         ("rect", 21, 75, 79, 92, 4),
     ],
-    # The crown is a zigzag with a ball on each of its five points, not spikes
-    # and not stalks.
+    # The crown is one solid mass with the balls sitting on its rim; the
+    # notches between the points are cut out afterwards. Building it from
+    # wedges always came out as wire.
     "queen": [
-        ("circle", 50, 8, 7),
-        ("circle", 29, 14, 7),
-        ("circle", 71, 14, 7),
-        ("circle", 16, 27, 7),
-        ("circle", 84, 27, 7),
-        # fat wedges up to each ball over a solid band: a thin zigzag reads as
-        # wire once it is down at this size
-        ("poly", [(42, 48), (58, 48), (50, 11)]),
-        ("poly", [(22, 48), (36, 48), (29, 17)]),
-        ("poly", [(64, 48), (78, 48), (71, 17)]),
-        ("poly", [(11, 48), (27, 48), (16, 29)]),
-        ("poly", [(73, 48), (89, 48), (84, 29)]),
-        ("rect", 18, 44, 82, 58, 2),
-        ("poly", [(34, 58), (66, 58), (73, 80), (27, 80)]),
-        ("rect", 21, 77, 79, 93, 4),
+        ("circle", 50, 10, 7),
+        ("circle", 30, 13, 7),
+        ("circle", 70, 13, 7),
+        ("circle", 14, 22, 7),
+        ("circle", 86, 22, 7),
+        # the top edge is scalloped: a peak under each ball, a valley between
+        ("poly", [(11, 20), (22, 32), (30, 12), (40, 32), (50, 8),
+                  (60, 32), (70, 12), (78, 32), (89, 20),
+                  (82, 56), (18, 56)]),
+        ("rect", 28, 54, 72, 64, 3),
+        ("poly", [(35, 64), (65, 64), (74, 82), (26, 82)]),
+        ("rect", 19, 79, 81, 94, 4),
     ],
-    # A cross, then a crown pierced by an arch - the hole is what makes it
-    # read as a king rather than a bishop.
+    # A thick cross planted on one hard mass: a barely-tapered block down to
+    # the collar, then the skirt. The arch is punched through the block.
     "king": [
-        ("rect", 45, 1, 55, 25, 1),
-        ("rect", 35, 8, 65, 17, 1),
-        ("rect", 28, 26, 72, 56, 11),
-        ("poly", [(34, 54), (66, 54), (73, 80), (27, 80)]),
-        ("rect", 21, 77, 79, 93, 4),
+        ("rect", 44, 2, 56, 27, 1),
+        ("rect", 33, 9, 67, 20, 1),
+        ("poly", [(31, 27), (69, 27), (72, 62), (28, 62)]),
+        ("rect", 29, 60, 71, 70, 2),
+        ("poly", [(36, 70), (64, 70), (74, 83), (26, 83)]),
+        ("rect", 19, 80, 81, 95, 4),
     ],
     # Traced clockwise from the back ear: mane down the right, then onto the
     # same slab the rest of the set stands on.
@@ -166,7 +167,7 @@ CUTOUTS = {
     ],
     # the arch through the king's crown
     "king": [
-        ("rect", 41, 36, 59, 58, 9),
+        ("rect", 42, 33, 58, 55, 8),
     ],
     "bishop": [
         # the mitre's diagonal slit: short, upper right down to lower left
