@@ -17,6 +17,7 @@ struct ChessPuzzle
 	const char* fen;
 	const char* moves;
 	const char* themes;
+	const char* title;
 	short       rating;
 };
 

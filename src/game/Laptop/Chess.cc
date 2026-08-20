@@ -71,7 +71,7 @@
 #define CH_MODAL_Y      (CH_BOARD_Y + (CH_BOARD_SIZE - CH_MODAL_H) / 2)
 
 #define CH_DATE_Y       34
-#define CH_COACH_Y      64
+#define CH_COACH_Y      78
 #define CH_COACH_TILE   36
 
 // The day stepper's arrows sit at fixed points on the panel edges while the
@@ -85,7 +85,7 @@
 // rail furniture, measured down from the page foot
 #define CH_RAIL_SEARCH_Y  (CH_PAGE_H - 118)
 #define CH_RAIL_LANG_Y    (CH_PAGE_H - 102)
-#define CH_RAIL_AVATAR_Y  (CH_PAGE_H - 46)
+#define CH_RAIL_AVATAR_Y  (CH_PAGE_H - 38)
 #define CH_AVATAR_SIZE    33
 
 // frame indices into chessicons.sti
@@ -857,18 +857,25 @@ namespace
 		PrintAt(FONT10ARIAL, gfChessGerman ? FONT_MCOLOR_LTGREEN : FONT_GRAY7,
 		        CH_NAV_X + 32, CH_RAIL_LANG_Y, "DE");
 
-		// the account row: your I.M.P. portrait as the site avatar, with the
-		// nickname suggested by two grey bars rather than set in type
+		// The account row: your I.M.P. portrait as the site avatar, with the
+		// nickname suggested by two grey bars rather than set in type. The
+		// portrait's real size is read off the sub-image - assuming 29x33 put
+		// the bars a whole portrait's width away from it.
+		INT32 faceW = 29, faceH = 33;
 		if (guiChessSelf)
 		{
+			const ETRLEObject& e = guiChessSelf->SubregionProperties(0);
+			faceW = e.usWidth;
+			faceH = e.usHeight;
 			BltVideoObject(FRAME_BUFFER, guiChessSelf, 0,
 			               CH_X(CH_NAV_X + 3), CH_Y(CH_RAIL_AVATAR_Y));
 		}
 		if (!gChessSelfNick.empty())
 		{
-			const INT32 barX = CH_NAV_X + 3 + 29 + 3;
-			FillRect(barX, CH_RAIL_AVATAR_Y + 10, 22, 4, CH_RGB_NICK);
-			FillRect(barX, CH_RAIL_AVATAR_Y + 17, 15, 3, CH_RGB_NICK_DIM);
+			const INT32 barX = CH_NAV_X + 3 + faceW + 4;
+			const INT32 mid  = CH_RAIL_AVATAR_Y + faceH / 2;
+			FillRect(barX, mid - 6, 22, 4, CH_RGB_NICK);
+			FillRect(barX, mid + 1, 15, 3, CH_RGB_NICK_DIM);
 		}
 	}
 
@@ -1016,7 +1023,7 @@ namespace
 
 		// header band: a lighter ground stands in for the rule that used to
 		// sit under the date
-		FillRect(CH_PANEL_X, CH_INSET, CH_PANEL_W, 52, CH_RGB_PANEL_SUNK);
+		FillRect(CH_PANEL_X, CH_INSET, CH_PANEL_W, 66, CH_RGB_PANEL_SUNK);
 		RoundCorners(CH_PANEL_X, CH_INSET, CH_PANEL_W, CH_PAGE_H - 2 * CH_INSET,
 		             CH_RADIUS, CH_RGB_CHROME);
 
@@ -1045,6 +1052,11 @@ namespace
 		                 giChessViewDay > 1 ? FROMRGB(232, 230, 227) : FROMRGB(110, 104, 98));
 		ChessDrawChevron(CH_NEXT_X + CH_ARROW_W / 2, CH_DATE_Y + 8, false,
 		                 giChessViewDay < ChessToday() ? FROMRGB(232, 230, 227) : FROMRGB(110, 104, 98));
+
+		// the day's title, under the stepper. Titles run with the rating sort,
+		// so they escalate from contract work to the war itself.
+		PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, cx, CH_DATE_Y + 22,
+		             puzzle.title);
 
 		ChessRenderCoach(CH_COACH_Y);
 

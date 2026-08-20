@@ -104,6 +104,43 @@ def sanity_check(entry):
     return None
 
 
+# One title per slot, applied after the rating sort, so they escalate with the
+# difficulty ramp: routine contract work at the start, the war at the end.
+TITLES = [
+    "Morning Patrol", "Sector Sweep", "Loose Ends", "Standard Contract",
+    "Petty Cash", "Basic Training", "Warm Up", "Roll Call", "Light Duty",
+    "First Blood",
+    "Cheap Insurance", "Hazard Pay", "Bar Fight", "The Shakedown",
+    "Small Arms", "Night Watch", "Trigger Discipline", "Cover Me",
+    "Two Rounds Left", "Short Contract",
+    "Interrupt", "Overwatch", "Suppressing Fire", "Flanking Manoeuvre",
+    "The Ambush", "Blind Corner", "Point Man", "Danger Close",
+    "Fire in the Hole", "No Cover",
+    "Contract Dispute", "Late Payment", "Severance Package",
+    "Hostile Takeover", "The Merger", "The Retainer", "Bonus Clause",
+    "Kill Fee", "Termination Notice", "Non-Negotiable",
+    "Drassen Airfield", "The Mine at Grumm", "Cambria Hospital",
+    "San Mona Nights", "Chitzena Crossing", "Balime Heights",
+    "Estoni Junction", "Alma Barracks", "Orta Approach", "Tixa Yard",
+    "Bloodcat Country", "Jungle Rot", "Radio Silence", "Dead Drop",
+    "Compromised", "Burned", "The Informant", "Counterintelligence",
+    "Sleeper", "Double Agent",
+    "Enemy Reinforcements", "Elite Patrol", "Armoured Column",
+    "Rocket Rifle", "Mortar Position", "Minefield", "Tank Buster",
+    "Air Support", "Heavy Weapons", "Breach and Clear",
+    "Queen's Gambit Declined", "Royal Guard", "The Palace Steps",
+    "Meduna Express", "Her Excellency Regrets", "State Funeral",
+    "The Throne Room", "Loyalists", "Crown Prosecution",
+    "Long Live the Queen",
+    "Last Man Standing", "Out of Ammunition", "Bleeding Out",
+    "Field Surgery", "No Extraction", "Behind Enemy Lines", "Pinned Down",
+    "The Long Night", "Casualty Report", "Hold This Position",
+    "Endgame in Arulco", "Total War", "The Final Contract",
+    "Scorched Earth", "No Survivors", "Checkmate at Meduna", "Liberation",
+    "The Last Sector", "Full Retirement", "Mission Accomplished",
+]
+
+
 def c_string(value):
     return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
@@ -128,6 +165,7 @@ struct ChessPuzzle
 	const char* fen;
 	const char* moves;
 	const char* themes;
+	const char* title;
 	short       rating;
 };
 
@@ -146,13 +184,14 @@ extern const int NUM_CHESS_PUZZLES;
         "const ChessPuzzle CHESS_PUZZLES[] =",
         "{",
     ]
-    for e in entries:
+    for i, e in enumerate(entries):
         lines.append(
-            "\t{{ {}, {}, {}, {}, {} }},".format(
+            "\t{{ {}, {}, {}, {}, {}, {} }},".format(
                 c_string(e["PuzzleId"]),
                 c_string(e["FEN"]),
                 c_string(e["Moves"]),
                 c_string(e.get("Themes", "")),
+                c_string(TITLES[i % len(TITLES)]),
                 int(e["Rating"]),
             )
         )
