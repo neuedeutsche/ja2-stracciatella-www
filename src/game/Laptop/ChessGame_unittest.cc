@@ -1,7 +1,9 @@
 #include "gtest/gtest.h"
 
 #include "ChessGame.h"
+#include "ChessPuzzles.h"
 
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -228,4 +230,74 @@ TEST(ChessGame, SearchAlwaysRestoresThePosition)
 	const Move m = game.Search(3, 0, seed);
 	EXPECT_FALSE(m.IsNull());
 	EXPECT_EQ(before, game.Fen());
+}
+
+namespace
+{
+	std::vector<std::string> SplitMoves(const char* moves)
+	{
+		std::vector<std::string> out;
+		std::istringstream in(moves);
+		std::string move;
+		while (in >> move) out.push_back(move);
+		return out;
+	}
+}
+
+// The daily puzzle corpus is compiled in, so a bad record is a build-time
+// problem rather than a player staring at an unsolvable board. Every puzzle is
+// replayed here move by move.
+TEST(ChessPuzzles, CorpusIsWellFormed)
+{
+	ASSERT_GT(NUM_CHESS_PUZZLES, 0);
+
+	for (int i = 0; i < NUM_CHESS_PUZZLES; ++i)
+	{
+		const ChessPuzzle& puzzle = CHESS_PUZZLES[i];
+		SCOPED_TRACE(std::string("puzzle ") + puzzle.id);
+
+		ChessGame game;
+		ASSERT_TRUE(game.SetFen(puzzle.fen)) << "unparseable FEN";
+
+		const std::vector<std::string> moves = SplitMoves(puzzle.moves);
+		ASSERT_GE(moves.size(), 2u) << "needs a setup move plus a solution";
+
+		// the solver plays the side opposite the FEN's side to move
+		const ChessGame::Color solver = ChessGame::Color(game.SideToMove() ^ 1);
+
+		for (std::size_t ply = 0; ply < moves.size(); ++ply)
+		{
+			const ChessGame::Move m = game.ParseUci(moves[ply]);
+			ASSERT_FALSE(m.IsNull()) << "illegal move " << moves[ply] << " at ply " << ply;
+			// ply 0 is the opponent's setup, then the solver alternates from ply 1
+			const bool solverToPlay = ply > 0 && (ply % 2) == 1;
+			EXPECT_EQ(solverToPlay, game.SideToMove() == solver)
+				<< "side to move is wrong at ply " << ply;
+			ASSERT_TRUE(game.MakeMove(m)) << "could not play " << moves[ply];
+		}
+
+		// a puzzle tagged as a mate has to actually finish in mate
+		const std::string themes = puzzle.themes ? puzzle.themes : "";
+		if (themes.find("mate") != std::string::npos &&
+		    themes.find("mateIn") != std::string::npos)
+		{
+			const ChessGame::Result result = game.GetResult();
+			EXPECT_TRUE(result == ChessGame::Result::WhiteMates ||
+			            result == ChessGame::Result::BlackMates)
+				<< "themes claim mate but the line does not end in one";
+		}
+	}
+}
+
+TEST(ChessPuzzles, RatingsAreSortedAndSane)
+{
+	for (int i = 0; i < NUM_CHESS_PUZZLES; ++i)
+	{
+		EXPECT_GT(CHESS_PUZZLES[i].rating, 0) << CHESS_PUZZLES[i].id;
+		if (i > 0)
+		{
+			EXPECT_LE(CHESS_PUZZLES[i - 1].rating, CHESS_PUZZLES[i].rating)
+				<< "corpus must stay sorted so difficulty tracks campaign days";
+		}
+	}
 }
