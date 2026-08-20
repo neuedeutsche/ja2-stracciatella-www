@@ -301,3 +301,38 @@ TEST(ChessPuzzles, RatingsAreSortedAndSane)
 		}
 	}
 }
+
+// The corpus is trusted to be solvable, but not to be unambiguous. A puzzle
+// whose recorded answer the engine does not even rank as best is either a
+// broken record or a position with two solutions, and both make for a player
+// being told "no" after finding a perfectly good move.
+TEST(ChessPuzzles, RecordedAnswerSurvivesAShallowSearch)
+{
+	int checked = 0, disputed = 0;
+	for (int i = 0; i < NUM_CHESS_PUZZLES; ++i)
+	{
+		const ChessPuzzle& puzzle = CHESS_PUZZLES[i];
+		const std::vector<std::string> moves = SplitMoves(puzzle.moves);
+		if (moves.size() < 2) continue;
+
+		ChessGame game;
+		ASSERT_TRUE(game.SetFen(puzzle.fen)) << puzzle.id;
+		ASSERT_TRUE(game.MakeMove(game.ParseUci(moves[0]))) << puzzle.id;
+
+		const ChessGame::Move answer = game.ParseUci(moves[1]);
+		ASSERT_FALSE(answer.IsNull()) << puzzle.id;
+
+		// score the recorded answer against the engine's own pick
+		std::uint32_t seed = 1;
+		const ChessGame::Move best = game.Search(3, 0, seed);
+		++checked;
+		if (!(best == answer)) ++disputed;
+	}
+
+	ASSERT_GT(checked, 0);
+	// A three-ply search is not an oracle, so a handful of quiet positional
+	// puzzles will legitimately disagree. A large share disagreeing would mean
+	// the corpus, the setup-move convention or the search is wrong.
+	EXPECT_LT(disputed * 100 / checked, 40)
+		<< disputed << " of " << checked << " recorded answers lost to a depth-3 search";
+}

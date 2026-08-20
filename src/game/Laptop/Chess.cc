@@ -166,6 +166,10 @@ namespace
 	// the result card, raised on the move that ends the day and dismissed by
 	// hand; revisiting a finished day does not raise it again
 	bool   gfChessModal     = false;
+	// the proprietor is on one of your contracts, so the site runs unattended
+	bool   gfChessOffline   = false;
+	// which nav section is showing its unfinished page, or -1 for the puzzle
+	int    giChessStub      = -1;
 	// what the coach is currently saying, kept as an id so the language switch
 	// re-renders it rather than freezing whatever was said last
 	int    giChessSaid      = 0;   // ChessStr, or -1/-2 for a good/bad variant
@@ -240,10 +244,10 @@ namespace
 			"from the archive. this one is finished.",
 			"PERFECT!", "SOLVED", "OUT OF TRIES", "OLDER PUZZLES",
 			"STREAK", "BEST",
-			"SERVER DOWN",
-			"ze machine is in my apartment.",
-			"ze apartment is not in Arulco.",
-			"back when my contract ends. - G.",
+			"UNATTENDED",
+			"ze proprietor is on contract. yours.",
+			"ze puzzle runs without me. it always did.",
+			"do not break anything. - G.",
 			"UNDER CONSTRUCTION",
 			"ze server cannot hold two games at once.",
 			"I will write it when I understand it myself.",
@@ -264,10 +268,10 @@ namespace
 			"aus dem Archiv. dieses ist erledigt.",
 			"PERFEKT!", "GELOEST", "KEINE VERSUCHE", "AELTERE RAETSEL",
 			"SERIE", "BESTE",
-			"SERVER OFFLINE",
-			"der Rechner steht in meiner Wohnung.",
-			"die Wohnung steht nicht in Arulco.",
-			"zurueck nach dem Vertrag. - G.",
+			"UNBEAUFSICHTIGT",
+			"der Betreiber ist im Einsatz. bei Ihnen.",
+			"das Raetsel laeuft ohne mich. immer schon.",
+			"machen Sie nichts kaputt. - G.",
 			"IM AUFBAU",
 			"der Server haelt keine zwei Partien.",
 			"ich schreibe es, wenn ich es selbst verstehe.",
@@ -312,6 +316,8 @@ namespace
 	const char* ChessCoachLine()
 	{
 		const int lang = gfChessGerman ? 1 : 0;
+		// away on contract: the site still answers, he does not
+		if (gfChessOffline) return CHESS_TEXT[lang][CHS_DOWN_2];
 		if (giChessSaid == -1) return CHESS_COACH_GOOD[lang][giChessVariant];
 		if (giChessSaid == -2) return CHESS_COACH_BAD[lang][giChessVariant];
 		return CHESS_TEXT[lang][giChessSaid];
@@ -356,9 +362,6 @@ namespace
 		return FindSoldierByProfileIDOnPlayerTeam(GRUNTY) != NULL;
 	}
 
-	bool gfChessOffline = false;
-	// which nav section is showing its unfinished page, or -1 for the puzzle
-	int  giChessStub    = -1;
 
 	UINT32 ChessNow() { return GetJA2Clock(); }
 
@@ -696,7 +699,7 @@ namespace
 	void ChessSquareCallback(MOUSE_REGION* region, UINT32 reason)
 	{
 		if (!(reason & MSYS_CALLBACK_REASON_POINTER_DWN)) return;
-		if (gfChessModal || gfChessOffline || giChessStub >= 0) return;
+		if (gfChessModal || giChessStub >= 0) return;
 		if (gChessState != CHUI_PUZZLE || guiChessReplyDue != 0) return;
 
 		const UINT8 sq = UINT8(MSYS_GetRegionUserData(region, 0));
@@ -1224,6 +1227,18 @@ namespace
 	// The result card, over a scanline-dimmed board. Square corners on purpose:
 	// rounding it would need the board colour behind each corner, and the board
 	// is not one colour.
+	// What the site is when its one man is in the field: still serving, because
+	// the daily puzzle is automated and he is not. Only he is missing.
+	void ChessRenderUnattendedNotice()
+	{
+		FillRect(CH_BOARD_X, CH_BOARD_Y - 17, CH_BOARD_SIZE, 15, CH_RGB_PANEL_SUNK);
+		PrintCentred(FONT10ARIAL, FONT_MCOLOR_LTYELLOW,
+		             CH_BOARD_X + CH_BOARD_SIZE / 2, CH_BOARD_Y - 16, T(CHS_DOWN_1));
+	}
+
+	// The result card, over a scanline-dimmed board. Square corners on purpose:
+	// rounding it would need the board colour behind each corner, and the board
+	// is not one colour.
 	// What the site is when its one man is in the field.
 	void ChessRenderOffline()
 	{
@@ -1417,7 +1432,6 @@ void EnterChess()
 	}
 	ChessBeginSession();
 	ChessPlaceRegions();
-	if (gfChessOffline) ChessEnableRegions(false);
 }
 
 void ExitChess()
@@ -1435,12 +1449,7 @@ void RenderChess()
 {
 	FillRect(0, 0, LAPTOP_SCREEN_WIDTH, CH_PAGE_H, CH_RGB_CHROME);
 	ChessRenderNav();
-	if (gfChessOffline)
-	{
-		ChessRenderOffline();
-		ChessRenderFooter();
-	}
-	else if (giChessStub >= 0)
+	if (giChessStub >= 0)
 	{
 		ChessRenderStub();
 		ChessRenderBanner();
@@ -1449,6 +1458,7 @@ void RenderChess()
 	else
 	{
 		ChessRenderBoard();
+		if (gfChessOffline) ChessRenderUnattendedNotice();
 		ChessRenderBanner();
 		ChessRenderPanel();
 		ChessRenderFooter();

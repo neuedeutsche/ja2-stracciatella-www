@@ -531,8 +531,18 @@ static void EnterLaptop(void)
 			UINT32 const uiNow = GetWorldTotalMin();
 			// day four, late evening: he writes when he is not working
 			UINT32 const uiDue = 3 * 1440 + 1290;
-			AddStrategicEvent(EVENT_CHESS_GRUNTY_EMAIL,
-					std::max(uiDue, uiNow + 120), 0);
+			if (uiNow >= uiDue)
+			{
+				// the campaign is already past it, so it has been sitting in
+				// the inbox - backfill it stamped with the evening it was sent
+				AddEmailWithSpecialData(CHESS_EMAIL_INVITE, 0, CHESS_GRUNTY_SENDER,
+							uiDue, 0, 0);
+				SetBookMark(CHESS_BOOKMARK);
+			}
+			else
+			{
+				AddStrategicEvent(EVENT_CHESS_GRUNTY_EMAIL, uiDue, 0);
+			}
 		}
 	}
 	// the parlour has been spamming since day 2: on first online contact,
