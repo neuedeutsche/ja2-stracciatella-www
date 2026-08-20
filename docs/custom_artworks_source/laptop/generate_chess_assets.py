@@ -354,7 +354,19 @@ def _jigsaw(knob_ink, body_ink):
 
 
 ICONS = {
-    "play": [(PIECES["pawn"], PLAY_L)],
+    # chess.com's Play mark: a hand coming down onto a pawn to move it. At 14px
+    # the hand has to be a mitten - fingers do not survive the threshold - so it
+    # reads as a cuff, a palm and one thumb hooked over the pawn's head.
+    "play": [
+        # the pawn, sunk low so the hand has room above it
+        ([("circle", 38, 56, 15),
+          ("poly", [(24, 96), (30, 76), (46, 76), (52, 96)]),
+          ("rect", 20, 92, 56, 100, 2)], PLAY_L),
+        # the hand: forearm cuff, palm, thumb reaching down the pawn's left
+        ([("rect", 58, 4, 78, 30, 4),
+          ("rect", 40, 22, 84, 50, 8),
+          ("rect", 30, 34, 50, 46, 5)], PLAY_D),
+    ],
     "puzzles": _jigsaw(PUZ_D, PUZ_L),
     "learn": [
         ([("poly", [(50, 18), (96, 42), (50, 66), (4, 42)])], LEARN_L),
