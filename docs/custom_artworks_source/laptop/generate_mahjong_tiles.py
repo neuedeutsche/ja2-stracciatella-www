@@ -97,19 +97,20 @@ SEGMENTS = {
 
 # Chinese numerals as stroke lists in a normalised 0..100 x 0..100 box.
 # Each stroke: (x0, y0, x1, y1). Deliberately simplified for tiny pixels.
+# sans-serif numerals: strictly rectilinear where the form allows, uniform
+# weight, no flicks or bent tails - gothic (heiti) rather than brush
 NUMERALS = {
-    1: [(8, 50, 92, 50)],
-    2: [(18, 28, 82, 28), (8, 68, 92, 68)],
-    3: [(20, 18, 80, 18), (26, 48, 74, 48), (8, 78, 92, 78)],
-    4: [(12, 15, 12, 80), (88, 15, 88, 80), (12, 15, 88, 15), (12, 80, 88, 80),
-        (40, 15, 34, 55), (62, 15, 68, 55)],
-    5: [(15, 12, 85, 12), (52, 12, 40, 50), (20, 50, 80, 50),
-        (66, 50, 66, 84), (8, 84, 92, 84)],
-    6: [(50, 6, 50, 22), (8, 32, 92, 32), (36, 48, 18, 84), (64, 48, 82, 84)],
-    7: [(10, 34, 90, 28), (48, 8, 48, 74), (48, 74, 84, 80)],
-    8: [(44, 16, 16, 82), (56, 16, 84, 82)],
-    9: [(30, 10, 26, 76), (26, 76, 40, 80), (10, 32, 76, 28), (76, 28, 72, 72),
-        (72, 72, 90, 66)],
+    1: [(10, 50, 90, 50)],
+    2: [(22, 32, 78, 32), (10, 72, 90, 72)],
+    3: [(22, 18, 78, 18), (28, 50, 72, 50), (10, 82, 90, 82)],
+    4: [(14, 16, 14, 84), (86, 16, 86, 84), (14, 16, 86, 16), (14, 84, 86, 84),
+        (40, 16, 40, 52), (62, 16, 62, 52)],
+    5: [(18, 14, 82, 14), (46, 14, 46, 50), (18, 50, 82, 50),
+        (62, 50, 62, 86), (8, 86, 92, 86)],
+    6: [(50, 6, 50, 22), (8, 34, 92, 34), (32, 52, 22, 84), (68, 52, 78, 84)],
+    7: [(10, 34, 90, 34), (48, 8, 48, 76), (48, 76, 88, 76)],
+    8: [(42, 18, 24, 84), (58, 18, 76, 84)],
+    9: [(32, 12, 32, 82), (12, 32, 74, 32), (74, 32, 74, 72), (74, 72, 92, 72)],
 }
 
 
@@ -155,7 +156,7 @@ def draw_man(d, rank, w, h):
         dw, dh, dt = 7, 9, 2
         dy = 27
     else:
-        nx, ny, nw, nh, thick = 3, 2, w - 6, 13, 2
+        nx, ny, nw, nh, thick = 3, 2, w - 6, 13, 1
         dw, dh, dt = 5, 7, 1
         dy = 18
     for (x0, y0, x1, y1) in NUMERALS[rank]:
@@ -183,9 +184,12 @@ def draw_pin(d, rank, w, h):
         d.ellipse([cx - rr, cy - rr, cx + rr, cy + rr], fill=RED)
         return
     ring_colors = [BLUE, TEAL, DKGREEN]
+    # explicit grid positions keep the circles evenly spaced at both sizes
+    cols = [7, 15, 23] if w >= 30 else [4, 10, 16]
+    rows = [7, 19, 31] if w >= 30 else [5, 12, 19]
     for i, (c, row) in enumerate(GRID[rank]):
-        cx = ax + (bx - ax) * c // 2
-        cy = ay + (by - ay) * row // 2
+        cx = cols[c]
+        cy = rows[row]
         d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=ring_colors[i % 3])
         if r >= 3:
             d.ellipse([cx - 1, cy - 1, cx + 1, cy + 1], fill=FACE)
@@ -226,8 +230,10 @@ def draw_sou(d, rank, w, h):
         area = (5, 4, w - 6, h - 7)
         sw, sh = 2, 6
     ax, ay, bx, by = area
+    # explicit column positions: integer division clumped two columns together
+    cols = [7, 14, 21] if w >= 30 else [4, 9, 14]
     for (c, row) in GRID[rank]:
-        cx = ax + (bx - ax) * c // 2
+        cx = cols[c]
         cy = ay + (by - ay) * row // 2
         color = RED if c == 1 and rank in (5, 7, 9) else GREEN
         d.rectangle([cx - sw // 2, cy - sh // 2, cx + sw // 2, cy + sh // 2], fill=color)
@@ -424,7 +430,9 @@ def make_logo(w=380, h=100):
 def make_static_frames(w, h, frames=3):
     """TV static for the 'video feed' portrait boxes - dead channel vibes."""
     out = []
-    shades = [INK, INK, SHADOW, STATIC_GRAY, STATIC_GRAY, EDGE, HILITE]
+    # colour-themed noise: deep greens with only a rare bright fleck
+    shades = [INK, OFFLINE_BG, OFFLINE_BG, OFFLINE_SIL, OFFLINE_SIL,
+              DKGREEN, FELT2, FELT3, GREEN, STATIC_GRAY]
     for f in range(frames):
         img = Image.new("P", (w, h), TRANSPARENT)
         img.putpalette([v for rgb in PALETTE for v in rgb] + [0] * (768 - 3 * len(PALETTE)))
@@ -455,20 +463,15 @@ def make_static_frames(w, h, frames=3):
 
 
 def make_chips():
-    """Top-view casino chips for the score display: frame 0 house chip,
-    frame 1 the gold leader chip. Classic edge-spot print reads as 'chip'
-    even at 13px."""
+    """Clean top-view poker chips: solid ring, white band, solid centre."""
     out = []
-    for body, spot, ring in ((FACE, RED, RED), (LOGO_NEON, INK, LOGO_HALO)):
+    for color in (RED, LOGO_NEON):
         img = Image.new("P", (13, 13), TRANSPARENT)
         img.putpalette([v for rgb in PALETTE for v in rgb] + [0] * (768 - 3 * len(PALETTE)))
         d = ImageDraw.Draw(img)
-        d.ellipse([0, 0, 12, 12], fill=body, outline=SHADOW)
-        # six edge spots
-        for (x, y) in ((5, 0), (0, 3), (10, 3), (0, 9), (10, 9), (5, 11)):
-            d.rectangle([x, y, x + 2, y + 1], fill=spot)
-        d.ellipse([3, 3, 9, 9], outline=ring)
-        d.point([4, 2], fill=HILITE)
+        d.ellipse([0, 0, 12, 12], fill=color)
+        d.ellipse([2, 2, 10, 10], fill=FACE)
+        d.ellipse([4, 4, 8, 8], fill=color)
         out.append(img)
     return out
 

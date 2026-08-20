@@ -68,6 +68,9 @@ extern SGPFont FontDefault;
 
 void SetFontColors(UINT16 usColors);
 void SetFontForeground(UINT8 ubForeground);
+// Set the font foreground directly from an RGB value (FROMRGB), bypassing
+// the palette. Lets UI code use custom accent colours for text.
+void SetFontForegroundRGB(UINT32 uiRGBColor);
 void SetFontBackground(UINT8 ubBackground);
 void SetFontShadow(UINT8 ubBackground);
 

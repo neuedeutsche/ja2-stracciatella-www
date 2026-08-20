@@ -56,6 +56,12 @@ void SetFontForeground(UINT8 ubForeground)
 }
 
 
+void SetFontForegroundRGB(UINT32 uiRGBColor)
+{
+	FontForeground16 = Get16BPPColor(uiRGBColor);
+}
+
+
 void SetFontShadow(UINT8 ubShadow)
 {
 	if (!FontDefault) return;
