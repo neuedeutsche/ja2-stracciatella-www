@@ -46,13 +46,34 @@ PALETTE = [
     (163, 209, 96),   # 15 CTA green lit        #A3D160
     (232, 230, 227),  # 16 text primary         #E8E6E3
     (139, 137, 135),  # 17 text secondary       #8B8987
+    (106, 150,  62),  # 18 logo pawn shade
+    ( 56,  79,  33),  # 19 logo pawn outline
+    # nav icon colours, one light/dark pair each
+    (198, 160, 110),  # 20 play tan
+    (140, 110,  70),  # 21 play tan dark
+    (240, 140,  70),  # 22 puzzle orange
+    (190,  95,  40),  # 23 puzzle orange dark
+    ( 95, 170, 225),  # 24 learn blue
+    ( 55, 120, 170),  # 25 learn blue dark
+    (150, 125, 215),  # 26 watch purple
+    (100,  80, 160),  # 27 watch purple dark
+    ( 85, 195, 165),  # 28 community teal
+    ( 45, 140, 115),  # 29 community teal dark
+    (215, 215, 212),  # 30 calendar paper
+    (120, 118, 115),  # 31 calendar ink
+    ( 86, 128,  45),  # 32 puzzle green dark
 ]
 (TRANSPARENT, W_FILL, W_SHADE, W_LINE, B_FILL, B_SHADE, B_LINE,
  SQ_LIGHT, SQ_DARK, HL_LIGHT, HL_DARK,
- CHROME, PANEL, PANEL_UP, CTA, CTA_LIT, TEXT, TEXT_DIM) = range(18)
+ CHROME, PANEL, PANEL_UP, CTA, CTA_LIT, TEXT, TEXT_DIM,
+ LOGO_SHADE, LOGO_LINE,
+ PLAY_L, PLAY_D, PUZ_L, PUZ_D, LEARN_L, LEARN_D,
+ WATCH_L, WATCH_D, COMM_L, COMM_D, CAL_L, CAL_D, PUZG_D) = range(33)
 
 WHITE_INKS = (W_FILL, W_SHADE, W_LINE)
 BLACK_INKS = (B_FILL, B_SHADE, B_LINE)
+# chess.com's mark is a green pawn; ours is the same pawn in the CTA green
+LOGO_INKS  = (CTA, LOGO_SHADE, LOGO_LINE)
 
 SUPERSAMPLE = 6
 
@@ -316,13 +337,88 @@ def write_preview(frames, size, path, zoom=6):
     print(f"wrote {path} (preview, {zoom}x + 1x)")
 
 
+def make_logo():
+    """The site mark: chess.com's green pawn, at two sizes."""
+    return [render_piece("pawn", LOGO_INKS, 22), render_piece("pawn", LOGO_INKS, 14)]
+
+
+# Nav and panel icons, each a list of (primitives, palette index) layers painted
+# in order. Same 100x100 authoring box as the pieces.
+def _jigsaw(knob_ink, body_ink):
+    return [
+        ([("rect", 16, 16, 84, 84, 10),
+          ("circle", 50, 16, 13),
+          ("circle", 84, 50, 13)], body_ink),
+        ([("circle", 50, 16, 7), ("circle", 84, 50, 7)], knob_ink),
+    ]
+
+
+ICONS = {
+    "play": [(PIECES["pawn"], PLAY_L)],
+    "puzzles": _jigsaw(PUZ_D, PUZ_L),
+    "learn": [
+        ([("poly", [(50, 18), (96, 42), (50, 66), (4, 42)])], LEARN_L),
+        ([("poly", [(28, 52), (72, 52), (72, 80), (28, 80)])], LEARN_D),
+        ([("rect", 84, 44, 90, 76, 3)], LEARN_D),
+    ],
+    # binoculars turn to mush at 14px; a screen with a play triangle does not
+    "watch": [
+        ([("rect", 6, 24, 94, 86, 12)], WATCH_L),
+        ([("poly", [(40, 40), (40, 70), (68, 55)])], WATCH_D),
+    ],
+    "community": [
+        ([("circle", 66, 38, 13), ("rect", 50, 56, 88, 84, 12)], COMM_D),
+        ([("circle", 32, 32, 16), ("rect", 12, 52, 56, 84, 14)], COMM_L),
+    ],
+    "calendar": [
+        ([("rect", 8, 18, 92, 92, 8)], CAL_L),
+        ([("rect", 8, 18, 92, 38, 8), ("rect", 24, 6, 34, 26, 3),
+          ("rect", 66, 6, 76, 26, 3)], CAL_D),
+        ([("rect", c, r, c + 12, r + 12, 2)
+          for r in (48, 68) for c in (20, 44, 68)], CAL_D),
+    ],
+    "puzzlemark": _jigsaw(PUZG_D, CTA),
+}
+
+
+def render_icon(name, size, margin=1):
+    img = Image.new("P", (size, size), TRANSPARENT)
+    img.putpalette([v for rgb in PALETTE for v in rgb] + [0] * (768 - 3 * len(PALETTE)))
+    out = img.load()
+
+    big = size * SUPERSAMPLE
+    scale = (size - 2 * margin) * SUPERSAMPLE / 100.0
+    offset = margin * SUPERSAMPLE
+    for prims, ink in ICONS[name]:
+        mask = Image.new("L", (big, big), 0)
+        _draw_primitives(ImageDraw.Draw(mask), prims, scale, offset, 255)
+        small = mask.resize((size, size), Image.BOX).point(lambda v: 255 if v >= 128 else 0)
+        px = small.load()
+        for y in range(size):
+            for x in range(size):
+                if px[x, y]:
+                    out[x, y] = ink
+    return img
+
+
+ICON_ORDER = ["play", "puzzles", "learn", "watch", "community", "calendar", "puzzlemark"]
+
+
+def make_icons(size=14):
+    return [render_icon(name, size) for name in ICON_ORDER]
+
+
 def main():
     big = make_pieces(34)
     small = make_pieces(20)
     write_sti(OUT_DIR / "chesspieces.sti", big)
     write_sti(OUT_DIR / "chesspiecessmall.sti", small)
+    write_sti(OUT_DIR / "chesslogo.sti", make_logo())
+    write_sti(OUT_DIR / "chessicons.sti", make_icons())
     if "--preview" in sys.argv:
         write_preview(big, 34, Path("/tmp/chess_pieces_preview.png"))
+        icons = make_icons(28) + make_logo()[:1] + [render_icon("play", 28)] * 3
+        write_preview(icons[:12], 28, Path("/tmp/chess_icons_preview.png"), zoom=8)
 
 
 if __name__ == "__main__":

@@ -19,15 +19,20 @@
 #include "Font_Control.h"
 #include "Game_Clock.h"
 #include "HImage.h"
+#include "IMP_Compile_Character.h"
 #include "Laptop.h"
+#include "LaptopSave.h"
+#include "MercPortrait.h"
 #include "MouseSystem.h"
 #include "Soldier_Profile.h"
 #include "Timer_Control.h"
 #include "VObject.h"
 #include "VSurface.h"
 #include "Video.h"
+#include "WordWrap.h"
 
 #include <algorithm>
+#include <cmath>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -38,18 +43,35 @@
 #define CH_Y(y) ((INT32)(LAPTOP_SCREEN_WEB_UL_Y + (y)))
 
 // --- layout ---------------------------------------------------------------
-// 68 rail + 6 gutter + 272 board + 6 gutter + 150 panel = 502
-#define CH_NAV_W        68
+// The rail and panel are inset from the page edges and rounded, so the dark
+// chrome shows as a margin around them.
+#define CH_PAGE_H       400
+#define CH_INSET        6
+#define CH_RADIUS       4
+#define CH_NAV_X        CH_INSET
+#define CH_NAV_W        62
 #define CH_SQ           34
 #define CH_BOARD_X      74
 #define CH_BOARD_Y      24
 #define CH_BOARD_SIZE   (8 * CH_SQ)
 #define CH_BOARD_BOTTOM (CH_BOARD_Y + CH_BOARD_SIZE)
 #define CH_PANEL_X      352
-#define CH_PANEL_W      150
-#define CH_PAGE_H       400
+#define CH_PANEL_W      144
 #define CH_HEART_Y      (CH_BOARD_BOTTOM + 12)
 #define CH_HEART_W      13
+
+#define CH_DATE_Y       26
+#define CH_COACH_Y      56
+#define CH_COACH_TILE   36
+
+// frame indices into chessicons.sti
+#define CH_ICON_PLAY       0
+#define CH_ICON_PUZZLES    1
+#define CH_ICON_LEARN      2
+#define CH_ICON_WATCH      3
+#define CH_ICON_COMMUNITY  4
+#define CH_ICON_CALENDAR   5
+#define CH_ICON_PUZZLEMARK 6
 
 #define CH_MAX_HEARTS   5
 #define CH_REPLY_DELAY  650  // ms before the scripted reply lands
@@ -76,6 +98,7 @@ namespace
 		CHUI_PUZZLE,  // the player is solving
 		CHUI_SOLVED,
 		CHUI_FAILED,  // out of hearts; the solution is on the board
+		CHUI_REVIEW,  // an earlier day pulled from the archive, not playable
 	};
 
 	// Session-lifetime, rebuilt on every visit from the persisted daily state.
@@ -92,7 +115,10 @@ namespace
 	UINT8  gubChessLastFrom = ChessGame::NO_SQUARE;
 	UINT8  gubChessLastTo   = ChessGame::NO_SQUARE;
 	bool   gfChessHintShown = false;
-	ST::string gChessStatus;
+	// what the coach is currently saying, kept as an id so the language switch
+	// re-renders it rather than freezing whatever was said last
+	int    giChessSaid      = 0;   // ChessStr, or -1/-2 for a good/bad variant
+	int    giChessVariant   = 0;
 
 	// persisted
 	UINT16 gusChessDay        = 0;
@@ -108,9 +134,19 @@ namespace
 
 	SGPVObject* guiChessPieces = nullptr;  // 12 frames, 34x34
 	SGPVObject* guiChessCoach  = nullptr;  // Grunty, 29x33
+	SGPVObject* guiChessIcons  = nullptr;  // 7 nav and panel icons, 14x14
+	SGPVObject* guiChessLogo   = nullptr;  // green pawn, 22 and 14
+	SGPVObject* guiChessSelf   = nullptr;  // the player's I.M.P. portrait
+	ST::string  gChessSelfNick;
+
+	// which campaign day is on screen; past days are archive, view only
+	int giChessViewDay = 1;
 
 	MOUSE_REGION gChessSquare[64];
 	MOUSE_REGION gChessHintRegion;
+	MOUSE_REGION gChessPrevDayRegion;
+	MOUSE_REGION gChessNextDayRegion;
+	MOUSE_REGION gChessLangRegion;
 	bool         gfChessRegionsUp = false;
 
 	// The solvers list is padded, obviously, and everyone knows it.
@@ -118,6 +154,84 @@ namespace
 		"@ivan_d", "@grunty", "@the_house", "@e11iot",
 		"@no_refunds", "@shady_lady", "@ringside_d", "@666",
 	};
+
+	// The site is English by default and the proprietor is not, so the rail
+	// carries a switch. Umlauts are spelled out: the laptop fonts are ASCII.
+	enum ChessStr
+	{
+		CHS_TITLE, CHS_DAY, CHS_RATING, CHS_WHITE_MOVES, CHS_BLACK_MOVES,
+		CHS_SOLVED_BY, CHS_AND_YOU, CHS_STREAK, CHS_BEST, CHS_HINT, CHS_TRIES,
+		CHS_FOOTER, CHS_SEARCH,
+		CHS_NAV_PLAY, CHS_NAV_PUZZLES, CHS_NAV_LEARN, CHS_NAV_WATCH, CHS_NAV_COMMUNITY,
+		CHS_ST_WHITE, CHS_ST_BLACK, CHS_ST_CORRECT, CHS_ST_WRONG, CHS_ST_HINT,
+		CHS_ST_ALREADY, CHS_ST_OUT, CHS_ST_DONE, CHS_ST_YOUR_MOVE, CHS_ST_ARCHIVE,
+		CHS_COUNT
+	};
+
+	const char* const CHESS_TEXT[2][CHS_COUNT] =
+	{
+		{
+			"DAILY PUZZLE", "DAY", "RATING", "WHITE TO MOVE", "BLACK TO MOVE",
+			"SOLVED BY:", "and you.", "STREAK: {} DAYS", "BEST: {}", "HINT", "TRIES",
+			"best viewed at 800x600 - solution tomorrow", "Search",
+			"Play", "Puzzles", "Learn", "Watch", "Community",
+			"white to move.", "black to move.", "correct. he answers...",
+			"no. that is not the move.", "this piece. the rest is yours.",
+			"solved. come back tomorrow.", "out of tries. the solution is on the board.",
+			"correct. the position is resolved.", "your move again.",
+			"from the archive. this one is finished.",
+		},
+		{
+			"TAGESRAETSEL", "TAG", "WERTUNG", "WEISS ZIEHT", "SCHWARZ ZIEHT",
+			"GELOEST VON:", "und Sie.", "SERIE: {} TAGE", "BESTE: {}", "TIPP", "VERSUCHE",
+			"Beste Ansicht 800x600 - Loesung morgen", "Suche",
+			"Spielen", "Raetsel", "Lernen", "Zusehen", "Forum",
+			"Weiss ist am Zug.", "Schwarz ist am Zug.", "richtig. er antwortet...",
+			"nein. das ist nicht der Zug.", "diese Figur. der Rest ist Ihrer.",
+			"geloest. kommen Sie morgen wieder.", "keine Versuche mehr. die Loesung steht.",
+			"richtig. die Stellung ist geklaert.", "Sie sind wieder am Zug.",
+			"aus dem Archiv. dieses ist erledigt.",
+		},
+	};
+
+	bool gfChessGerman = false;
+
+	const char* T(ChessStr id) { return CHESS_TEXT[gfChessGerman ? 1 : 0][id]; }
+
+	// The coach reacts to each move. He is a mercenary, not a chess teacher,
+	// so the encouragement is brisk and the corrections are worse.
+	constexpr int CH_COACH_LINES = 4;
+	const char* const CHESS_COACH_GOOD[2][CH_COACH_LINES] =
+	{
+		{ "Ja! That is it.", "Good. Keep going.", "Correct. Do not stop.",
+		  "Yes. You see it now." },
+		{ "Ja! Das ist es.", "Gut. Weiter so.", "Richtig. Nicht aufhoeren.",
+		  "Ja. Jetzt sehen Sie es." },
+	};
+	const char* const CHESS_COACH_BAD[2][CH_COACH_LINES] =
+	{
+		{ "Nein. Look again.", "That one loses. Think.", "No. Not this piece.",
+		  "You are rushing. Stop." },
+		{ "Nein. Schauen Sie nochmal.", "Der verliert. Denken Sie.",
+		  "Nein. Nicht diese Figur.", "Sie hetzen. Aufhoeren." },
+	};
+
+	// -1 asks for an encouraging line, -2 a corrective one; anything else is a
+	// fixed string id. Storing the id rather than the text means the language
+	// switch re-renders whatever he last said.
+	void ChessCoachSay(int what)
+	{
+		if (what < 0) giChessVariant = (giChessVariant + 1) % CH_COACH_LINES;
+		giChessSaid = what;
+	}
+
+	const char* ChessCoachLine()
+	{
+		const int lang = gfChessGerman ? 1 : 0;
+		if (giChessSaid == -1) return CHESS_COACH_GOOD[lang][giChessVariant];
+		if (giChessSaid == -2) return CHESS_COACH_BAD[lang][giChessVariant];
+		return CHESS_TEXT[lang][giChessSaid];
+	}
 
 	UINT32 ChessNow() { return GetJA2Clock(); }
 
@@ -189,6 +303,34 @@ namespace
 		                          Get16BPPColor(rgb));
 	}
 
+	// How far a rounded corner is inset on a given row of the arc.
+	int CornerInset(int row, int radius)
+	{
+		const double dy = radius - row - 0.5;
+		return int(radius - std::sqrt(double(radius) * radius - dy * dy) + 0.5);
+	}
+
+	// Paint the corner steps of an already-drawn rect in the surrounding colour,
+	// which is how both the panels and the board get their rounding.
+	void RoundCorners(INT32 x, INT32 y, INT32 w, INT32 h, int radius, UINT32 bg)
+	{
+		for (int row = 0; row < radius; ++row)
+		{
+			const int inset = CornerInset(row, radius);
+			if (inset <= 0) continue;
+			FillRect(x, y + row, inset, 1, bg);
+			FillRect(x + w - inset, y + row, inset, 1, bg);
+			FillRect(x, y + h - 1 - row, inset, 1, bg);
+			FillRect(x + w - inset, y + h - 1 - row, inset, 1, bg);
+		}
+	}
+
+	void FillRounded(INT32 x, INT32 y, INT32 w, INT32 h, UINT32 rgb, int radius, UINT32 bg)
+	{
+		FillRect(x, y, w, h, rgb);
+		RoundCorners(x, y, w, h, radius, bg);
+	}
+
 	void PrintAt(SGPFont font, UINT8 colour, INT32 x, INT32 y, const ST::string& text)
 	{
 		SetFontAttributes(font, colour, FONT_MCOLOR_BLACK, 0);
@@ -220,11 +362,10 @@ namespace
 		}
 	}
 
-	void ChessLoadPuzzleForToday()
+	void ChessLoadPuzzleForDay(int day)
 	{
-		const UINT16 today = ChessToday();
 		giChessPuzzle = NUM_CHESS_PUZZLES > 0
-			? int((today == 0 ? 0 : today - 1) % UINT16(NUM_CHESS_PUZZLES)) : 0;
+			? int((day <= 0 ? 0 : day - 1) % NUM_CHESS_PUZZLES) : 0;
 
 		const ChessPuzzle& puzzle = CHESS_PUZZLES[giChessPuzzle];
 		gChessGame.SetFen(puzzle.fen);
@@ -263,28 +404,42 @@ namespace
 		gubChessFlags  &= CH_FLAG_DISCOVERED;
 	}
 
-	void ChessBeginSession()
+	// Show one day. Today is playable; anything earlier is archive, opened with
+	// its answer already on the board.
+	void ChessShowDay(int day)
 	{
-		ChessRollOverDay();
-		ChessLoadPuzzleForToday();
+		giChessViewDay = std::max(1, std::min<int>(day, ChessToday()));
+		ChessLoadPuzzleForDay(giChessViewDay);
 
-		if (gubChessFlags & CH_FLAG_SOLVED)
+		if (giChessViewDay != int(ChessToday()))
+		{
+			ChessPlayOutSolution();
+			gChessState = CHUI_REVIEW;
+			giChessSaid = CHS_ST_ARCHIVE;
+		}
+		else if (gubChessFlags & CH_FLAG_SOLVED)
 		{
 			ChessPlayOutSolution();
 			gChessState = CHUI_SOLVED;
-			gChessStatus = "solved. come back tomorrow.";
+			giChessSaid = CHS_ST_ALREADY;
 		}
 		else if (gubChessFlags & CH_FLAG_FAILED)
 		{
 			ChessPlayOutSolution();
 			gChessState = CHUI_FAILED;
-			gChessStatus = "out of tries. ze solution is on ze board.";
+			giChessSaid = CHS_ST_OUT;
 		}
 		else
 		{
 			gChessState = CHUI_PUZZLE;
-			gChessStatus = gChessSolver == ChessGame::White ? "white to move." : "black to move.";
+			giChessSaid = gChessSolver == ChessGame::White ? CHS_ST_WHITE : CHS_ST_BLACK;
 		}
+	}
+
+	void ChessBeginSession()
+	{
+		ChessRollOverDay();
+		ChessShowDay(ChessToday());
 	}
 
 	void ChessRedraw()
@@ -302,7 +457,7 @@ namespace
 		gusChessLastSolved = today;
 		gubChessFlags |= CH_FLAG_SOLVED;
 		gChessState  = CHUI_SOLVED;
-		gChessStatus = "correct. ze position is resolved.";
+		giChessSaid = CHS_ST_DONE;
 	}
 
 	void ChessRecordFailed()
@@ -311,7 +466,7 @@ namespace
 		gubChessStreak = 0;
 		ChessPlayOutSolution();
 		gChessState  = CHUI_FAILED;
-		gChessStatus = "no tries left. ze solution is on ze board.";
+		giChessSaid = CHS_ST_OUT;
 	}
 
 	void ChessSpendHeart()
@@ -343,7 +498,7 @@ namespace
 			}
 			else
 			{
-				gChessStatus     = "correct. he answers...";
+				ChessCoachSay(-1);
 				guiChessReplyDue = ChessNow() + CH_REPLY_DELAY;
 			}
 			return;
@@ -358,7 +513,7 @@ namespace
 		if (!gChessGame.ParseUci(uci).IsNull() || !gChessGame.ParseUci(uci + "q").IsNull())
 		{
 			ChessSpendHeart();
-			if (gChessState == CHUI_PUZZLE) gChessStatus = "no. zat is not ze move.";
+			if (gChessState == CHUI_PUZZLE) ChessCoachSay(-2);
 		}
 		gbChessSelected = -1;
 	}
@@ -399,8 +554,25 @@ namespace
 
 		gubChessFlags |= CH_FLAG_HINT_USED;
 		gfChessHintShown = true;
-		gChessStatus = "zis piece. ze rest is yours.";
+		giChessSaid = CHS_ST_HINT;
 		ChessSpendHeart();
+		ChessRedraw();
+	}
+
+	void ChessDayCallback(MOUSE_REGION* region, UINT32 reason)
+	{
+		if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
+		const int step = int(MSYS_GetRegionUserData(region, 0));
+		const int want = giChessViewDay + step;
+		if (want < 1 || want > int(ChessToday())) return;
+		ChessShowDay(want);
+		ChessRedraw();
+	}
+
+	void ChessLangCallback(MOUSE_REGION* region, UINT32 reason)
+	{
+		if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
+		gfChessGerman = !gfChessGerman;
 		ChessRedraw();
 	}
 
@@ -425,6 +597,25 @@ namespace
 		                  UINT16(CH_X(CH_PANEL_X + CH_PANEL_W - 10)), UINT16(CH_Y(CH_PAGE_H - 24)),
 		                  MSYS_PRIORITY_HIGH, CURSOR_WWW, MSYS_NO_CALLBACK, ChessHintCallback);
 		gChessHintRegion.SetFastHelpText("Costs one attempt");
+
+		// date stepper arrows, either side of the day chip
+		MSYS_DefineRegion(&gChessPrevDayRegion,
+		                  UINT16(CH_X(CH_PANEL_X + 8)), UINT16(CH_Y(CH_DATE_Y)),
+		                  UINT16(CH_X(CH_PANEL_X + 34)), UINT16(CH_Y(CH_DATE_Y + 16)),
+		                  MSYS_PRIORITY_HIGH, CURSOR_WWW, MSYS_NO_CALLBACK, ChessDayCallback);
+		MSYS_SetRegionUserData(&gChessPrevDayRegion, 0, -1);
+		MSYS_DefineRegion(&gChessNextDayRegion,
+		                  UINT16(CH_X(CH_PANEL_X + CH_PANEL_W - 34)), UINT16(CH_Y(CH_DATE_Y)),
+		                  UINT16(CH_X(CH_PANEL_X + CH_PANEL_W - 8)), UINT16(CH_Y(CH_DATE_Y + 16)),
+		                  MSYS_PRIORITY_HIGH, CURSOR_WWW, MSYS_NO_CALLBACK, ChessDayCallback);
+		MSYS_SetRegionUserData(&gChessNextDayRegion, 0, 1);
+
+		MSYS_DefineRegion(&gChessLangRegion,
+		                  UINT16(CH_X(CH_NAV_X + 4)), UINT16(CH_Y(CH_PAGE_H - CH_INSET - 98)),
+		                  UINT16(CH_X(CH_NAV_X + CH_NAV_W - 4)), UINT16(CH_Y(CH_PAGE_H - CH_INSET - 84)),
+		                  MSYS_PRIORITY_HIGH, CURSOR_WWW, MSYS_NO_CALLBACK, ChessLangCallback);
+		gChessLangRegion.SetFastHelpText("English / Deutsch");
+
 		gfChessRegionsUp = true;
 	}
 
@@ -433,6 +624,9 @@ namespace
 		if (!gfChessRegionsUp) return;
 		for (MOUSE_REGION& r : gChessSquare) MSYS_RemoveRegion(&r);
 		MSYS_RemoveRegion(&gChessHintRegion);
+		MSYS_RemoveRegion(&gChessPrevDayRegion);
+		MSYS_RemoveRegion(&gChessNextDayRegion);
+		MSYS_RemoveRegion(&gChessLangRegion);
 		gfChessRegionsUp = false;
 	}
 }
@@ -443,22 +637,67 @@ namespace
 {
 	void ChessRenderNav()
 	{
-		FillRect(0, 0, CH_NAV_W, CH_PAGE_H, CH_RGB_PANEL);
+		const INT32 navH = CH_PAGE_H - 2 * CH_INSET;
+		FillRounded(CH_NAV_X, CH_INSET, CH_NAV_W, navH, CH_RGB_PANEL, CH_RADIUS, CH_RGB_CHROME);
 
-		// masthead: the z is the odd letter, so it gets the accent
-		PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, 6, 8, "chach");
-		PrintAt(FONT10ARIAL, FONT_MCOLOR_LTGREEN, 6 + StringPixLength("chach", FONT10ARIALBOLD), 8, ".com");
+		// masthead: the green pawn over the wordmark, chess.com's lockup turned
+		// vertical because the rail is too narrow to set it on one line
+		if (guiChessLogo)
+		{
+			BltVideoObject(FRAME_BUFFER, guiChessLogo, 0,
+			               CH_X(CH_NAV_X + (CH_NAV_W - 22) / 2), CH_Y(CH_INSET + 6));
+		}
+		const INT32 markW = StringPixLength("chach", FONT10ARIALBOLD) +
+		                    StringPixLength(".com", FONT10ARIAL);
+		const INT32 markX = CH_NAV_X + (CH_NAV_W - markW) / 2;
+		PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, markX, CH_INSET + 32, "chach");
+		PrintAt(FONT10ARIAL, FONT_GRAY2,
+		        markX + StringPixLength("chach", FONT10ARIALBOLD), CH_INSET + 32, ".com");
 
-		static const char* const items[] = { "Play", "Puzzles", "Learn", "Watch", "Community" };
+		static const ChessStr items[5] = {
+			CHS_NAV_PLAY, CHS_NAV_PUZZLES, CHS_NAV_LEARN, CHS_NAV_WATCH, CHS_NAV_COMMUNITY
+		};
 		for (int i = 0; i < 5; ++i)
 		{
+			const INT32 rowY = CH_INSET + 56 + i * 20;
 			const bool active = i == 1;  // only Puzzles exists so far
-			if (active) FillRect(0, 34 + i * 22 - 3, CH_NAV_W, 20, CH_RGB_PANEL_UP);
+			if (active)
+			{
+				FillRounded(CH_NAV_X + 2, rowY - 3, CH_NAV_W - 4, 18,
+				            CH_RGB_PANEL_UP, 3, CH_RGB_PANEL);
+			}
+			if (guiChessIcons)
+			{
+				BltVideoObject(FRAME_BUFFER, guiChessIcons, UINT16(i),
+				               CH_X(CH_NAV_X + 4), CH_Y(rowY));
+			}
 			PrintAt(FONT10ARIAL, active ? FONT_MCOLOR_LTGREEN : FONT_GRAY2,
-			        8, 34 + i * 22, items[i]);
+			        CH_NAV_X + 20, rowY + 1, T(items[i]));
 		}
 
-		PrintAt(FONT10ARIAL, FONT_GRAY4, 8, CH_PAGE_H - 30, "Suche");
+		// language switch, because the proprietor is not English
+		const INT32 langY = CH_PAGE_H - CH_INSET - 96;
+		PrintAt(FONT10ARIAL, gfChessGerman ? FONT_GRAY7 : FONT_MCOLOR_LTGREEN,
+		        CH_NAV_X + 6, langY, "EN");
+		PrintAt(FONT10ARIAL, FONT_GRAY7, CH_NAV_X + 24, langY, "|");
+		PrintAt(FONT10ARIAL, gfChessGerman ? FONT_MCOLOR_LTGREEN : FONT_GRAY7,
+		        CH_NAV_X + 32, langY, "DE");
+
+		PrintAt(FONT10ARIAL, FONT_GRAY4, CH_NAV_X + 6, langY - 18, T(CHS_SEARCH));
+
+		// the account block: your I.M.P. portrait, as the site's avatar
+		const INT32 cardY = CH_PAGE_H - CH_INSET - 78;
+		FillRounded(CH_NAV_X + 2, cardY, CH_NAV_W - 4, 74, CH_RGB_PANEL_UP, 3, CH_RGB_PANEL);
+		if (guiChessSelf)
+		{
+			BltVideoObject(FRAME_BUFFER, guiChessSelf, 0,
+			               CH_X(CH_NAV_X + (CH_NAV_W - 58) / 2), CH_Y(cardY + 2));
+		}
+		if (!gChessSelfNick.empty())
+		{
+			PrintCentred(FONT10ARIAL, FONT_MCOLOR_WHITE, CH_NAV_X + CH_NAV_W / 2,
+			             cardY + 60, gChessSelfNick);
+		}
 	}
 
 	void ChessRenderBoard()
@@ -516,18 +755,23 @@ namespace
 			}
 		}
 
-		// coordinates sit inside the corner squares, in the opposite colour
+		// Coordinates sit inside the corner squares, in the opposite colour.
+		// These go through a char buffer on purpose: ST::format renders a bare
+		// char as its numeric value, which turned the ranks into 49..56.
 		for (int i = 0; i < 8; ++i)
 		{
 			const UINT8 rankSq = ScreenToSquare(0, i);
 			const UINT8 fileSq = ScreenToSquare(i, 7);
+			const char rankGlyph[2] = { char('1' + ChessGame::RankOf(rankSq)), '\0' };
+			const char fileGlyph[2] = { char('a' + ChessGame::FileOf(fileSq)), '\0' };
 			PrintAt(FONT10ARIAL, IsLightSquare(rankSq) ? FONT_GRAY7 : FONT_WHITE,
-			        CH_BOARD_X + 2, CH_BOARD_Y + i * CH_SQ + 1,
-			        ST::format("{}", char('1' + ChessGame::RankOf(rankSq))));
+			        CH_BOARD_X + 3, CH_BOARD_Y + i * CH_SQ + 1, rankGlyph);
 			PrintAt(FONT10ARIAL, IsLightSquare(fileSq) ? FONT_GRAY7 : FONT_WHITE,
-			        CH_BOARD_X + i * CH_SQ + CH_SQ - 8, CH_BOARD_BOTTOM - 13,
-			        ST::format("{}", char('a' + ChessGame::FileOf(fileSq))));
+			        CH_BOARD_X + i * CH_SQ + CH_SQ - 8, CH_BOARD_BOTTOM - 13, fileGlyph);
 		}
+
+		RoundCorners(CH_BOARD_X, CH_BOARD_Y, CH_BOARD_SIZE, CH_BOARD_SIZE,
+		             CH_RADIUS, CH_RGB_CHROME);
 
 		if (!guiChessPieces) return;
 		for (int row = 0; row < 8; ++row)
@@ -560,66 +804,111 @@ namespace
 			FillRect(x + 4, CH_HEART_Y + 9, 5, 2, rgb);
 		}
 		PrintAt(FONT10ARIAL, FONT_GRAY4, CH_BOARD_X + 5 * (CH_HEART_W + 5) + 8, CH_HEART_Y,
-		        ST::format("{} VERSUCHE", gubChessHearts));
+		        ST::format("{} {}", gubChessHearts, T(CHS_TRIES)));
+	}
+
+	// chess.com's coach block: portrait tile with a caption strip, speech
+	// bubble alongside with a tail pointing back at him.
+	void ChessRenderCoach(INT32 y)
+	{
+		const INT32 tileX = CH_PANEL_X + 8;
+		FillRect(tileX, y, CH_COACH_TILE, CH_COACH_TILE + 11, CH_RGB_PANEL_UP);
+		if (guiChessCoach)
+		{
+			BltVideoObject(FRAME_BUFFER, guiChessCoach, 0,
+			               CH_X(tileX + (CH_COACH_TILE - 29) / 2), CH_Y(y + 2));
+		}
+		PrintCentred(FONT10ARIAL, FONT_GRAY2, tileX + CH_COACH_TILE / 2,
+		             y + CH_COACH_TILE - 1, "COACH");
+
+		const INT32 bubbleX = tileX + CH_COACH_TILE + 6;
+		const INT32 bubbleW = CH_PANEL_X + CH_PANEL_W - 8 - bubbleX;
+		FillRect(bubbleX, y, bubbleW, CH_COACH_TILE, CH_RGB_PANEL_UP);
+		// the tail: three stacked slivers stepping out to a point
+		for (int i = 0; i < 3; ++i)
+		{
+			FillRect(bubbleX - 1 - i, y + 12 - i, 2, 2 + i * 2, CH_RGB_PANEL_UP);
+		}
+
+		const UINT8 colour = gChessState == CHUI_SOLVED ? FONT_MCOLOR_LTGREEN
+		                   : gChessState == CHUI_FAILED ? FONT_MCOLOR_LTRED
+		                   : FONT_MCOLOR_WHITE;
+		DisplayWrappedString(UINT16(CH_X(bubbleX + 5)), UINT16(CH_Y(y + 5)),
+		                     UINT16(bubbleW - 10), 1, FONT10ARIAL, colour,
+		                     ChessCoachLine(), FONT_MCOLOR_BLACK, LEFT_JUSTIFIED);
 	}
 
 	void ChessRenderPanel()
 	{
-		FillRect(CH_PANEL_X, 0, CH_PANEL_W, CH_PAGE_H, CH_RGB_PANEL);
+		FillRounded(CH_PANEL_X, CH_INSET, CH_PANEL_W, CH_PAGE_H - 2 * CH_INSET,
+		            CH_RGB_PANEL, CH_RADIUS, CH_RGB_CHROME);
 		const INT32 cx = CH_PANEL_X + CH_PANEL_W / 2;
 		const ChessPuzzle& puzzle = CHESS_PUZZLES[giChessPuzzle];
 
-		PrintCentred(FONT10ARIAL, FONT_GRAY4, cx, 8, ST::format("TAG {}", ChessToday()));
-		PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, cx, 24, "TAGESRATSEL");
-		PrintCentred(FONT10ARIAL, FONT_GRAY4, cx, 38, "daily puzzle");
-		FillRect(CH_PANEL_X + 10, 56, CH_PANEL_W - 20, 1, CH_RGB_RULE);
-
-		// who moves, with the proprietor standing in as the coach
-		if (guiChessCoach)
+		// title, with the green puzzle mark beside it
+		const ST::string title = T(CHS_TITLE);
+		const INT32 titleW = StringPixLength(title, FONT10ARIALBOLD) + 18;
+		if (guiChessIcons)
 		{
-			BltVideoObject(FRAME_BUFFER, guiChessCoach, 0, CH_X(CH_PANEL_X + 10), CH_Y(66));
+			BltVideoObject(FRAME_BUFFER, guiChessIcons, CH_ICON_PUZZLEMARK,
+			               CH_X(cx - titleW / 2), CH_Y(7));
 		}
-		FillRect(CH_PANEL_X + 46, 66, CH_PANEL_W - 56, 33, CH_RGB_PANEL_UP);
-		PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, CH_PANEL_X + 52, 76,
-		        gChessSolver == ChessGame::White ? "WEISS ZIEHT" : "SCHWARZ ZIEHT");
+		PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, cx - titleW / 2 + 18, 8, title);
 
-		PrintAt(FONT10ARIAL, FONT_GRAY4, CH_PANEL_X + 10, 108,
-		        ST::format("WERTUNG {}", puzzle.rating));
+		// date stepper: < [calendar] DAY n >
+		const ST::string day = ST::format("{} {}", T(CHS_DAY), giChessViewDay);
+		const INT32 stepW = StringPixLength(day, FONT10ARIAL) + 20;
+		FillRect(cx - stepW / 2, CH_DATE_Y, stepW, 16, CH_RGB_PANEL_UP);
+		if (guiChessIcons)
+		{
+			BltVideoObject(FRAME_BUFFER, guiChessIcons, CH_ICON_CALENDAR,
+			               CH_X(cx - stepW / 2 + 3), CH_Y(CH_DATE_Y + 1));
+		}
+		PrintAt(FONT10ARIAL, FONT_MCOLOR_WHITE, cx - stepW / 2 + 20, CH_DATE_Y + 3, day);
+		// arrows grey out at the ends of the run
+		PrintAt(FONT10ARIAL, giChessViewDay > 1 ? FONT_MCOLOR_WHITE : FONT_GRAY7,
+		        cx - stepW / 2 - 14, CH_DATE_Y + 3, "<");
+		PrintAt(FONT10ARIAL, giChessViewDay < ChessToday() ? FONT_MCOLOR_WHITE : FONT_GRAY7,
+		        cx + stepW / 2 + 7, CH_DATE_Y + 3, ">");
 
-		// the running commentary, wrapped by hand at this width
-		PrintAt(FONT10ARIAL, gChessState == CHUI_SOLVED ? FONT_MCOLOR_LTGREEN
-		        : gChessState == CHUI_FAILED ? FONT_MCOLOR_LTRED : FONT_GRAY2,
-		        CH_PANEL_X + 10, 126, gChessStatus);
+		FillRect(CH_PANEL_X + 8, CH_DATE_Y + 22, CH_PANEL_W - 16, 1, CH_RGB_RULE);
 
-		PrintAt(FONT10ARIAL, FONT_GRAY4, CH_PANEL_X + 10, 156, "GELOST VON:");
+		ChessRenderCoach(CH_COACH_Y);
+
+		PrintAt(FONT10ARIAL, FONT_GRAY4, CH_PANEL_X + 10, CH_COACH_Y + CH_COACH_TILE + 18,
+		        ST::format("{} {}", T(CHS_RATING), puzzle.rating));
+		PrintAt(FONT10ARIALBOLD, FONT_GRAY2, CH_PANEL_X + 10, CH_COACH_Y + CH_COACH_TILE + 32,
+		        gChessSolver == ChessGame::White ? T(CHS_WHITE_MOVES) : T(CHS_BLACK_MOVES));
+
+		PrintAt(FONT10ARIAL, FONT_GRAY4, CH_PANEL_X + 10, 176, T(CHS_SOLVED_BY));
 		const int shown = int(sizeof(CHESS_SOLVERS) / sizeof(CHESS_SOLVERS[0]));
 		for (int i = 0; i < shown; ++i)
 		{
-			PrintAt(FONT10ARIAL, FONT_GRAY7, CH_PANEL_X + 14, 172 + i * 13, CHESS_SOLVERS[i]);
+			PrintAt(FONT10ARIAL, FONT_GRAY7, CH_PANEL_X + 14, 190 + i * 13, CHESS_SOLVERS[i]);
 		}
 		if (gubChessFlags & CH_FLAG_SOLVED)
 		{
-			PrintAt(FONT10ARIAL, FONT_MCOLOR_LTGREEN, CH_PANEL_X + 14, 172 + shown * 13, "und Sie.");
+			PrintAt(FONT10ARIAL, FONT_MCOLOR_LTGREEN, CH_PANEL_X + 14, 190 + shown * 13,
+			        T(CHS_AND_YOU));
 		}
 
 		FillRect(CH_PANEL_X + 10, CH_PAGE_H - 96, CH_PANEL_W - 20, 1, CH_RGB_RULE);
 		PrintAt(FONT10ARIAL, FONT_GRAY2, CH_PANEL_X + 10, CH_PAGE_H - 88,
-		        ST::format("SERIE: {} TAGE", gubChessStreak));
+		        ST::format(T(CHS_STREAK), gubChessStreak));
 		PrintAt(FONT10ARIAL, FONT_GRAY4, CH_PANEL_X + 10, CH_PAGE_H - 74,
-		        ST::format("BESTE: {}", gubChessBestStreak));
+		        ST::format(T(CHS_BEST), gubChessBestStreak));
 
 		// the hint button greys out once it has been spent
 		const bool hintLive = gChessState == CHUI_PUZZLE && !(gubChessFlags & CH_FLAG_HINT_USED);
 		FillRect(CH_PANEL_X + 10, CH_PAGE_H - 46, CH_PANEL_W - 20, 22,
 		         hintLive ? CH_RGB_PANEL_UP : CH_RGB_PANEL);
 		PrintCentred(FONT10ARIAL, hintLive ? FONT_MCOLOR_WHITE : FONT_GRAY7,
-		             cx, CH_PAGE_H - 40, "TIPP");
+		             cx, CH_PAGE_H - 40, T(CHS_HINT));
 	}
 
 	void ChessRenderFooter()
 	{
-		PrintAt(FONT10ARIAL, FONT_GRAY7, CH_BOARD_X, CH_PAGE_H - 16,
-		        "Beste Ansicht 800x600 - Losung morgen");
+		PrintAt(FONT10ARIAL, FONT_GRAY7, CH_BOARD_X, CH_PAGE_H - 16, T(CHS_FOOTER));
 	}
 }
 
@@ -631,6 +920,10 @@ void EnterChess()
 
 	guiChessPieces = nullptr;
 	guiChessCoach  = nullptr;
+	guiChessIcons  = nullptr;
+	guiChessLogo   = nullptr;
+	guiChessSelf   = nullptr;
+	gChessSelfNick = ST::string();
 	try
 	{
 		guiChessPieces = AddVideoObjectFromFile("sti/laptop/chesspieces.sti");
@@ -641,11 +934,34 @@ void EnterChess()
 	}
 	try
 	{
+		guiChessIcons = AddVideoObjectFromFile("sti/laptop/chessicons.sti");
+		guiChessLogo  = AddVideoObjectFromFile("sti/laptop/chesslogo.sti");
+	}
+	catch (...)
+	{
+		// chrome only: labels stand on their own without the icons
+	}
+	try
+	{
 		guiChessCoach = AddVideoObjectFromFile(
 			ST::format(FACESDIR "/33face/b{02d}.sti", GetProfile(GRUNTY).ubFaceIndex));
 	}
 	catch (...)
 	{
+	}
+	// the account block shows your own I.M.P. character as the site avatar
+	if (LaptopSaveInfo.fIMPCompletedFlag)
+	{
+		try
+		{
+			MERCPROFILESTRUCT const& imp = GetProfile(
+				static_cast<ProfileID>(PLAYER_GENERATED_CHARACTER_ID + LaptopSaveInfo.iVoiceId));
+			guiChessSelf   = Load65Portrait(imp);
+			gChessSelfNick = imp.zNickname;
+		}
+		catch (...)
+		{
+		}
 	}
 
 	ChessBeginSession();
@@ -657,6 +973,9 @@ void ExitChess()
 	ChessRemoveRegions();
 	if (guiChessPieces) { DeleteVideoObject(guiChessPieces); guiChessPieces = nullptr; }
 	if (guiChessCoach)  { DeleteVideoObject(guiChessCoach);  guiChessCoach  = nullptr; }
+	if (guiChessIcons)  { DeleteVideoObject(guiChessIcons);  guiChessIcons  = nullptr; }
+	if (guiChessLogo)   { DeleteVideoObject(guiChessLogo);   guiChessLogo   = nullptr; }
+	if (guiChessSelf)   { DeleteVideoObject(guiChessSelf);   guiChessSelf   = nullptr; }
 }
 
 void RenderChess()
@@ -690,7 +1009,7 @@ void HandleChess()
 			++guiChessPly;
 		}
 	}
-	gChessStatus = guiChessPly >= gChessSolution.size() ? "solved." : "your move again.";
+	if (guiChessPly < gChessSolution.size()) giChessSaid = CHS_ST_YOUR_MOVE;
 	if (guiChessPly >= gChessSolution.size() && gChessState == CHUI_PUZZLE) ChessRecordSolved();
 	ChessRedraw();
 }
