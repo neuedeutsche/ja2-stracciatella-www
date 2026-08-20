@@ -4,6 +4,35 @@ All notable changes to the mahjong minigame, newest first. The parlour is a
 laptop website added on top of JA2 Stracciatella; see the project README for
 what it is and how to build it.
 
+The page carries its own build number (`MJ_PAGE_VERSION` in
+`src/game/Laptop/Mahjong.cc`), shown on the home page, the ladder and the
+table footer. Bump it when the site changes.
+
+## 0.4.2 — Ordering, light and profiles
+
+- Chat delivery unified into **one ordered lane**. Speech was queued while
+  house notices posted instantly, so a notice could overtake the line said
+  before it ("@wolf has left the room" printing above @wolf's own message).
+  Everything now enqueues in the order it was said and a single consumer
+  pops it; humans keep their typing pace, the house prints fast but never
+  jumps the line, and your own messages stay instant as a local echo.
+- The typing indicator is derived from the head of that queue rather than
+  its own timer, and is suppressed for anyone who has left — the classic
+  stuck-indicator race. Visitors cannot leave until their words have landed.
+- A lamp over your seat: an elliptical pool of lighter felt, dithered into
+  the speckle so it reads as light rather than a shape.
+- A wooden lip with grain between the felt and the client.
+- Profile bios for whoever holds your chair, bottom-anchored under the
+  portrait — twenty of them, one per merc, plus your own.
+- Your own messages run warm: cream handle, cream body, warm avatar frame,
+  so your voice reads as a set against everyone else's neutral grey.
+- Player of the Month keeps their handle and portrait after leaving, so
+  their lines stay attributed in the log.
+- Elliot mutes chat flooders on an escalating scale, with a live countdown
+  in the input line.
+- The input field scrolls with the caret instead of truncating, and wrap
+  budgets match what the renderer will actually draw.
+
 ## 0.4 — The room comes alive
 
 **Chat client rebuilt around how people actually talk**

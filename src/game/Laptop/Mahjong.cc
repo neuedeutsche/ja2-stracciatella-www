@@ -85,7 +85,8 @@
 #define MJ_POND_TOP_Y		77
 #define MJ_POND_BOTTOM_Y	181
 #define MJ_POND_SIDE_ROWS	5
-#define MJ_POND_SIDE_Y		5  // side ponds align with the panel tops
+#define MJ_SIDE_Y		65 // side seats sit low: their feet meet your pond
+#define MJ_POND_SIDE_Y		65 // side ponds align with the panel tops
 #define MJ_POND_LEFT_X		72
 #define MJ_POND_RIGHT_X		408
 
@@ -94,7 +95,7 @@
 #define MJ_HAND_RAISE		6
 #define MJ_HAND_X		22
 #define MJ_DRAWN_X		450
-#define MJ_SETUP_BTN_Y		198  // void/pass/new-game live mid-table (pond empty then)
+#define MJ_SETUP_BTN_Y		156  // void/pass live mid-table, clear of the hand
 #define MJ_CLAIM_BTN_X		22
 #define MJ_CLAIM_BTN_Y		186
 #define MJ_CHAT_Y		264
@@ -105,7 +106,14 @@
 #define MJ_CHAT_W		338  // the right side of the bar is the info block
 #define MJ_CHAT_INPUT_MAX	220
 // the singular UI accent: green with a slight tint toward blue
+// the parlour's own build number - bump it when the site changes
+#define MJ_PAGE_VERSION		"v0.4.2"
+
 #define MJ_TOKEN_RGB		FROMRGB(74, 182, 100)
+// your own voice in the room: a warm cream, distinct from everyone else's
+// neutral grey and from the yellow the table uses for money
+#define MJ_SELF_NAME_RGB	FROMRGB(246, 228, 176)
+#define MJ_SELF_TEXT_RGB	FROMRGB(214, 196, 150)
 
 #define MJ_NUM_HAND_SLOTS	14
 #define MJ_DRAWN_SLOT		13
@@ -161,6 +169,8 @@ static ST::string gMJShillNick;
 static SGPVObject* guiMJStatic;       // 65x56 TV static, 3 frames
 static SGPVObject* guiMJFeltRed;      // 502x381 red felt for the ladder page
 static SGPVObject* guiMJDragon;       // dragon medallions: 120 red/gold, 56 red/gold
+static SGPVObject* guiMJGlow;         // pool of light over your own tiles
+static SGPVObject* guiMJRail;         // wooden lip between felt and client
 static SGPVObject* guiMJKingpinFace;  // the proprietor, for the rules page signature
 static SGPVObject* guiMJSign;         // his handwritten scrawl
 static SGPVObject* guiMJVoidIcon;     // red suit glyphs for the void marker
@@ -263,9 +273,10 @@ static const char* const gMJSeat2Name[3] = { "Deidranna", "Darren", "Layla" };
 static const char* const gMJSeat2Handle[3] = { "@dejdranna666", "@ringside_d", "@shady_lady" };
 static const char* const gMJSeat2Short[3] = { "@666", "@darren", "@layla" };
 // seat 4 is nobody's seat: the parlour's player of the month, dropping in
-static ST::string gMJVisitorHandle;
+static ST::string gMJVisitorHandle;   // kept after they leave: the log needs it
 static SGPVSurface* guiMJVisitorSurf = nullptr;
 static UINT32 guiMJVisitorLeaves = 0;
+static BOOLEAN gfMJVisitorHere = FALSE;
 
 static const char* MahjongSeatHandle(int seat)
 {
@@ -293,7 +304,7 @@ static ST::string MahjongChatHandle(int who)
 		case 2:  return gMJSeat2Short[giMJSeat2Persona];
 		default: break;
 	}
-	if (who == 4) return gMJVisitorHandle;
+	if (who == 4) return gMJVisitorHandle.empty() ? ST::string("@guest") : gMJVisitorHandle;
 	static const char* const shortPersona[3] = { "@e11iot", "@house", "@tony" };
 	return shortPersona[giMJSeat3Persona];
 }
@@ -771,6 +782,38 @@ static const MahjongBicker gMJBicker[30] =
 	{ "we could have been something, you and I.", 2, "we were. briefly. it is called a transaction." },
 };
 
+// every profile needs a bio. this is 1999 and everyone is a brand
+static const char* const gMJBio[20] =
+{
+	"A.I.M. certified. ask about my hourly",
+	"available for work. not for feelings",
+	"i shoot things. i also know things",
+	"currently deployed. do not ask where",
+	"here for the felt. staying for the felt",
+	"between contracts. between everything",
+	"i do not lose. i redeploy",
+	"references available. survivors fewer",
+	"tiles by night. jungle by day",
+	"my medical is current. is yours",
+	"turning down work to be here",
+	"ask me about my kill/deal ratio",
+	"semi-retired. mostly semi",
+	"i bill by the hour and the hand",
+	"three languages. one of them polite",
+	"i have been shot in four countries",
+	"will work for tiles",
+	"discretion guaranteed. results negotiable",
+	"do not add me. i will find you",
+	"licensed, bonded, and slightly insured",
+};
+
+static const char* MahjongSeatBio()
+{
+	if (gfMJExhibition) return gMJBio[gubMJShillPid % 20];
+	if (LaptopSaveInfo.fIMPCompletedFlag) return "I.M.P. graduate. licensed to lose money";
+	return "guest account. no rating, no shame";
+}
+
 // Yahoo-style ladder ratings: yours derives from your persisted record,
 // the regulars' are house numbers with a small daily wobble
 static INT32 MahjongPlayerRating()
@@ -1201,31 +1244,47 @@ static void MahjongSay(int who, const ST::string& text)
 		}
 	}
 
-	// nobody starts typing the instant the last line lands: the room breathes
-	UINT32 due = std::max(MahjongNow(), guiMJQueueTail) + 900 + MahjongChatRoll() % 1400;
+	// Everything the room says goes through ONE ordered lane, in the order
+	// it was said. Two delivery paths (queued speech, instant notices) is
+	// what let "@wolf has left the room" print before @wolf's own line.
+	// Your own typing is the exception: a local echo, as every chat client
+	// does, because latency on your own input reads as a bug.
+	if (who == 0)
+	{
+		MahjongPushWrapped(who, bursts.front());
+		for (std::size_t i = 1; i < bursts.size(); ++i)
+		{
+			gMJPending.push_back(MahjongPendingLine{ 0, bursts[i],
+					MahjongNow() + static_cast<UINT32>(i) * 400, false });
+		}
+		return;
+	}
+
+	// the queue never runs more than a few seconds ahead of the room
+	UINT32 due = std::max(MahjongNow(), std::min(guiMJQueueTail, MahjongNow() + 8000));
 	if (who > 0)
 	{
-		// the room watches them type; now and then nothing arrives
+		// somebody has to sit down and type it, and the room breathes first
+		due += 900 + MahjongChatRoll() % 1400;
 		bool const ghost = bursts.size() == 1 && MahjongChatRoll() % 9 == 4;
 		for (std::size_t i = 0; i < bursts.size(); ++i)
 		{
-			// between their own bursts they pause too, just less
-			if (i > 0) due += 500 + MahjongChatRoll() % 700;
+			if (i > 0) due += 500 + MahjongChatRoll() % 700; // between their bursts
 			due += 350 + static_cast<UINT32>(bursts[i].size()) * (MJ_TYPE_MS + 40);
 			gMJPending.push_back(MahjongPendingLine{ static_cast<INT8>(who), bursts[i], due, ghost });
 		}
-		guiMJQueueTail = due;
-		MahjongRedraw();
-		return;
 	}
-	// you and the house post instantly; only the bursts stagger
-	MahjongPushWrapped(who, bursts.front());
-	for (std::size_t i = 1; i < bursts.size(); ++i)
+	else
 	{
-		due += 420 + static_cast<UINT32>(bursts[i - 1].size()) * MJ_TYPE_MS;
-		gMJPending.push_back(MahjongPendingLine{ static_cast<INT8>(who), bursts[i], due, false });
+		// the house prints fast, but never ahead of what was said before it
+		for (ST::string const& burst : bursts)
+		{
+			due += 220;
+			gMJPending.push_back(MahjongPendingLine{ static_cast<INT8>(who), burst, due, false });
+		}
 	}
 	guiMJQueueTail = due;
+	MahjongRedraw();
 }
 
 
@@ -1288,24 +1347,31 @@ static ST::string MahjongFanLabel(MahjongGame::WinEvent const& e)
 // a state (e.g. after leaving the laptop) does not spam the log
 // table events (claims, kongs, wins, settlements) read louder than the
 // room's general notices, so they carry the yellow of the felt markers
-static void MahjongEventSay(const ST::string& text)
+// a notice already said - or already queued - is not said again
+static bool MahjongNoticePending(const ST::string& text)
 {
 	std::size_t const from = gMJChat.size() > 8 ? gMJChat.size() - 8 : 0;
 	for (std::size_t i = from; i < gMJChat.size(); ++i)
 	{
-		if (gMJChat[i].who < 0 && text.find(gMJChat[i].text) == 0) return;
+		if (gMJChat[i].who < 0 && text.find(gMJChat[i].text) == 0) return true;
 	}
+	for (MahjongPendingLine const& q : gMJPending)
+	{
+		if (q.who < 0 && text.find(q.text) == 0) return true;
+	}
+	return false;
+}
+
+static void MahjongEventSay(const ST::string& text)
+{
+	if (MahjongNoticePending(text)) return;
 	MahjongSay(-4, text);
 }
 
 static void MahjongSystemSay(const ST::string& text)
 {
 	// the House does not repeat itself within sight of the last notice
-	std::size_t const from = gMJChat.size() > 8 ? gMJChat.size() - 8 : 0;
-	for (std::size_t i = from; i < gMJChat.size(); ++i)
-	{
-		if (gMJChat[i].who < 0 && text.find(gMJChat[i].text) == 0) return;
-	}
+	if (MahjongNoticePending(text)) return;
 	MahjongSay(-1, text);
 }
 
@@ -1331,7 +1397,7 @@ static const char* const gMJVisitorTrash[14] =
 
 static void MahjongVisitorArrives()
 {
-	if (!gMJVisitorHandle.empty()) return;
+	if (gfMJVisitorHere) return;
 	MERCPROFILESTRUCT const& merc = GetProfile(static_cast<ProfileID>(MahjongChatRoll() % 40));
 	if (merc.zNickname.empty()) return;
 	gMJVisitorHandle = ST::format("@{}", merc.zNickname.to_lower());
@@ -1344,8 +1410,10 @@ static void MahjongVisitorArrives()
 		DeleteVideoObject(big);
 	}
 	catch (...) {}
+	gfMJVisitorHere = TRUE;
 	MahjongSystemSay(ST::format("{} has joined the room - player of the month", gMJVisitorHandle));
 	MahjongSay(4, gMJVisitorTrash[MahjongChatRoll() % 14]);
+	MahjongSay(4, gMJVisitorTrash[(MahjongChatRoll() / 3 + 7) % 14]);
 	guiMJVisitorLeaves = MahjongNow() + 26000 + MahjongChatRoll() % 20000;
 }
 
@@ -1520,7 +1588,8 @@ static void MahjongUpdateButtons()
 	{
 		case MJUI_IDLE:
 			// below the parlour sign
-			MahjongPlaceNewGameButton("Deal Me In", MJ_X(201), MJ_Y(234), 100);
+			// centred in the pool of light, where the hand will be dealt
+			MahjongPlaceNewGameButton("Deal Me In", MJ_X(201), MJ_Y(227), 100);
 			break;
 		case MJUI_HAND_END:
 			MahjongPlaceNewGameButton("Next Hand", MJ_X(331), MJ_Y(258), 100);
@@ -1640,7 +1709,13 @@ static INT32 MahjongRowHeight(std::size_t i)
 
 static bool MahjongTypingRowActive()
 {
-	return !gMJPending.empty() && gMJPending.front().who > 0;
+	// ephemeral by construction: derived from the head of the queue, never
+	// from a timer of its own, and never for somebody who has left
+	if (gMJPending.empty()) return false;
+	INT8 const who = gMJPending.front().who;
+	if (who <= 0) return false;
+	if (who == 4 && !gfMJVisitorHere) return false;
+	return true;
 }
 
 static INT32 MahjongContentH()
@@ -3388,6 +3463,8 @@ void EnterMahjong()
 	guiMJStatic = nullptr;
 	guiMJFeltRed = nullptr;
 	guiMJDragon = nullptr;
+	guiMJGlow = nullptr;
+	guiMJRail = nullptr;
 	guiMJKingpinFace = nullptr;
 	guiMJSign = nullptr;
 	try { guiMJKingpinFace = MahjongLoadFace(KINGPIN, "65face"); } catch (...) {}
@@ -3399,6 +3476,8 @@ void EnterMahjong()
 	{
 		guiMJTiles      = AddVideoObjectFromFile("sti/laptop/mahjongtiles.sti");
 		guiMJFeltRed    = AddVideoObjectFromFile("sti/laptop/mahjongfeltred.sti");
+		guiMJGlow       = AddVideoObjectFromFile("sti/laptop/mahjongglow.sti");
+		guiMJRail       = AddVideoObjectFromFile("sti/laptop/mahjongrail.sti");
 		guiMJDragon     = AddVideoObjectFromFile("sti/laptop/mahjongdragon.sti");
 		guiMJTilesSmall = AddVideoObjectFromFile("sti/laptop/mahjongtilessmall.sti");
 		guiMJFelt       = AddVideoObjectFromFile("sti/laptop/mahjongfelt.sti");
@@ -3565,9 +3644,12 @@ void ExitMahjong()
 	if (guiMJShillSurf) { DeleteVideoSurface(guiMJShillSurf); guiMJShillSurf = nullptr; }
 	if (guiMJVisitorSurf) { DeleteVideoSurface(guiMJVisitorSurf); guiMJVisitorSurf = nullptr; }
 	gMJVisitorHandle.clear();
+	gfMJVisitorHere = FALSE;
 	if (guiMJStatic)     { DeleteVideoObject(guiMJStatic);     guiMJStatic = nullptr; }
 	if (guiMJFeltRed)    { DeleteVideoObject(guiMJFeltRed);    guiMJFeltRed = nullptr; }
 	if (guiMJDragon)     { DeleteVideoObject(guiMJDragon);     guiMJDragon = nullptr; }
+	if (guiMJGlow)       { DeleteVideoObject(guiMJGlow);       guiMJGlow = nullptr; }
+	if (guiMJRail)       { DeleteVideoObject(guiMJRail);       guiMJRail = nullptr; }
 	if (guiMJKingpinFace) { DeleteVideoObject(guiMJKingpinFace); guiMJKingpinFace = nullptr; }
 	if (guiMJSign) { DeleteVideoObject(guiMJSign); guiMJSign = nullptr; }
 	if (guiMJVoidIcon) { DeleteVideoObject(guiMJVoidIcon); guiMJVoidIcon = nullptr; }
@@ -3676,8 +3758,8 @@ static void MahjongPrintPlayerLines(int player, INT32 x, INT32 y, INT32 w, INT32
 
 	SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_LTGREEN, FONT_MCOLOR_BLACK, 0);
 	SetFontForegroundRGB(MJ_TOKEN_RGB);
-	if (guiMJChips) BltVideoObject(FRAME_BUFFER, guiMJChips, 1, x, scoreY - 1);
-	MPrint(x + (guiMJChips ? 16 : 0), scoreY, ST::format("{}", p.score));
+	if (guiMJChips) BltVideoObject(FRAME_BUFFER, guiMJChips, 1, x, scoreY - 3);
+	MPrint(x + (guiMJChips ? 20 : 0), scoreY, ST::format("{}", p.score));
 
 	int const order = MahjongWinOrderOf(player);
 	if (order >= 0)
@@ -3822,7 +3904,7 @@ static void MahjongRenderTopPanels()
 	for (int seat : { 3, 1 })
 	{
 		INT32 const x = MJ_X(seat == 3 ? MJ_LEFT_X : MJ_RIGHT_X);
-		INT32 const y = MJ_Y(MJ_TOP_Y);
+		INT32 const y = MJ_Y(MJ_SIDE_Y);
 		MahjongDrawPanelFrame(x, y, MJ_SIDE_W, MJ_SIDE_H);
 		INT32 const fx = x + (MJ_SIDE_W - MJ_FACE65_W) / 2;
 		if (MahjongIsPlayersTurn(seat)) MahjongDrawTurnRing(fx, y + 3);
@@ -3869,6 +3951,34 @@ static void MahjongRenderInfoBlock()
 		}
 		MahjongDrawWindBadge(0, fx, fy);
 		MahjongDrawVoidBadge(0, fx, fy);
+
+		// the profile bio sits at the foot of the block, like a caption
+		if (MahjongGameLive())
+		{
+			SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_DKGRAY, FONT_MCOLOR_BLACK, 0);
+			std::vector<ST::string> bioLines;
+			ST::string bioLine;
+			for (auto const& word : ST::string(MahjongSeatBio()).split(' '))
+			{
+				ST::string const cand = bioLine.empty() ? word : bioLine + " " + word;
+				// the bio runs the full width of the profile block, not the
+				// width of the portrait above it
+				if (!bioLine.empty() && StringPixLength(cand, FONT10ARIAL) > MJ_X(492) - fx)
+				{
+					bioLines.push_back(bioLine);
+					bioLine = word;
+				}
+				else bioLine = cand;
+			}
+			bioLines.push_back(bioLine);
+			INT32 bioY = MJ_Y(MahjongBarTop() + MahjongBarH()) - 30
+					- static_cast<INT32>(bioLines.size()) * 11;
+			for (ST::string const& line : bioLines)
+			{
+				MPrint(fx, bioY, line);
+				bioY += 11;
+			}
+		}
 	}
 	INT32 const x = MJ_X(MJ_CHAT_W + 10 + MJ_FACE65_W + 8), y = MJ_Y(MahjongBarTop() + 5);
 
@@ -3898,8 +4008,8 @@ static void MahjongRenderInfoBlock()
 	}
 	SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_LTGREEN, FONT_MCOLOR_BLACK, 0);
 	SetFontForegroundRGB(MJ_TOKEN_RGB);
-	if (guiMJChips) BltVideoObject(FRAME_BUFFER, guiMJChips, 1, x, y + 57);
-	MPrint(x + (guiMJChips ? 16 : 0), y + 58, ST::format("{}", you.score));
+	if (guiMJChips) BltVideoObject(FRAME_BUFFER, guiMJChips, 1, x, y + 55);
+	MPrint(x + (guiMJChips ? 20 : 0), y + 58, ST::format("{}", you.score));
 	int const order = MahjongWinOrderOf(0);
 	if (order >= 0)
 	{
@@ -3916,6 +4026,8 @@ static void MahjongRenderInfoBlock()
 				MahjongGame::HANDS_PER_MATCH));
 		ST::string const wall = ST::format("Wall: {}", gGame->wallRemaining());
 		MPrint(MJ_X(492) - StringPixLength(wall, FONT10ARIAL), footY, wall);
+		SetFontAttributes(TINYFONT1, FONT_MCOLOR_DKGRAY, FONT_MCOLOR_BLACK, 0);
+		MPrint(MJ_X(MJ_CHAT_W + 8), footY + 10, MJ_PAGE_VERSION);
 	}
 	if (!gfMJExhibition && MahjongInvitationalToday())
 	{
@@ -4080,6 +4192,7 @@ static void MahjongRenderChatBar()
 			// squad kibitz from your side of the modem
 			if (!cont && rowVisible) drawChip(0, lineY);
 			SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_LTGRAY, FONT_MCOLOR_BLACK, 0);
+			SetFontForegroundRGB(MJ_SELF_TEXT_RGB);
 			MPrint(x + 48, lineY, ReduceStringLength(l.text, w - 66, FONT10ARIAL));
 		}
 		else if (l.who == -5)
@@ -4124,13 +4237,15 @@ static void MahjongRenderChatBar()
 		}
 		else
 		{
-			// white handles, gray bodies, everything left-aligned
+			// white handles, grey bodies; your own lines run warm
+			bool const mine = l.who == 0;
 			INT32 nameW = 0;
 			if (!cont)
 			{
 				if (rowVisible) drawChip(l.who, lineY);
 				ST::string const name = ST::format("{}:", MahjongChatHandle(l.who));
 				SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_WHITE, FONT_MCOLOR_BLACK, 0);
+				if (mine) SetFontForegroundRGB(MJ_SELF_NAME_RGB);
 				MPrint(x + 48, lineY, name);
 				nameW = StringPixLength(name, FONT10ARIAL) + 4;
 				if (const char* const badge = MahjongRoleBadge(l.who))
@@ -4140,6 +4255,7 @@ static void MahjongRenderChatBar()
 				}
 			}
 			SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_LTGRAY, FONT_MCOLOR_BLACK, 0);
+			if (mine) SetFontForegroundRGB(MJ_SELF_TEXT_RGB);
 			MPrint(x + 48 + nameW, lineY, ReduceStringLength(l.text, w - 66 - nameW, FONT10ARIAL));
 		}
 	}
@@ -4474,9 +4590,11 @@ static void MahjongDrawFaceChip(INT8 who, INT32 cx, INT32 cy, UINT16 cw, UINT16 
 	else if (who == 4) { surf = guiMJVisitorSurf; src = SGPBox{ 24, 20, 58, 58 }; }
 	else surf = guiMJChipSurf[who - 1];
 	if (!surf) return;
-	// a quiet frame separates the face from the felt
+	// a quiet frame separates the face from the felt; your own runs warm
+	// like your text, so your lines read as a set
+	bool const mine = who == 0 && !seatView;
 	ColorFillVideoSurfaceArea(FRAME_BUFFER, cx - 1, cy - 1, cx + cw + 1, cy + ch + 1,
-				Get16BPPColor(FROMRGB(24, 74, 46)));
+				Get16BPPColor(mine ? FROMRGB(150, 138, 100) : FROMRGB(24, 74, 46)));
 	SGPBox const dst = { static_cast<UINT16>(cx), static_cast<UINT16>(cy), cw, ch };
 	BltStretchVideoSurface(FRAME_BUFFER, surf, &src, &dst);
 }
@@ -4775,6 +4893,10 @@ static void MahjongRenderLobby()
 			LAPTOP_SCREEN_LR_X, LAPTOP_SCREEN_WEB_LR_Y, Get16BPPColor(FROMRGB(92, 20, 24)));
 	if (guiMJLogo) BltVideoObject(FRAME_BUFFER, guiMJLogo, 0, MJ_X(61), MJ_Y(12));
 	MahjongLobbyFrame(MJ_X(61), MJ_Y(12), 380, 100, Get16BPPColor(FROMRGB(110, 40, 36)));
+	{
+		SetFontAttributes(TINYFONT1, FONT_MCOLOR_DKWHITE, FONT_MCOLOR_BLACK, 0);
+		MPrint(MJ_X(437) - StringPixLength(MJ_PAGE_VERSION, TINYFONT1), MJ_Y(16), MJ_PAGE_VERSION);
+	}
 
 	// warning block anchors the page bottom, same width as the sign
 	ColorFillVideoSurfaceArea(FRAME_BUFFER, MJ_X(62), MJ_Y(297), MJ_X(440), MJ_Y(371), Get16BPPColor(FROMRGB(44, 12, 14)));
@@ -4920,6 +5042,8 @@ static void MahjongRenderLadder()
 	// header sits left-aligned with the table, padded off the top edge
 	SetFontAttributes(FONT14ARIAL, FONT_MCOLOR_LTYELLOW, FONT_MCOLOR_BLACK, 0);
 	MPrint(MJ_X(96), MJ_Y(50), "HOUSE LADDER");
+	SetFontAttributes(TINYFONT1, FONT_MCOLOR_DKWHITE, FONT_MCOLOR_BLACK, 0);
+	MPrint(MJ_X(436) - StringPixLength(MJ_PAGE_VERSION, TINYFONT1), MJ_Y(54), MJ_PAGE_VERSION);
 
 	struct LadderRow { ST::string handle; const char* name; INT32 rating; ST::string note; };
 	std::vector<LadderRow> rows;
@@ -5040,6 +5164,10 @@ void RenderMahjong()
 		ColorFillVideoSurfaceArea(FRAME_BUFFER, LAPTOP_SCREEN_UL_X, LAPTOP_SCREEN_WEB_UL_Y,
 						LAPTOP_SCREEN_LR_X, LAPTOP_SCREEN_WEB_LR_Y, Get16BPPColor(FROMRGB(16, 84, 44)));
 	}
+
+	// the lamp hangs over your seat; the felt ends at a wooden lip
+	if (guiMJGlow) BltVideoObject(FRAME_BUFFER, guiMJGlow, 0, MJ_X(11), MJ_Y(MJ_HAND_Y - 28));
+	if (guiMJRail) BltVideoObject(FRAME_BUFFER, guiMJRail, 0, MJ_X(0), MJ_Y(MJ_CHAT_Y - 7));
 
 	MahjongRenderTopPanels();
 
@@ -5187,7 +5315,7 @@ void HandleMahjong()
 {
 	MahjongHandleFaceLife();
 	// somebody is at their keyboard: build their performance, then play it
-	if (!gMJPending.empty() && gMJPending.front().who > 0)
+	if (MahjongTypingRowActive())
 	{
 		MahjongPendingLine& pend = gMJPending.front();
 		// hold the indicator until they would actually be done
@@ -5238,11 +5366,14 @@ void HandleMahjong()
 		}
 	}
 	// the visiting champion says their piece and moves on
-	if (!gMJVisitorHandle.empty() && MahjongNow() >= guiMJVisitorLeaves)
+	// they cannot leave before their own words have landed: the queue is
+	// the room's only clock
+	if (gfMJVisitorHere && MahjongNow() >= guiMJVisitorLeaves &&
+		MahjongNow() >= guiMJQueueTail)
 	{
+		// they go, but their handle and face stay so their lines keep them
+		gfMJVisitorHere = FALSE;
 		MahjongSystemSay(ST::format("{} has left the room", gMJVisitorHandle));
-		gMJVisitorHandle.clear();
-		if (guiMJVisitorSurf) { DeleteVideoSurface(guiMJVisitorSurf); guiMJVisitorSurf = nullptr; }
 	}
 
 	// the wanderers return once the room has moved on without them

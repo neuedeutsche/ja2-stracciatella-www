@@ -64,6 +64,13 @@ PALETTE = [
     (44, 12, 14),     # 33 maroon plaque background
     (110, 40, 36),    # 34 maroon plaque frame
     (66, 66, 66),     # 35 soft ink for the numeral strokes
+    (28, 108, 60),    # 36 felt lit 1
+    (34, 118, 66),    # 37 felt lit 2
+    (41, 130, 74),    # 38 felt lit 3
+    (58, 34, 18),     # 39 wood dark
+    (92, 56, 28),     # 40 wood mid
+    (124, 80, 40),    # 41 wood light
+    (156, 106, 58),   # 42 wood highlight
 ]
 (TRANSPARENT, FACE, EDGE, SHADOW, HILITE, INK, RED, GREEN,
  DKGREEN, BLUE, TEAL, BACKFELT,
@@ -71,7 +78,8 @@ PALETTE = [
  FELT0, FELT1, FELT2, FELT3,
  LOGO_NEON, LOGO_HALO, STATIC_GRAY, OFFLINE_BG, OFFLINE_SIL,
  DRAGON_MAIN, DRAGON_DARK, RFELT0, RFELT1, RFELT2, RFELT3, DRAGON_GOLD,
- DRAGON_WM, PLAQUE_BG, PLAQUE_FRAME, SOFT_INK) = range(36)
+ DRAGON_WM, PLAQUE_BG, PLAQUE_FRAME, SOFT_INK,
+ GLOW1, GLOW2, GLOW3, WOOD_D, WOOD_M, WOOD_L, WOOD_HL) = range(43)
 
 # palette remap that turns a normal tile into its red-tinted "voided" twin
 VOID_REMAP = {FACE: VFACE, EDGE: VEDGE, SHADOW: VSHADOW, HILITE: VHILITE}
@@ -630,6 +638,66 @@ def make_signature(w=132, h=36, color=LOGO_NEON):
     return img
 
 
+# ordered dither so the light blends into the speckled felt instead of
+# banding: the felt is only a handful of colours, so we fake the ramp
+BAYER4 = [
+    [0, 8, 2, 10],
+    [12, 4, 14, 6],
+    [3, 11, 1, 9],
+    [15, 7, 13, 5],
+]
+
+
+def make_hand_glow(w=480, h=96):
+    """The lamp over your seat: an elliptical pool of lighter felt."""
+    img = Image.new("P", (w, h), TRANSPARENT)
+    img.putpalette([v for rgb in PALETTE for v in rgb] + [0] * (768 - 3 * len(PALETTE)))
+    px = img.load()
+    cx, cy = w / 2.0, h / 2.0
+    rx, ry = w / 2.0, h / 2.0
+    for y in range(h):
+        for x in range(w):
+            dx = (x - cx) / rx
+            dy = (y - cy) / ry
+            d = math.sqrt(dx * dx + dy * dy)
+            t = max(0.0, 1.0 - d)
+            t = t * t * (3.0 - 2.0 * t)          # smoothstep falloff
+            v = t + (BAYER4[y % 4][x % 4] / 16.0 - 0.5) * 0.14
+            if v < 0.20:
+                continue
+            px[x, y] = GLOW1 if v < 0.46 else GLOW2 if v < 0.74 else GLOW3
+    return img
+
+
+def make_table_rail(w=502, h=7):
+    """The wooden lip where the felt ends and the room begins."""
+    img = Image.new("P", (w, h), WOOD_M)
+    img.putpalette([v for rgb in PALETTE for v in rgb] + [0] * (768 - 3 * len(PALETTE)))
+    px = img.load()
+    state = 0x51F3A7
+    for x in range(w):
+        state = (state * 1103515245 + 12345) & 0x7FFFFFFF
+        r = state % 100
+        px[x, 0] = WOOD_HL                      # light catches the top edge
+        px[x, 1] = WOOD_L if r < 70 else WOOD_HL
+        px[x, 2] = WOOD_M if r < 80 else WOOD_L
+        px[x, 3] = WOOD_M if r < 55 else WOOD_D  # grain
+        px[x, 4] = WOOD_M if r < 75 else WOOD_D
+        px[x, 5] = WOOD_D
+        px[x, 6] = INK                          # shadow under the lip
+    # a few long grain streaks so it does not read as noise
+    for streak in range(9):
+        state = (state * 1103515245 + 12345) & 0x7FFFFFFF
+        sx = state % w
+        state = (state * 1103515245 + 12345) & 0x7FFFFFFF
+        length = 20 + state % 70
+        row = 2 + (state % 3)
+        for i in range(length):
+            if sx + i < w:
+                px[sx + i, row] = WOOD_D if row > 2 else WOOD_L
+    return img
+
+
 def main():
     write_sti(OUT_DIR / "mahjongtiles.sti", make_tiles(30, 40, 3))
     write_sti(OUT_DIR / "mahjongtilessmall.sti", make_tiles(20, 27, 2))
@@ -649,6 +717,8 @@ def main():
                make_dragon(64, DRAGON_WM)])
     write_sti(OUT_DIR / "mahjongsign.sti", [make_signature()])
     write_sti(OUT_DIR / "mahjongvoid.sti", make_void_icons())
+    write_sti(OUT_DIR / "mahjongglow.sti", [make_hand_glow()])
+    write_sti(OUT_DIR / "mahjongrail.sti", [make_table_rail()])
 
 
 if __name__ == "__main__":
