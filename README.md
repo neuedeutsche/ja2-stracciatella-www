@@ -4,7 +4,12 @@
 
 Built on [JA2 Stracciatella](https://github.com/ja2-stracciatella/ja2-stracciatella).
 
-![The Parlour lobby](docs/screenshots/lobby.png)
+<p align="center">
+  <img src="docs/screenshots/lobby.png" width="720"
+       alt="The San Mona Mahjong Parlour home page, running in JA2's in-game laptop browser">
+</p>
+
+<p align="center"><sub>The San Mona Mahjong Parlour, open in the laptop's browser on day 8.</sub></p>
 
 ## The angle
 
