@@ -3977,11 +3977,11 @@ static void MahjongRenderLadder()
 	rows.push_back({ "@shady_lady",   "Layla",     1490, "" });
 	rows.push_back({ "@e11iot",       "Elliot",    1104, "abandoned: 0" });
 	rows.push_back({ gMJSelfNick.empty() ? ST::string("@you") : ST::format("@{}", gMJSelfNick.to_lower()),
-			"you", MahjongPlayerRating(), MahjongRatingProvisional() ? "(prov)" : "" });
+			"you", MahjongPlayerRating(), "" });
 	std::sort(rows.begin(), rows.end(), [](LadderRow const& a, LadderRow const& b) { return a.rating > b.rating; });
 
 	// inset list box, chat-style: sunken well plus a decorative rail
-	INT32 const boxT = 76, boxB = boxT + 16 + static_cast<INT32>(rows.size()) * 18 + 6;
+	INT32 const boxT = 76, boxB = boxT + 16 + (static_cast<INT32>(rows.size()) + 1) * 18 + 6;
 	ColorFillVideoSurfaceArea(FRAME_BUFFER, MJ_X(66), MJ_Y(boxT), MJ_X(436), MJ_Y(boxB), Get16BPPColor(FROMRGB(140, 60, 52)));
 	ColorFillVideoSurfaceArea(FRAME_BUFFER, MJ_X(67), MJ_Y(boxT + 1), MJ_X(435), MJ_Y(boxB - 1), Get16BPPColor(FROMRGB(30, 8, 10)));
 	// rail
@@ -4004,10 +4004,31 @@ static void MahjongRenderLadder()
 		SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_DKWHITE, FONT_MCOLOR_BLACK, 0);
 		MPrint(MJ_X(196), MJ_Y(rowY + 2), rows[i].handle);
 		SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_LTGREEN, FONT_MCOLOR_BLACK, 0);
-		ST::string const rating = ST::format("{}", rows[i].rating);
+		bool const isYou = strcmp(rows[i].name, "you") == 0;
+		ST::string const rating = ST::format("{}{}", rows[i].rating,
+				isYou && MahjongRatingProvisional() ? "*" : "");
 		MPrint(MJ_X(344) - StringPixLength(rating, FONT10ARIAL), MJ_Y(rowY + 2), rating);
 		SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_DKWHITE, FONT_MCOLOR_BLACK, 0);
 		MPrint(MJ_X(352), MJ_Y(rowY + 2), rows[i].note);
+	}
+
+	// the house keeps one name on the list as a warning
+	{
+		ColorFillVideoSurfaceArea(FRAME_BUFFER, MJ_X(68), MJ_Y(rowY - 2), MJ_X(424), MJ_Y(rowY + 15),
+					Get16BPPColor(rows.size() % 2 == 0 ? FROMRGB(66, 18, 18) : FROMRGB(50, 13, 15)));
+		SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_LTYELLOW, FONT_MCOLOR_BLACK, 0);
+		MPrint(MJ_X(76), MJ_Y(rowY + 2), "-.");
+		SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_DKWHITE, FONT_MCOLOR_BLACK, 0);
+		MPrint(MJ_X(96), MJ_Y(rowY + 2), "Iggy");
+		// struck from the record, literally
+		ColorFillVideoSurfaceArea(FRAME_BUFFER, MJ_X(95), MJ_Y(rowY + 7), MJ_X(96) + StringPixLength("Iggy", FONT10ARIAL) + 2, MJ_Y(rowY + 8),
+					Get16BPPColor(FROMRGB(200, 40, 40)));
+		MPrint(MJ_X(196), MJ_Y(rowY + 2), "@glass_jaw");
+		SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_DKWHITE, FONT_MCOLOR_BLACK, 0);
+		MPrint(MJ_X(344) - StringPixLength("-", FONT10ARIAL), MJ_Y(rowY + 2), "-");
+		SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_LTRED, FONT_MCOLOR_BLACK, 0);
+		MPrint(MJ_X(352), MJ_Y(rowY + 2), "BANNED (knuckles)");
+		rowY += 18;
 	}
 
 	INT32 secY = boxB + 14;

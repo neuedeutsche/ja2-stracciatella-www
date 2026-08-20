@@ -63,6 +63,7 @@ PALETTE = [
     (64, 20, 22),     # 32 dragon maroon watermark (slightly lighter than box)
     (44, 12, 14),     # 33 maroon plaque background
     (110, 40, 36),    # 34 maroon plaque frame
+    (66, 66, 66),     # 35 soft ink for the numeral strokes
 ]
 (TRANSPARENT, FACE, EDGE, SHADOW, HILITE, INK, RED, GREEN,
  DKGREEN, BLUE, TEAL, BACKFELT,
@@ -70,7 +71,7 @@ PALETTE = [
  FELT0, FELT1, FELT2, FELT3,
  LOGO_NEON, LOGO_HALO, STATIC_GRAY, OFFLINE_BG, OFFLINE_SIL,
  DRAGON_MAIN, DRAGON_DARK, RFELT0, RFELT1, RFELT2, RFELT3, DRAGON_GOLD,
- DRAGON_WM, PLAQUE_BG, PLAQUE_FRAME) = range(35)
+ DRAGON_WM, PLAQUE_BG, PLAQUE_FRAME, SOFT_INK) = range(36)
 
 # palette remap that turns a normal tile into its red-tinted "voided" twin
 VOID_REMAP = {FACE: VFACE, EDGE: VEDGE, SHADOW: VSHADOW, HILITE: VHILITE}
@@ -150,7 +151,7 @@ def draw_seven_segment(d, digit, x, y, w, h, color, thick):
 def draw_man(d, rank, w, h):
     # black numeral on top, small red digit below (classic wan tile)
     if w >= 30:
-        nx, ny, nw, nh, thick = 5, 4, w - 10, 19, 2
+        nx, ny, nw, nh, thick = 5, 5, w - 10, 19, 2
         dw, dh, dt = 7, 9, 2
         dy = 27
     else:
@@ -160,7 +161,7 @@ def draw_man(d, rank, w, h):
     for (x0, y0, x1, y1) in NUMERALS[rank]:
         thick_line(d,
                 nx + x0 * nw // 100, ny + y0 * nh // 100,
-                nx + x1 * nw // 100, ny + y1 * nh // 100, INK, thick)
+                nx + x1 * nw // 100, ny + y1 * nh // 100, SOFT_INK, thick)
     draw_seven_segment(d, rank, (w - dw) // 2, dy, dw, dh, RED, dt)
 
 
