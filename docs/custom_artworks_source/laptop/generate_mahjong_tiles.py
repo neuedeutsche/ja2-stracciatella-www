@@ -463,15 +463,20 @@ def make_static_frames(w, h, frames=3):
 
 
 def make_chips():
-    """Clean top-view poker chips: solid ring, white band, solid centre."""
+    """Top-view casino chips for the score display: frame 0 house chip,
+    frame 1 the gold leader chip. Classic edge-spot print reads as 'chip'
+    even at 13px."""
     out = []
-    for color in (RED, LOGO_NEON):
+    for body, spot, ring in ((FACE, RED, RED), (LOGO_NEON, INK, LOGO_HALO)):
         img = Image.new("P", (13, 13), TRANSPARENT)
         img.putpalette([v for rgb in PALETTE for v in rgb] + [0] * (768 - 3 * len(PALETTE)))
         d = ImageDraw.Draw(img)
-        d.ellipse([0, 0, 12, 12], fill=color)
-        d.ellipse([2, 2, 10, 10], fill=FACE)
-        d.ellipse([4, 4, 8, 8], fill=color)
+        d.ellipse([0, 0, 12, 12], fill=body, outline=SHADOW)
+        # six edge spots
+        for (x, y) in ((5, 0), (0, 3), (10, 3), (0, 9), (10, 9), (5, 11)):
+            d.rectangle([x, y, x + 2, y + 1], fill=spot)
+        d.ellipse([3, 3, 9, 9], outline=ring)
+        d.point([4, 2], fill=HILITE)
         out.append(img)
     return out
 

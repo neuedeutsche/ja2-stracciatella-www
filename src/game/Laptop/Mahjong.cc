@@ -29,6 +29,7 @@
 #include "Input.h"
 #include "Laptop.h"
 #include "Local.h"
+#include <cmath>
 #include "MahjongGame.h"
 #include "MouseSystem.h"
 #include "Soldier_Profile.h"
@@ -82,26 +83,27 @@
 #define MJ_POND_COLS		8
 #define MJ_POND_TOP_X		163
 #define MJ_POND_TOP_Y		77
-#define MJ_POND_BOTTOM_Y	211
+#define MJ_POND_BOTTOM_Y	181
 #define MJ_POND_SIDE_ROWS	5
 #define MJ_POND_SIDE_Y		5  // side ponds align with the panel tops
 #define MJ_POND_LEFT_X		72
 #define MJ_POND_RIGHT_X		408
 
 // hand + buttons + chat bar
-#define MJ_HAND_Y		248
+#define MJ_HAND_Y		218
 #define MJ_HAND_RAISE		6
 #define MJ_HAND_X		22
 #define MJ_DRAWN_X		450
 #define MJ_SETUP_BTN_Y		198  // void/pass/new-game live mid-table (pond empty then)
 #define MJ_CLAIM_BTN_X		22
-#define MJ_CLAIM_BTN_Y		216
-#define MJ_CHAT_Y		294
-#define MJ_CHAT_H		106  // runs to the true bottom of the web page area
+#define MJ_CLAIM_BTN_Y		186
+#define MJ_CHAT_Y		264
+#define MJ_CHAT_H		136  // runs to the true bottom of the web page area
 #define MJ_CHAT_VISIBLE		7
 #define MJ_CHAT_HISTORY		44
+#define MJ_CLUSTER_GAP		5   // air between one speaker's block and the next
 #define MJ_CHAT_W		338  // the right side of the bar is the info block
-#define MJ_CHAT_INPUT_MAX	120
+#define MJ_CHAT_INPUT_MAX	220
 // the singular UI accent: green with a slight tint toward blue
 #define MJ_TOKEN_RGB		FROMRGB(74, 182, 100)
 
@@ -260,6 +262,10 @@ static const ProfileID gMJSeat2Profile[3] = { QUEEN, DARREN, MADAME };
 static const char* const gMJSeat2Name[3] = { "Deidranna", "Darren", "Layla" };
 static const char* const gMJSeat2Handle[3] = { "@dejdranna666", "@ringside_d", "@shady_lady" };
 static const char* const gMJSeat2Short[3] = { "@666", "@darren", "@layla" };
+// seat 4 is nobody's seat: the parlour's player of the month, dropping in
+static ST::string gMJVisitorHandle;
+static SGPVSurface* guiMJVisitorSurf = nullptr;
+static UINT32 guiMJVisitorLeaves = 0;
 
 static const char* MahjongSeatHandle(int seat)
 {
@@ -278,8 +284,8 @@ static ST::string MahjongChatHandle(int who)
 {
 	if (who <= 0)
 	{
-		ST::string const& nick = gfMJExhibition ? gMJShillNick : gMJSelfNick;
-		return nick.empty() ? ST::string("@you") : ST::format("@{}", nick.to_lower());
+		// you speak as yourself even when the House is warming your chair
+		return gMJSelfNick.empty() ? ST::string("@you") : ST::format("@{}", gMJSelfNick.to_lower());
 	}
 	switch (who)
 	{
@@ -287,6 +293,7 @@ static ST::string MahjongChatHandle(int who)
 		case 2:  return gMJSeat2Short[giMJSeat2Persona];
 		default: break;
 	}
+	if (who == 4) return gMJVisitorHandle;
 	static const char* const shortPersona[3] = { "@e11iot", "@house", "@tony" };
 	return shortPersona[giMJSeat3Persona];
 }
@@ -335,16 +342,34 @@ struct MahjongChatLine
 };
 static std::vector<MahjongChatLine> gMJChat;
 
-static const char* const gMJChatGreet[3][5] =
+static const char* const gMJChatGreet[3][12] =
 {
 	{ "gentlemen. and... whoever else is dialed in.", "another evening, another table. my father loved this game.",
-	  "ah, my favourite opponents. mostly.", "we are civil at the tiles. nowhere else.", "from exile, good evening." },
+	  "ah, my favourite opponents. mostly.", "we are civil at the tiles. nowhere else.", "from exile, good evening.",
+	  "the modem held. that is already a victory.", "I have set aside the whole evening. I have little else set aside.",
+	  "good evening from a rented room with excellent posture.", "let us pretend, for four hands, that nothing happened.",
+	  "I dressed for this. nobody can see it, but I dressed for this.",
+	  "my accountant advised against tonight. my accountant is not invited.",
+	  "if I win I buy back one hectare. symbolically." },
 	{ "I expect tribute, not resistance.", "sit. lose. thank me after.", "the Queen has arrived. bow or pay.",
-	  "I play to remind you all of your place.", "Meduna's finest table. MY table." },
+	  "I play to remind you all of your place.", "Meduna's finest table. MY table.",
+	  "I have cleared my evening. clearing things is what I do.",
+	  "the palace is quiet tonight. I had it made quiet.",
+	  "four hands. then I return to ruining something larger.",
+	  "you may address me as Your Majesty. Elliot will demonstrate.",
+	  "I am in a generous mood. it will pass before the deal.",
+	  "someone has been talking about my rating. someone will stop.",
+	  "let us begin. the mines do not extort themselves." },
 	{ "hi everyone!! gl hf :)", "hii!! I practiced this time!!", "please be nice to me today :)",
-	  "the palace modem is being weird again, sorry if I lag!!", "oh good, nobody brought guns this time :)" },
+	  "the palace modem is being weird again, sorry if I lag!!", "oh good, nobody brought guns this time :)",
+	  "I finished the reports EARLY so I could be here!!", "hello!! I brought my lucky pencil!!",
+	  "sorry sorry am I late?? I got lost in my own dungeon again",
+	  "everyone please remember I am a person with feelings!! ok gl!!",
+	  "hi!! I'm allowed one hobby and this is it!!",
+	  "I read a strategy article!! it was mostly about breathing!!",
+	  "good evening everyone!! (I have to say it that way now, orders)" },
 };
-static const char* const gMJChatIdle[3][15] =
+static const char* const gMJChatIdle[3][30] =
 {
 	{ "hmm. a delicate position.", "in my day we played for estates.", "patience is a weapon too.",
 	  "this table is the only place she and I still speak.", "somewhere out there my mercenaries are working. I hope.",
@@ -356,7 +381,22 @@ static const char* const gMJChatIdle[3][15] =
 	  "the Chivaldori signet ring is the last thing I have not pawned.",
 	  "my father Andreas taught me this game. patience, he said. patience.",
 	  "Miguel Cordona ran against me in '88. now neither of us has a job.",
-	  "in Milan I had a red smoking jacket for card nights. the pawnbroker has it now." },
+	  "in Milan I had a red smoking jacket for card nights. the pawnbroker has it now.",
+	  "I dream of the Drassen airstrip. of all things. the airstrip.",
+	  "one learns a great deal about people from how they discard.",
+	  "there is a portrait of me in a palace hallway. I hope they dust it.",
+	  "the hotel here charges by the week. I pay by the week.",
+	  "I was told exile builds character. I had character. I wanted a country.",
+	  "half my cabinet fled to Estoni. the useless half, thankfully.",
+	  "when I am restored, this table gets a plaque. a small one.",
+	  "my tailor still calls me Highness. he also still bills me.",
+	  "the mines paid for my education. now they pay for her army.",
+	  "I have three suits and four opinions left.",
+	  "sometimes I forget I am the one who hired mercenaries. odd sensation.",
+	  "they say the palace kitchens still make my mother's bread. probably a lie.",
+	  "I keep a map of Arulco above the bed. it is not restful.",
+	  "a gentleman does not sulk. a gentleman plays another hand.",
+	  "the wall is like politics. you draw what is left." },
 	{ "hurry UP, peasants.", "read the rules, cretins.", "I could have you all shot, you know.",
 	  "faster. wars do not run themselves.", "I miss the days when losing to me was fatal.",
 	  "somewhere a village is being renamed after me. it soothes.", "Elliot. POSTURE.",
@@ -367,10 +407,25 @@ static const char* const gMJChatIdle[3][15] =
 	  "I should double the head price on that rebel girl. Ira, was it.",
 	  "we had winters in Romania that killed softer players than you.",
 	  "I won my election with 98 percent. the other 2 percent are no longer with us.",
-	  "red is MY colour. that is why the maps keep changing." },
+	  "red is MY colour. that is why the maps keep changing.",
+	  "my generals asked for reinforcements. I sent them a photograph of me.",
+	  "the peasants have started singing again. find out what about.",
+	  "I do not sleep. I merely stop supervising for a few hours.",
+	  "the throne is uncomfortable. that is the point of a throne.",
+	  "someone in Cambria is printing pamphlets. someone in Cambria will stop.",
+	  "I had a husband once. I have a country now. the trade favours me.",
+	  "Elliot, remind me why I keep you. no. do not. it will be worse.",
+	  "the loyalty of an army is purchased monthly. like a bad magazine.",
+	  "when this is over I shall have the whole coast repainted.",
+	  "my portraitist made me look kind. he is no longer a portraitist.",
+	  "every mine I hold is a vein I have opened. poetic, no?",
+	  "there is a rumour I inherited nothing. correct. I took it.",
+	  "power is simply the shortest distance between wanting and having.",
+	  "I have outlived two prophecies and one husband.",
+	  "Deidranna Reitman. say it properly or do not say it." },
 	{ "sorry sorry, still sorting!", "is it my turn? oh no.", "please nobody need my tiles...",
 	  "the Queen is staring at me through the screen. I can FEEL it.", "I should be filing reports right now...",
-	  "brb someone is yelling for me!! ...ok back.", "I get one nice evening a week and this is it!!",
+	  "brb someone is yelling for me!!", "I get one nice evening a week and this is it!!",
 	  "did everyone see me not lose last hand?? progress!!",
 	  "I alphabetized the dungeon paperwork today! don't ask by what.",
 	  "Joe the guard says hi! he's the only one here who's nice to me.",
@@ -378,66 +433,181 @@ static const char* const gMJChatIdle[3][15] =
 	  "I used to work at a bank. a BANK. with NORMAL people.",
 	  "the Queen keeps a photo of Romania on her desk. she yells at it. in Romanian.",
 	  "Darren invited me to watch the boxing once. I hid in the supply closet.",
-	  "wearing my lucky red socks today!! both of the lucky ones!!" },
+	  "wearing my lucky red socks today!! both of the lucky ones!!",
+	  "I have a desk now!! it's in a hallway but it's MINE!!",
+	  "does anyone else practice saying 'yes, Your Highness' in the mirror?? just me??",
+	  "I typed 'Dear Deidranna' once. ONCE.",
+	  "my performance review said 'present'. that's it. just present.",
+	  "the palace has 400 rooms and I am not allowed in 397 of them",
+	  "I saved a moth from the war room today. big day for us both!!",
+	  "sometimes I hide in the archive and just... breathe. it's nice down there!!",
+	  "I know where all the bodies are filed!! FILED. alphabetically!!",
+	  "if anything happens to me my cactus is on the third windowsill",
+	  "I asked for a raise once. I now have a smaller desk!!",
+	  "everyone at the palace has a nickname for me. none of them are Elliot.",
+	  "I've been practicing my chess. it's like this but sadder!!",
+	  "one day I'll retire somewhere flat and quiet with no queens in it",
+	  "the good news is nobody shoots at the person holding the clipboard!!",
+	  "I'm not nervous!! this is just how my hands are!!" },
 };
-static const char* const gMJChatOnHumanWin[3][5] =
+static const char* const gMJChatOnHumanWin[3][12] =
 {
 	{ "well played. I mean that sincerely.", "a clean win. my compliments.", "the student surpasses the table.",
-	  "good. spend it on ammunition.", "my money is well invested in you, it seems." },
+	  "good. spend it on ammunition.", "my money is well invested in you, it seems.",
+	  "that is how my father used to close a hand.", "beautiful. cruel, but beautiful.",
+	  "I would applaud but the modem would drop.", "you play like someone with a country to take.",
+	  "take it. take all of it. just keep going north.",
+	  "I have lost to worse people for smaller reasons.",
+	  "note the hand. I intend to steal it later." },
 	{ "CHEATER. I demand a recount.", "lag. that was LAG.", "enjoy it. it will not happen twice.",
-	  "first my country, now my tiles. INSUFFERABLE.", "Elliot, note their name. the list, Elliot." },
+	  "first my country, now my tiles. INSUFFERABLE.", "Elliot, note their name. the list, Elliot.",
+	  "the wall was tampered with. I can feel it.", "beginners' luck. sustained, statistically improbable luck.",
+	  "you will regret being memorable.", "I have had generals executed for less impressive work.",
+	  "fine. FINE. deal again.", "somewhere a mine just became more expensive for you.",
+	  "savour it. I am extremely patient and extremely well armed." },
 	{ "wow!! can you teach me??", "that was so cool!!", "I knew you could do it!! (I lost tho)",
-	  "at least SOMEBODY here is allowed to win :)", "quick, win again before she says anything!!" },
+	  "at least SOMEBODY here is allowed to win :)", "quick, win again before she says anything!!",
+	  "I'm writing that hand down!! for science!!", "see, THIS is why I watch instead of think!!",
+	  "amazing!! don't look at her face right now!! don't!!",
+	  "if I clap does that count as treason??", "you're my favourite player and I will deny saying that",
+	  "that was better than anything that happens at my job!!",
+	  "please win the war too!! sorry!! ignore that!!" },
 };
-static const char* const gMJChatWallLow[3][3] =
+static const char* const gMJChatWallLow[3][8] =
 {
-	{ "the wall runs thin, friends.", "few tiles remain. choose with care.", "the endgame. always my favourite." },
-	{ "end this FARCE already.", "the wall dies. like everything else around me.", "someone win before I have the wall executed." },
-	{ "maybe nobody wins? that'd be ok...", "almost over!! nobody panic!!", "wall's almost gone. phew." },
+	{ "the wall runs thin, friends.", "few tiles remain. choose with care.", "the endgame. always my favourite.",
+	  "we are down to the last honest tiles.", "whatever is left is what we deserve.",
+	  "this is where fortunes and countries are decided. usually badly.",
+	  "hold something back. always hold something back.",
+	  "the wall empties like a treasury. I would know." },
+	{ "end this FARCE already.", "the wall dies. like everything else around me.", "someone win before I have the wall executed.",
+	  "if this ends in a draw I am blaming Elliot.", "so few tiles. so many disappointments.",
+	  "the wall is nearly gone and NOBODY has suffered enough.",
+	  "finish. I have a country to mismanage.",
+	  "we are scraping the bottom. how familiar." },
+	{ "maybe nobody wins? that'd be ok...", "almost over!! nobody panic!!", "wall's almost gone. phew.",
+	  "counting the tiles makes me anxious!! so I stopped!!",
+	  "is it bad that I'm relieved?? it's bad isn't it",
+	  "everyone stay calm!! I said everyone!! including me!!",
+	  "so close to a draw!! my best result!!",
+	  "the wall's nearly empty and so is my hand!! matching!!" },
 };
 // contextual table talk: what the AIs blurt out about their own hands.
 // Elliot always leaks his tenpai - that is the table's one honest tell.
-static const char* const gMJChatTenpai[3][4] =
+static const char* const gMJChatTenpai[3][10] =
 {
 	{ "the wind changes, friends.", "hm. suddenly this evening improves.", "careful with your discards now.",
-	  "I would hold your tiles a little tighter, all of you." },
+	  "I would hold your tiles a little tighter, all of you.",
+	  "a door has opened. I shall be polite about it.",
+	  "one tile. one small, obedient tile.",
+	  "do not be alarmed. be careful, but not alarmed.",
+	  "I feel the way I felt the night before the election.",
+	  "somebody is about to fund my dinner.",
+	  "gentlemen. and lady. brace yourselves." },
 	{ "I can taste it. Someone is about to PAY.", "one little tile and one of you SUFFERS.", "come now. feed me.",
-	  "the noose is tied. who walks into it?" },
+	  "the noose is tied. who walks into it?",
+	  "I am one tile from a very good mood.",
+	  "somebody in this room is about to fund a battalion.",
+	  "hold your breath. I intend to enjoy this.",
+	  "the wall and I have reached an understanding.",
+	  "discard carefully. or do not. I am flexible about your suffering.",
+	  "this is the part where I stop being patient." },
 	{ "oh!! oh!! I just need ONE more tile!!", "guys I'm SO close!! oh no I said that out loud", "one tile!! just one!! (oops)",
-	  "I'm waiting on something!! I mean- forget I said that!!" },
+	  "I'm waiting on something!! I mean- forget I said that!!",
+	  "nothing is happening!! nothing at all!! definitely not tenpai!!",
+	  "if I win I'm going to faint. fair warning!!",
+	  "my hands are shaking!! that's normal right??",
+	  "one tile!! ONE!! I said it again!!",
+	  "I have never been this close to anything in my life",
+	  "please don't look at my discards. please." },
 };
-static const char* const gMJChatBadHand[3][4] =
+static const char* const gMJChatBadHand[3][10] =
 {
 	{ "a garden of weeds, this hand.", "some evenings the tiles simply refuse.",
-	  "I have commanded armies with less discipline than this hand.", "even Speck would not insure this hand." },
+	  "I have commanded armies with less discipline than this hand.", "even Speck would not insure this hand.",
+	  "this hand has the coherence of my cabinet.",
+	  "I have been dealt worse. in 1992. by my wife.",
+	  "there is no plan here. only architecture I did not approve.",
+	  "the tiles have voted. against me. as usual.",
+	  "one plays the hand one is given. loudly, in my case.",
+	  "if this were a country I would flee it. again." },
 	{ "who DEALT this garbage?", "these tiles are an INSULT.", "I should have the dealer flogged.",
-	  "my army gets better equipment than my tiles. and my army gets NOTHING." },
+	  "my army gets better equipment than my tiles. and my army gets NOTHING.",
+	  "this hand is treason in ceramic form.",
+	  "somebody has arranged this. somebody will be arranged in turn.",
+	  "I did not seize a nation to be handed THIS.",
+	  "the wall has made an enemy tonight.",
+	  "Elliot. did you touch the shuffler.",
+	  "this is what disloyalty looks like as a hand." },
 	{ "my tiles are awful... as usual :(", "does anyone else just... never draw anything good?",
-	  "I think my modem is cursed", "these tiles are worse than my performance reviews" },
+	  "I think my modem is cursed", "these tiles are worse than my performance reviews",
+	  "I'd complain but that's how I got the dungeon job",
+	  "this hand is a metaphor and I hate it",
+	  "13 tiles and not one of them likes me",
+	  "I'm going to pretend this is a strategy!!",
+	  "it's fine!! I'm used to it!! that's the sad part!!",
+	  "somewhere out there is a good hand. I hope it's happy." },
 };
-static const char* const gMJChatVoidDraw[3][4] =
+static const char* const gMJChatVoidDraw[3][10] =
 {
 	{ "fate hands me stones.", "and again the dead suit finds me.", "the wall has a sense of humour.",
-	  "exiled from my country, and now from this suit." },
+	  "exiled from my country, and now from this suit.",
+	  "the one suit I renounced. it follows me like creditors.",
+	  "I declared it void. the wall declared otherwise.",
+	  "useless. beautiful, but useless. like my title.",
+	  "another dead tile for the collection.",
+	  "I renounce things and they keep arriving. story of the decade.",
+	  "the wall is testing my manners." },
 	{ "ANOTHER dead tile. Insufferable.", "the wall mocks me. the WALL. mocks ME.", "dead tiles for a Queen. outrageous.",
-	  "whoever shuffled this will answer for it." },
+	  "whoever shuffled this will answer for it.",
+	  "I VOIDED that suit. the wall is being insubordinate.",
+	  "this is the third one. I am counting. I always count.",
+	  "worthless. I have executed men for being less worthless.",
+	  "the wall will be re-educated after this hand.",
+	  "give me anything else. ANYTHING.",
+	  "I declared that suit dead and it keeps breathing." },
 	{ "aww not again...", "why do I keep drawing these :(", "the wall hates me personally",
-	  "I swear the wall knows which suit I dropped" },
+	  "I swear the wall knows which suit I dropped",
+	  "of course. of COURSE.",
+	  "that's the fourth one!! I'm not even mad, I'm impressed!!",
+	  "should I keep it as a souvenir?? no?? ok",
+	  "I void a suit and the wall takes it personally",
+	  "this is exactly like my career!!",
+	  "dead tile. right on schedule." },
 };
 // war-aware table talk: lines keyed to actual campaign progress
 // (0 = early war, 1 = mid, 2 = late)
 // two lines per war tier: [tier*2] and [tier*2 + 1]
-static const char* const gMJChatWar[3][6] =
+// four lines per war tier: [tier*4 .. tier*4+3]
+static const char* const gMJChatWar[3][12] =
 {
 	{ "my investment shows promise. keep it up.", "Drassen, Omerta... names from my youth. take them back.",
+	  "the first towns are the hardest. so I am told, from here.",
+	  "I sent money and hope. mostly money.",
 	  "Arulco stirs, friend. I feel it even from here.", "half a country reclaimed. my father would have wept.",
-	  "we are close now. so close I can smell the palace dust.", "when Meduna falls, drinks at this table are on me." },
+	  "the mines are changing hands. she will feel that in her ledgers.",
+	  "the newspapers have started printing my name again. cautiously.",
+	  "we are close now. so close I can smell the palace dust.", "when Meduna falls, drinks at this table are on me.",
+	  "I have begun writing a speech. I have rewritten it nine times.",
+	  "one more push. I have a suit pressed and nowhere to wear it yet." },
 	{ "your little uprising amuses me. for now.", "a few dusty villages. keep them. they smell.",
+	  "I did not notice. I was told to notice, so I noticed.",
+	  "a rebellion is just an unpaid invoice with guns.",
 	  "you are becoming an IRRITATION.", "take my mines and I raise my ARMY. see how that ends.",
-	  "enjoy the table. it is the LAST thing you will take from me.", "come to Meduna, then. I will be waiting. with everything." },
+	  "my generals now knock before entering. that is your doing.",
+	  "I have started reading the casualty lists myself. how quaint.",
+	  "enjoy the table. it is the LAST thing you will take from me.", "come to Meduna, then. I will be waiting. with everything.",
+	  "the palace windows are bricked. for the draft. only the draft.",
+	  "you will find I am considerably worse when cornered." },
 	{ "things are pretty calm at the palace! mostly!", "some rebels landed somewhere! probably nothing!!",
+	  "I filed a report about it! she filed it back at me!",
+	  "everything is FINE. that's the official position!!",
 	  "the Queen has been... tense lately. very tense.", "we lost ANOTHER town today. I had to read the report out loud.",
-	  "please win quickly, the palace is NOT a fun place right now.", "the palace staff are all updating their resumes. all of them." },
+	  "I've started keeping my coat by the door!! no reason!!",
+	  "morale is high!! mine isn't but morale is!!",
+	  "please win quickly, the palace is NOT a fun place right now.", "the palace staff are all updating their resumes. all of them.",
+	  "I've memorized every exit. as a hobby!!",
+	  "if anyone needs a diligent clerk after all this, I'm just saying" },
 };
 
 // guest personality packs: category lines for the rotating left seat.
@@ -547,36 +717,58 @@ static int MahjongWarTier()
 
 // the Chivaldoris: she framed him, took his country, and now they share a
 // table. lines that only fire between the estranged spouses.
-static const char* const gMJSpouseEnricoRonsQueen[3] =
+static const char* const gMJSpouseEnricoRonsQueen[6] =
 {
-	"Enrico: \"you always hid your tiles from me. even then.\"",
-	"Enrico: \"consider it the first installment on my father's estate.\"",
-	"Enrico: \"from you, my dear, I take this one with particular pleasure.\"",
+	"Enrico: \"you always did discard too soon, my dear.\"",
+	"Enrico: \"thank you, darling. for once.\"",
+	"Enrico: \"twenty years and you still lead with your temper.\"",
+	"Enrico: \"I take this one for the palace. and the dog you rehomed.\"",
+	"Enrico: \"a small country's worth of satisfaction, that.\"",
+	"Enrico: \"you fed me. how very like our marriage.\"",
 };
-static const char* const gMJSpouseQueenRonsEnrico[3] =
+static const char* const gMJSpouseQueenRonsEnrico[6] =
 {
 	"Deidranna: \"I took your country. the tile is a formality.\"",
 	"Deidranna: \"you were always careless with what was yours, darling.\"",
 	"Deidranna: \"and THAT is why I manage the family assets now.\"",
+	"Deidranna: \"you hand things to me. it is your one talent.\"",
+	"Deidranna: \"another loss, my love. do keep a ledger.\"",
+	"Deidranna: \"I would say it was close. it was not.\"",
 };
 // idle bicker exchanges: opener + comeback, delivered via the reply queue
 struct MahjongBicker { const char* open; int replyWho; const char* reply; };
-static const MahjongBicker gMJBicker[14] =
+static const MahjongBicker gMJBicker[30] =
 {
 	{ "you never played like this when we were married.", 2, "when we were married you never NOTICED how I played." },
 	{ "does the palace still leak when it rains, my dear?", 2, "does exile still suit you, my dear?" },
 	{ "I could have forgiven almost everything, you know.", 2, "how fortunate that I never asked." },
 	{ "my father taught me this game at that very palace.", 2, "and now the palace teaches ME. poetic." },
-	{ "Elliot. how is the palace plumbing these days?", 3, "we don't talk about the plumbing, sir. we don't." },
-	{ "I gave you a crown, my dear. you gave me a suitcase.", 2, "packed by MY staff. you are welcome." },
-	{ "half a fortune says you cannot win the next hand.", 2, "keep the fortune. I will take the other half of Arulco." },
 	{ "Elliot, blink twice if she is making you play.", 3, "haha! what! no!! (help)" },
+	{ "you married me for the election, admit it.", 2, "I married you for Arulco, darling. the election was gravy." },
+	{ "Miguel sends his regards, by the way.", 2, "tell Cordona his file is still on my desk." },
+	{ "Elliot. how is the palace plumbing lately?", 3, "sir we agreed never to talk about the plumbing." },
 	{ "your father promised me a mining empire, my dear.", 2, "and MY father promised me a man with a spine." },
 	{ "the Drassen miners sang for us at the wedding. remember?", 2, "they sing for whoever holds the payroll. I checked." },
 	{ "one day Arulco will remember the Chivaldori name.", 2, "it does. the old currency still has your nose on it." },
-	{ "Elliot. how is the palace plumbing lately?", 3, "sir we agreed never to talk about the plumbing." },
-	{ "you married me for the election, admit it.", 2, "I married you for Arulco, darling. the election was gravy." },
-	{ "Miguel sends his regards, by the way.", 2, "tell Cordona his file is still on my desk." },
+	{ "half a fortune says you cannot win the next hand.", 2, "keep the fortune. I will take the other half of Arulco." },
+	{ "I gave you a crown, my dear. you gave me a suitcase.", 2, "packed by MY staff. you are welcome." },
+	{ "you have my mother's ring, I notice.", 2, "I have your mother's country. the ring came with it." },
+	{ "did you ever love the man or only the address?", 2, "the address had better lighting." },
+	{ "the roses at the west wing were mine, you know.", 2, "they were dug up. they were sulking. like their owner." },
+	{ "you cannot govern a country by fear alone.", 2, "correct. one also needs a budget. I have both." },
+	{ "Elliot, does she still hum when she signs the warrants?", 3, "I really shouldn't answer that!! ...yes." },
+	{ "I still have the wedding photographs.", 2, "so do I. I use them for target practice." },
+	{ "we were happy once. briefly. on a Tuesday.", 2, "Wednesday. and you were asleep for most of it." },
+	{ "you always did overplay a strong position.", 2, "and you always did fold one before the reveal." },
+	{ "your generals despise you, my dear.", 2, "my generals are paid to despise me quietly." },
+	{ "Elliot, do you get holidays?", 3, "I get an hour!! on my birthday!! if there's no coup!!" },
+	{ "I dreamt of the palace kitchens last night.", 2, "they are a barracks now. the ovens still work." },
+	{ "you were softer before the crown.", 2, "the crown did not change me. it merely fit." },
+	{ "there is still a chair for you at my table, Deidranna.", 2, "there is still a cell for you at mine, Enrico." },
+	{ "the people will choose, in the end.", 2, "the people will be TOLD, in the end." },
+	{ "Elliot, has she read my letters?", 3, "she reads them aloud!! in a voice!! sorry!!" },
+	{ "one of us will be remembered kindly.", 2, "yes. and history is written in Meduna." },
+	{ "we could have been something, you and I.", 2, "we were. briefly. it is called a transaction." },
 };
 
 // Yahoo-style ladder ratings: yours derives from your persisted record,
@@ -609,7 +801,7 @@ static INT32 MahjongSeatRating(int seat)
 static const char* const gMJService[] =
 {
 	"The House reminds you: all results are final. NO REFUNDS",
-	"technical difficulties on table 2 have been dealt with. so has table 2",
+	"the technician who broke table 2 has been dealt with. table 2 is fine",
 	"the rake is 10%. counting the chips twice costs extra",
 	"we apologize for the lack of umlauts. the font budget went to the neon sign",
 	"lost connection? the modem answers to 'Bessie'. be gentle",
@@ -625,60 +817,118 @@ static const char* const gMJService[] =
 	"@dejdranna666 - abandoned games: 0 (disputed)",
 	"the Beginner Room remains under construction. Mr. Klaus sees no profit in mercy",
 	"Y2K compliance check: the parlour is ready. Bessie is not",
+	"best viewed in sir-FER 4.0 at 640x480. no exceptions",
+	"reminder: the felt is leased. treat it like it is someone else's. it is",
+	"our server lives above the Shady Lady. do not ask about the humidity",
+	"a guest requested a quieter table. a quieter table has been arranged for him",
+	"the house cat is called Ante. Ante does not take sides",
+	"management thanks the Drassen airport for its continued unwitting hospitality",
+	"new this week: losing streaks now come with a complimentary shrug",
+	"we do not host tournaments. tournaments imply somebody else could win",
+	"players are reminded that the ceiling fan is load-bearing",
+	"membership dues are voluntary the way breathing is voluntary",
+	"tipping the dealer is encouraged. the dealer is a modem",
+	"the parlour operates under Arulcan gaming law. we wrote it",
+	"complaints department hours: never. location: unmarked",
+	"tonight's dealer has been playing since before some of you were solvent",
+	"we have never had a fire. we have had three incidents involving fire",
+	"the coat check is Darren. Darren is also the coat",
+	"our lawyer says we cannot promise fair play. our owner says we can",
+	"the vending machine takes chips and gives nothing back. it is thematic",
+	"any resemblance to persons living or recently deceased is coincidental",
+	"winning too often is not against the rules. it is against the spirit",
+	"proudly sponsored by nobody. we asked. they declined",
+	"if the felt flickers that is the felt, not your screen",
+	"we are hiring. the position is 'sitting very still'. see Spike",
+	"lost items are held 24 hours, then become house property. as is everything",
+	"thank you for choosing San Mona. there were no other choices",
 };
 #define MJ_SERVICE_COUNT (sizeof(gMJService) / sizeof(gMJService[0]))
 
 // rare spectators: the room has lurkers
 struct MahjongCameo { const char* join; int reactWho; const char* react; const char* leave; };
-static const MahjongCameo gMJCameo[8] =
+static const MahjongCameo gMJCameo[18] =
 {
-	{ "MIGUEL_C has joined the room", 2, "WHO let the rebel in here? BAN him!", "MIGUEL_C has left the room" },
-	{ "M1KE has joined the room", 3, "...nobody type anything.", "M1KE has left the room" },
-	{ "SKYRIDER has joined the room", 1, "not the helicopter rates again, please.", "SKYRIDER has left the room" },
-	{ "IceCreamTruck has joined the room", 3, "oh! I love that truck!!", "IceCreamTruck has left the room" },
-	{ "SPECK_T_KLINE has joined the room", 1, "no, Speck. I will NOT bundle the premiums.", "SPECK_T_KLINE has left the room" },
-	{ "MadameLayla has joined the room", 3, "I'm not allowed on that street!! officially!!", "MadameLayla has left the room" },
-	{ "GABBY has joined the room", 1, "ah, the chemist. my condolences to your nose.", "GABBY has left the room" },
-	{ "FatherWalker has joined the room", 3, "oh good!! someone pray for my tiles!!", "FatherWalker has left the room" },
+	{ "@miguel_c has joined the room", 2, "WHO let the rebel in here? BAN him!", "@miguel_c has left the room" },
+	{ "@m1ke has joined the room", 3, "...nobody type anything.", "@m1ke has left the room" },
+	{ "@skyrider has joined the room", 1, "not the helicopter rates again, please.", "@skyrider has left the room" },
+	{ "@icecreamtruck has joined the room", 3, "oh! I love that truck!!", "@icecreamtruck has left the room" },
+	{ "@speck1185 has joined the room", 1, "no, Speck. I will NOT bundle the premiums.", "@speck1185 has left the room" },
+	{ "@madamelayla has joined the room", 3, "I'm not allowed on that street!! officially!!", "@madamelayla has left the room" },
+	{ "@gabby has joined the room", 1, "ah, the chemist. my condolences to your nose.", "@gabby has left the room" },
+	{ "@fatherwalker has joined the room", 3, "oh good!! someone pray for my tiles!!", "@fatherwalker has left the room" },
+	{ "@ira_r has joined the room", 2, "the little rebel girl. how BRAVE of her.", "@ira_r has left the room" },
+	{ "@dr_q has joined the room", 1, "the doctor charges by the syllable. do not greet him.", "@dr_q has left the room" },
+	{ "@bobbyray has joined the room", 1, "no, I do not need a crate of grenades tonight.", "@bobbyray has left the room" },
+	{ "@hamous has joined the room", 3, "IS THAT THE TRUCK MAN!! hi!!", "@hamous has left the room" },
+	{ "@brenda_d has joined the room", 1, "the shopkeeper. she has seen things. all of them.", "@brenda_d has left the room" },
+	{ "@carmen_bh has joined the room", 2, "a bounty hunter. how many of my subjects has he priced?", "@carmen_bh has left the room" },
+	{ "@spike has joined the room", 3, "...I am going to sit very still now.", "@spike has left the room" },
+	{ "@angel_leather has joined the room", 1, "good man. bad luck. worse brother-in-law.", "@angel_leather has left the room" },
+	{ "@thebiggun has joined the room", 2, "if that is who I think it is, someone is being measured.", "@thebiggun has left the room" },
+	{ "@krott has joined the room", 3, "he sells things that BITE!! not tonight please!!", "@krott has left the room" },
 };
+
 
 // what a claimer blurts out when they pong/kong (used sparingly)
-static const char* const gMJChatClaim[3][3] =
+static const char* const gMJChatClaim[3][8] =
 {
-	{ "excuse me - I require that.", "I will be taking that, thank you.", "a gentleman never wastes a tile." },
-	{ "MINE.", "yes. bring it to me.", "everything on this table is mine eventually." },
-	{ "oh! I can use that!!", "mine mine mine!! sorry!!", "grabby hands, sorry!!" },
+	{ "excuse me - I require that.", "I will be taking that, thank you.", "a gentleman never wastes a tile.",
+	  "with apologies. and interest.", "that belongs to the restoration effort now.",
+	  "you were finished with it. I checked.", "one takes what one is offered. eventually.",
+	  "my compliments on the timing. mine, not yours." },
+	{ "MINE.", "yes. bring it to me.", "everything on this table is mine eventually.",
+	  "confiscated.", "thank you for the tribute.",
+	  "I annex that.", "the crown claims it. the crown always claims it.",
+	  "careless. and now expensive." },
+	{ "oh! I can use that!!", "mine mine mine!! sorry!!", "grabby hands, sorry!!",
+	  "was that ok?? that was allowed right??", "I did a thing!! a GOOD thing!!",
+	  "sorry sorry but I needed it!!", "look at me making decisions!!",
+	  "please don't be mad!! it was RIGHT THERE!!" },
 };
 
-static const char* const gMJWinTaunt[4][3] =
+static const char* const gMJWinTaunt[4][8] =
 {
-	{ "You win! Somewhere in Arulco, three sore losers curse their modems.",
-	  "You win! The table goes quiet except for the dial-up hiss.",
-	  "You win! Kingpin's accountants take note." },
-	{ "Enrico: \"A gentleman's victory. No hard feelings, my friend.\"",
-	  "Enrico: \"The tiles favoured me tonight. Allow an old man his moment.\"",
-	  "Enrico: \"For Arulco. Well - for my wallet, but it sounds better the other way.\"" },
-	{ "Deidranna: \"Pathetic. I rule this table as I rule everything else.\"",
-	  "Deidranna: \"Winning against you people is barely exercise.\"",
-	  "Deidranna: \"Another victory. Elliot, write it down. WRITE IT DOWN.\"" },
-	{ "Elliot: \"I... I actually won one? Please don't tell the Queen.\"",
-	  "Elliot: \"I won?! Is that allowed?!\"",
-	  "Elliot: \"A win!! This is the best day since... ever, actually.\"" },
+	{ "MAHJONG! The table pays up.", "Mahjong. Collect your winnings.", "That's the hand. Pay the man.",
+	  "Mahjong! Nobody move.", "Mahjong. Just like that.", "Mahjong - and the chips come home.",
+	  "That'll do. Mahjong.", "Mahjong. The House says nothing. The House never does." },
+	{ "Mahjong. A small restoration.", "Mahjong! One province at a time.",
+	  "Mahjong - my compliments to the wall.", "Mahjong. My father would have approved.",
+	  "Mahjong! The exile still has teeth.", "Mahjong. Consider it a down payment.",
+	  "Mahjong - dignity, briefly, restored.", "Mahjong! Tonight I dine properly." },
+	{ "MAHJONG. Kneel.", "Mahjong. As arranged.", "Mahjong! Pay me and be grateful.",
+	  "Mahjong. Predictable. Necessary.", "MAHJONG. Do not make that face.",
+	  "Mahjong - the crown collects.", "Mahjong. I did warn you.",
+	  "MAHJONG. Elliot, write it down." },
+	{ "MAHJONG!! oh my GOD!!", "mahjong!! wait really?? MAHJONG!!",
+	  "I won!! I actually- MAHJONG!!", "MAHJONG!! nobody take this from me!!",
+	  "mahjong!!! I'm going to be sick!!", "MAHJONG! ...sorry for shouting!!",
+	  "I did it!! MAHJONG!! me!!", "MAHJONG!! best day of my entire employment!!" },
 };
-static const char* const gMJRonVictimTaunt[4][3] =
+static const char* const gMJRonVictimTaunt[4][8] =
 {
-	{ "Your discard was claimed. The table cackles in dial-up.",
-	  "Claimed! That tile was exactly what they were waiting for.",
-	  "Your tile, their win. The worst trade in Arulco." },
-	{ "Enrico: \"Forgive me, but I must take that tile.\"",
-	  "Enrico: \"Regrettable for you, providential for me.\"",
-	  "Enrico: \"I am genuinely sorry. Not enough to decline, of course.\"" },
-	{ "Deidranna: \"You DARE discard that? Idiot!\"",
-	  "Deidranna: \"Delivered to me like tribute. As it should be.\"",
-	  "Deidranna: \"Thank you for your donation to the crown.\"" },
-	{ "Elliot: \"S-sorry! I didn't mean to... it was just lying there!\"",
-	  "Elliot: \"I'm so sorry!! I needed it though!!\"",
-	  "Elliot: \"Please don't be mad. Everyone else already is.\"" },
+	{ "The House thanks you for that tile.", "Fed by your own hand. Classic.",
+	  "You handed it over. The House kept it.", "Careless. The House is grateful.",
+	  "That discard cost you the hand.", "Right into it. Happens to everyone here.",
+	  "The House would like to buy you a drink. With your money.",
+	  "One tile. That is all it ever takes." },
+	{ "Forgive me - you offered it.", "You gave me that. I merely accepted.",
+	  "A gift. I shall not forget the giver.", "That tile had my name on it.",
+	  "You threw it. I caught it. That is the game.",
+	  "My thanks. Sincerely, if uselessly.",
+	  "You will want that one back. You cannot have it.",
+	  "The exile appreciates the donation." },
+	{ "You FED me. How obedient.", "Thank you for the tile. And the humiliation.",
+	  "You handed a Queen her win. Naturally.", "That was YOURS. Now it is MINE.",
+	  "Careless. And I am never careless.",
+	  "I did not even have to work for it.",
+	  "Your discard. My hand. My table.",
+	  "Do that again. I enjoy it." },
+	{ "you gave me that!! sorry!! thank you!!", "oh no I won off YOUR tile!! sorry!!",
+	  "that was so nice of you!! accidentally!!", "I feel terrible!! I'm keeping it though!!",
+	  "sorry sorry sorry!! but MAHJONG!!", "your tile did that!! not me!! mostly!!",
+	  "I'll never forget this!! neither will you!!",
+	  "please still like me!! I won!! but please!!" },
 };
 
 static ST::string MahjongTileLabel(MahjongGame::TileId t)
@@ -791,6 +1041,10 @@ static UINT32 MahjongSeatPan(int player)
 
 
 static UINT32 MahjongChatRoll();
+static INT32 MahjongChatVisibleLines();
+static INT32 MahjongRowHeight(std::size_t i);
+static const char* MahjongRoleBadge(int who);
+static void MahjongReconcileScroll();
 
 // how fast the regulars type: slow, uneven, dial-up era hands
 #define MJ_TYPE_MS	64
@@ -799,6 +1053,20 @@ static UINT32 MahjongChatRoll();
 struct MahjongPendingLine { INT8 who; ST::string text; UINT32 dueTime; bool ghost; };
 static std::vector<MahjongPendingLine> gMJPending;
 static UINT32 guiMJQueueTail = 0; // when the last queued line will land
+static UINT32 guiMJAwayUntil[5] = {}; // stepped away from the keyboard
+// moderation: Elliot has one duty at this table and he takes it seriously
+static UINT32 guiMJMutedUntil = 0;
+static UINT8 gubMJOffences = 0;
+static UINT32 guiMJLastPost = 0;
+static UINT8 gubMJRecentPosts = 0;
+// scrolling: one continuous position in content pixels, plus the target it
+// eases toward. content grows at the bottom (messages, typing row) and is
+// trimmed at the top (history cap), so each mutation is reconciled once.
+static INT32 giMJScrollY = 0;       // current, pixels from the top of content
+static INT32 giMJScrollTarget = 0;  // where it is heading
+static INT32 giMJContentH = 0;      // measured last reconcile
+static INT32 giMJTrimmedPx = 0;     // height erased off the top since then
+static BOOLEAN gfMJSticky = TRUE;   // pinned to the newest line
 static UINT32 guiMJTypingFloor = 0; // earliest moment the next typist starts
 
 // the terminal prints character by character; people do not
@@ -809,8 +1077,9 @@ static std::size_t guiMJSysTypeLen = 0;
 static void MahjongPushWrapped(int who, const ST::string& say)
 {
 	// long messages wrap into continuation lines instead of truncating
-	INT32 budget = MJ_CHAT_W - 76;
+	INT32 budget = MJ_CHAT_W - 74;
 	if (who >= 0) budget -= StringPixLength(ST::format("{}:", MahjongChatHandle(who)), FONT10ARIAL);
+	if (const char* const badge = MahjongRoleBadge(who)) budget -= StringPixLength(badge, FONT10ARIAL) + 12;
 	ST::string cur;
 	INT8 pushWho = static_cast<INT8>(who);
 	for (auto const& word : say.split(' '))
@@ -820,17 +1089,24 @@ static void MahjongPushWrapped(int who, const ST::string& say)
 		{
 			gMJChat.push_back(MahjongChatLine{ pushWho, cur });
 			cur = word;
-			budget = MJ_CHAT_W - 76; // continuation lines get the full width
-			if (who == -1) pushWho = -3; // system continuations lose the dashes
+			budget = MJ_CHAT_W - 74; // continuation lines get the full width
+			// system and event continuations keep their own colour
+			if (who == -1) pushWho = -3;
+			else if (who == -4) pushWho = -5;
 		}
 		else cur = cand;
 	}
 	gMJChat.push_back(MahjongChatLine{ pushWho, cur });
-	while (gMJChat.size() > MJ_CHAT_HISTORY) gMJChat.erase(gMJChat.begin());
+	while (gMJChat.size() > MJ_CHAT_HISTORY)
+	{
+		// remember what left the top so the view can stay anchored
+		giMJTrimmedPx += MahjongRowHeight(0);
+		gMJChat.erase(gMJChat.begin());
+	}
 	// system lines print themselves out; human lines simply arrive
 	guiMJSysTypeLen = who < 0 ? cur.size() : 0;
 	guiMJSysTypeStart = MahjongNow();
-	giMJChatScroll = 0; // new message: snap back to the newest line
+
 	MahjongRedraw();
 }
 
@@ -864,6 +1140,18 @@ static void MahjongSay(int who, const ST::string& text)
 			break;
 		}
 	}
+	// somebody who just said "brb" is not at their keyboard: they miss the
+	// next stretch of conversation entirely, then come back to it
+	if (who > 0)
+	{
+		if (MahjongNow() < guiMJAwayUntil[who]) return;
+		std::string const low = say.to_std_string();
+		if (low.compare(0, 3, "brb") == 0 || low.find("afk") != std::string::npos)
+		{
+			guiMJAwayUntil[who] = MahjongNow() + 26000 + MahjongChatRoll() % 22000;
+		}
+	}
+
 	// people type in bursts. real chat habits (Baron & Ling): hitting send
 	// does the work of a full stop, so trailing periods mostly vanish and
 	// clauses arrive as separate messages. the Queen keeps her periods -
@@ -998,12 +1286,68 @@ static ST::string MahjongFanLabel(MahjongGame::WinEvent const& e)
 
 // system status line, chess.com style; skips exact repeats so re-entering
 // a state (e.g. after leaving the laptop) does not spam the log
+// table events (claims, kongs, wins, settlements) read louder than the
+// room's general notices, so they carry the yellow of the felt markers
+static void MahjongEventSay(const ST::string& text)
+{
+	std::size_t const from = gMJChat.size() > 8 ? gMJChat.size() - 8 : 0;
+	for (std::size_t i = from; i < gMJChat.size(); ++i)
+	{
+		if (gMJChat[i].who < 0 && text.find(gMJChat[i].text) == 0) return;
+	}
+	MahjongSay(-4, text);
+}
+
 static void MahjongSystemSay(const ST::string& text)
 {
-	if (!gMJChat.empty() && gMJChat.back().who < 0 && gMJChat.back().text == text) return;
+	// the House does not repeat itself within sight of the last notice
+	std::size_t const from = gMJChat.size() > 8 ? gMJChat.size() - 8 : 0;
+	for (std::size_t i = from; i < gMJChat.size(); ++i)
+	{
+		if (gMJChat[i].who < 0 && text.find(gMJChat[i].text) == 0) return;
+	}
 	MahjongSay(-1, text);
 }
 
+
+// the player of the month: a stranger with a rating and no manners
+static const char* const gMJVisitorTrash[14] =
+{
+	"heard this table was tough. I have seen tougher paperwork",
+	"nice discards. do you take requests",
+	"I am only here because the good room is full",
+	"whoever is voided in bams is playing like it is a suggestion",
+	"the House pays for my drinks. that tells you who has been winning",
+	"four hands and I will be back at a real table",
+	"somebody in here has never seen a kong. it shows",
+	"I have beaten better players in worse rooms for less money",
+	"do not mind me. I am scouting",
+	"they put my face on the wall for this. small wall",
+	"you all play like the felt owes you something",
+	"I would offer advice but I would rather keep winning",
+	"is this the beginner room. be honest",
+	"whoever is up right now: enjoy it. it is temporary",
+};
+
+static void MahjongVisitorArrives()
+{
+	if (!gMJVisitorHandle.empty()) return;
+	MERCPROFILESTRUCT const& merc = GetProfile(static_cast<ProfileID>(MahjongChatRoll() % 40));
+	if (merc.zNickname.empty()) return;
+	gMJVisitorHandle = ST::format("@{}", merc.zNickname.to_lower());
+	if (guiMJVisitorSurf) { DeleteVideoSurface(guiMJVisitorSurf); guiMJVisitorSurf = nullptr; }
+	try
+	{
+		SGPVObject* const big = LoadBigPortrait(merc);
+		guiMJVisitorSurf = AddVideoSurface(106, 122, PIXEL_DEPTH);
+		BltVideoObject(guiMJVisitorSurf, big, 0, 0, 0);
+		DeleteVideoObject(big);
+	}
+	catch (...) {}
+	MahjongSystemSay(ST::format("{} has joined the room - player of the month", gMJVisitorHandle));
+	MahjongSay(4, gMJVisitorTrash[MahjongChatRoll() % 14]);
+	guiMJVisitorLeaves = MahjongNow() + 26000 + MahjongChatRoll() % 20000;
+}
 
 // log + chat reactions to a win; Deidranna's line is canon
 static void MahjongChatOnWin(int winner, int discarder)
@@ -1051,7 +1395,7 @@ static void MahjongChatOnWin(int winner, int discarder)
 		int const who = 1 + static_cast<int>(MahjongNow() % 3);
 		MahjongGuestPack const* const g = MahjongPackFor(who);
 		MahjongSay(who, g ? g->onHumanWin[MahjongChatRoll() % 3]
-						: gMJChatOnHumanWin[who - 1][MahjongChatRoll() % 5]);
+						: gMJChatOnHumanWin[who - 1][MahjongChatRoll() % 12]);
 	}
 }
 
@@ -1176,7 +1520,7 @@ static void MahjongUpdateButtons()
 	{
 		case MJUI_IDLE:
 			// below the parlour sign
-			MahjongPlaceNewGameButton("New Game", MJ_X(201), MJ_Y(264), 100);
+			MahjongPlaceNewGameButton("Deal Me In", MJ_X(201), MJ_Y(234), 100);
 			break;
 		case MJUI_HAND_END:
 			MahjongPlaceNewGameButton("Next Hand", MJ_X(331), MJ_Y(258), 100);
@@ -1284,7 +1628,47 @@ static void MahjongCreateOverlayFace(ProfileID id)
 
 static INT32 MahjongBarTop() { return gfMJChatBig ? 4 : MJ_CHAT_Y; }
 static INT32 MahjongBarH()   { return gfMJChatBig ? 396 : MJ_CHAT_H; }
-static INT32 MahjongChatVisibleLines() { return (MahjongBarH() - 28) / 14; }
+static INT32 MahjongChatVisibleLines() { return (MahjongBarH() - 36) / 14; }
+static INT32 MahjongChatViewH() { return MahjongBarH() - 30; }
+
+// intrinsic height of a chat row: a new speaker opens a cluster with air
+static INT32 MahjongRowHeight(std::size_t i)
+{
+	bool const opensCluster = i > 0 && gMJChat[i - 1].who != gMJChat[i].who;
+	return 14 + (opensCluster ? MJ_CLUSTER_GAP : 0);
+}
+
+static bool MahjongTypingRowActive()
+{
+	return !gMJPending.empty() && gMJPending.front().who > 0;
+}
+
+static INT32 MahjongContentH()
+{
+	INT32 total = 0;
+	for (std::size_t i = 0; i < gMJChat.size(); ++i) total += MahjongRowHeight(i);
+	if (MahjongTypingRowActive()) total += 14 + MJ_CLUSTER_GAP;
+	return total;
+}
+
+// called before every layout: fold content changes into the scroll position
+// so nothing ever jumps. growth at the bottom only moves the target (the
+// eased follow), trimming at the top shifts both to anchor the reader.
+static void MahjongReconcileScroll()
+{
+	INT32 const contentH = MahjongContentH();
+	INT32 const scrollMax = std::max(0, contentH - MahjongChatViewH());
+	if (giMJTrimmedPx != 0)
+	{
+		giMJScrollY -= giMJTrimmedPx;
+		giMJScrollTarget -= giMJTrimmedPx;
+		giMJTrimmedPx = 0;
+	}
+	if (gfMJSticky) giMJScrollTarget = scrollMax;
+	giMJScrollTarget = std::max(0, std::min(scrollMax, giMJScrollTarget));
+	giMJScrollY = std::max(0, std::min(scrollMax, giMJScrollY));
+	giMJContentH = contentH;
+}
 
 static void MahjongEnterState(MahjongUiState state)
 {
@@ -1370,7 +1754,7 @@ static void MahjongEnterState(MahjongUiState state)
 					int const gwho = 1 + static_cast<int>(r % 3);
 					MahjongGuestPack const* const g = MahjongPackFor(gwho);
 					MahjongSay(gwho, g ? g->greet[MahjongChatRoll() % 3]
-									: gMJChatGreet[gwho - 1][MahjongChatRoll() % 5]);
+									: gMJChatGreet[gwho - 1][MahjongChatRoll() % 12]);
 				}
 			}
 			break;
@@ -1443,8 +1827,8 @@ static void MahjongEnterState(MahjongUiState state)
 					else
 					{
 						MahjongSay(who, MahjongChatRoll() % 2 == 0
-							? gMJChatWar[who - 1][MahjongWarTier() * 2 + MahjongChatRoll() % 2]
-							: gMJChatIdle[who - 1][MahjongChatRoll() % 15]);
+							? gMJChatWar[who - 1][MahjongWarTier() * 4 + MahjongChatRoll() % 4]
+							: gMJChatIdle[who - 1][MahjongChatRoll() % 30]);
 					}
 				}
 			}
@@ -1474,14 +1858,18 @@ static void MahjongEnterState(MahjongUiState state)
 			// the exes bicker (opener from Enrico, comeback from the Queen)
 			if (guiMJQuipCounter % 37 == 11 && giMJBotWho < 0 && GetProfile(QUEEN).bLife > 0 && giMJSeat2Persona == MJP2_QUEEN)
 			{
-				MahjongBicker const& b = gMJBicker[MahjongChatRoll() % 14];
+				MahjongBicker const& b = gMJBicker[MahjongChatRoll() % 30];
 				MahjongSay(1, b.open);
 				MahjongBotQueueReply(b.replyWho, b.reply, MahjongChatRoll());
 			}
 			// a lurker slips into the room
+			else if (guiMJQuipCounter % 89 == 41)
+			{
+				MahjongVisitorArrives();
+			}
 			else if (guiMJQuipCounter % 59 == 23 && giMJBotWho < 0)
 			{
-				MahjongCameo const& c = gMJCameo[MahjongChatRoll() % 8];
+				MahjongCameo const& c = gMJCameo[MahjongChatRoll() % 18];
 				MahjongSystemSay(c.join);
 				MahjongBotQueueReply(c.reactWho, c.react, MahjongChatRoll());
 				gMJPendingCameoLeave = c.leave;
@@ -1499,7 +1887,7 @@ static void MahjongEnterState(MahjongUiState state)
 					int const wwho = 1 + static_cast<int>(r % 3);
 					MahjongGuestPack const* const g = MahjongPackFor(wwho);
 					MahjongSay(wwho, g ? g->idle[MahjongChatRoll() % 3]
-									: gMJChatWallLow[wwho - 1][MahjongChatRoll() % 3]);
+									: gMJChatWallLow[wwho - 1][MahjongChatRoll() % 8]);
 				}
 			}
 			break;
@@ -1542,12 +1930,12 @@ static void MahjongEnterState(MahjongUiState state)
 					if (gGame->player(i).finished) continue;
 					if (gGame->IsFlowerPig(i))
 					{
-						MahjongSystemSay(ST::format("{} is the FLOWER PIG - pays every player {}",
+						MahjongEventSay(ST::format("{} is the FLOWER PIG - pays every player {}",
 								MahjongSeatName(i), MahjongGame::PIG_PENALTY_EACH));
 					}
 					else if (!gGame->IsTenpai(i))
 					{
-						MahjongSystemSay(ST::format("{} was not ready - pays the waiting players",
+						MahjongEventSay(ST::format("{} was not ready - pays the waiting players",
 								MahjongSeatName(i)));
 					}
 				}
@@ -1555,22 +1943,22 @@ static void MahjongEnterState(MahjongUiState state)
 			if (gGame->endedByWallExhaustion() && gGame->wins().empty())
 			{
 				gMJMessage = "The wall is empty. Nobody wins this hand.";
-				MahjongSystemSay("Hand over - exhaustive draw, no winners");
+				MahjongEventSay("Hand over - exhaustive draw, no winners");
 			}
 			else if (gGame->endedByWallExhaustion())
 			{
 				gMJMessage = "The wall is empty. The bloody battle is over.";
-				MahjongSystemSay("Hand over - the wall is empty");
+				MahjongEventSay("Hand over - the wall is empty");
 			}
 			else if (gGame->aborted())
 			{
 				gMJMessage = "Hand VOID. Nobody pays, nobody forgets.";
-				MahjongSystemSay("Hand over - VOID after an irregularity");
+				MahjongEventSay("Hand over - VOID after an irregularity");
 			}
 			else
 			{
 				gMJMessage = "Three winners stand. The last one left pays for the tea.";
-				MahjongSystemSay("Hand over - three winners stand");
+				MahjongEventSay("Hand over - three winners stand");
 			}
 			for (int i = 0; i < MahjongGame::NUM_PLAYERS; ++i)
 			{
@@ -1606,7 +1994,7 @@ static void MahjongEnterState(MahjongUiState state)
 			gMJMessage = best == 0
 				? "Match over: you top the table! Enrico wires his congratulations."
 				: ST::format("Match over: {} takes the table. Care for a rematch?", MahjongSeatName(best));
-			MahjongSystemSay(ST::format("Match over - {} {} the table with {} points",
+			MahjongEventSay(ST::format("Match over - {} {} the table with {} points",
 					MahjongSeatName(best), best == 0 ? "top" : "takes", gGame->player(best).score));
 			// settle the stakes: table points convert to dollars at 20:1,
 			// posted to the Financial screen; Kingpin rakes 10% of winnings
@@ -1699,8 +2087,24 @@ static void MahjongEnterState(MahjongUiState state)
 		case MJUI_IDLE:
 		default:
 			gMJMessage = MahjongInvitationalToday()
-				? "BLOODY INVITATIONAL TONIGHT - triple stakes. The House is warming your seat. Click New Game to sit down."
-				: "Welcome to the San Mona Mahjong Parlour. The House is warming your seat. Click New Game to sit down.";
+				? "BLOODY INVITATIONAL TONIGHT - triple stakes. hit Deal Me In and take the chair."
+				: "The House is warming your seat. hit Deal Me In and take the chair.";
+			MahjongSystemSay(gMJMessage);
+			break;
+	}
+
+	// the prompts that ask something of you belong in the log, where the
+	// input line used to shout them
+	switch (state)
+	{
+		case MJUI_EXCHANGE:
+		case MJUI_CHOOSE_VOID:
+		case MJUI_CLAIM_WINDOW:
+		case MJUI_RON_WINDOW:
+		case MJUI_ROB_WINDOW:
+			MahjongSystemSay(gMJMessage);
+			break;
+		default:
 			break;
 	}
 
@@ -1762,11 +2166,11 @@ static void MahjongAfterDiscard()
 			MahjongGuestPack const* const g = MahjongPackFor(claimant);
 			if (claimant == 1 && discarder == 2 && giMJSeat2Persona == MJP2_QUEEN)
 			{
-				MahjongAnnounce(gMJSpouseEnricoRonsQueen[MahjongChatRoll() % 3]);
+				MahjongAnnounce(gMJSpouseEnricoRonsQueen[MahjongChatRoll() % 6]);
 			}
 			else if (claimant == 2 && discarder == 1 && giMJSeat2Persona == MJP2_QUEEN)
 			{
-				MahjongAnnounce(gMJSpouseQueenRonsEnrico[MahjongChatRoll() % 3]);
+				MahjongAnnounce(gMJSpouseQueenRonsEnrico[MahjongChatRoll() % 6]);
 			}
 			else if (g)
 			{
@@ -1795,10 +2199,10 @@ static void MahjongAfterDiscard()
 			MahjongGame::TileId const t = gGame->lastDiscard();
 			gGame->ClaimKong(mc);
 			MahjongPlay(MJ_SND_MELD, BTNVOLUME, MahjongSeatPan(mc));
-			MahjongSystemSay(ST::format("{} kongs the {}", MahjongSeatName(mc), MahjongTileLabel(t)));
+			MahjongEventSay(ST::format("{} kongs the {}", MahjongSeatName(mc), MahjongTileLabel(t)));
 			{
 				MahjongGuestPack const* const g = MahjongPackFor(mc);
-				MahjongSay(mc, g ? g->claim[MahjongChatRoll() % 3] : gMJChatClaim[mc - 1][MahjongChatRoll() % 3]);
+				MahjongSay(mc, g ? g->claim[MahjongChatRoll() % 3] : gMJChatClaim[mc - 1][MahjongChatRoll() % 8]);
 			}
 			MahjongContinueAfterEvent();
 			return;
@@ -1808,7 +2212,7 @@ static void MahjongAfterDiscard()
 			MahjongGame::TileId const t = gGame->lastDiscard();
 			gGame->ClaimPong(mc);
 			MahjongPlay(MJ_SND_MELD, BTNVOLUME, MahjongSeatPan(mc));
-			MahjongSystemSay(ST::format("{} pongs the {}", MahjongSeatName(mc), MahjongTileLabel(t)));
+			MahjongEventSay(ST::format("{} pongs the {}", MahjongSeatName(mc), MahjongTileLabel(t)));
 			if (mc == 3 && giMJSeat3Persona == 0 && MahjongChatRoll() % 7 == 3)
 			{
 				MahjongSay(3, "wait. WAIT. I didn't need that one. um. no takebacks? ok.");
@@ -1816,7 +2220,7 @@ static void MahjongAfterDiscard()
 			else if (MahjongChatRoll() % 3 == 0)
 			{
 				MahjongGuestPack const* const g = MahjongPackFor(mc);
-				MahjongSay(mc, g ? g->claim[MahjongChatRoll() % 3] : gMJChatClaim[mc - 1][MahjongChatRoll() % 3]);
+				MahjongSay(mc, g ? g->claim[MahjongChatRoll() % 3] : gMJChatClaim[mc - 1][MahjongChatRoll() % 8]);
 			}
 			MahjongContinueAfterEvent();
 			return;
@@ -1991,14 +2395,14 @@ static void BtnMahjongMahjongCallback(GUI_BUTTON* btn, UINT32 reason)
 	{
 		gGame->ResolveTsumo();
 		MahjongChatOnWin(0, -1);
-		MahjongAnnounce(gMJWinTaunt[0][MahjongChatRoll() % 3]);
+		MahjongAnnounce(gMJWinTaunt[0][MahjongChatRoll() % 8]);
 	}
 	else if (guiMJState == MJUI_RON_WINDOW)
 	{
 		int const discarder = gGame->lastDiscarder();
 		gGame->ResolveRon(0);
 		MahjongChatOnWin(0, discarder);
-		MahjongAnnounce(gMJWinTaunt[0][MahjongChatRoll() % 3]);
+		MahjongAnnounce(gMJWinTaunt[0][MahjongChatRoll() % 8]);
 	}
 	else if (guiMJState == MJUI_ROB_WINDOW)
 	{
@@ -2006,7 +2410,7 @@ static void BtnMahjongMahjongCallback(GUI_BUTTON* btn, UINT32 reason)
 		gGame->ResolveRobKong(0, gMJRobTile);
 		MahjongSystemSay("KONG ROBBED - the 4th tile never lands");
 		MahjongChatOnWin(0, declarer);
-		MahjongAnnounce(gMJWinTaunt[0][MahjongChatRoll() % 3]);
+		MahjongAnnounce(gMJWinTaunt[0][MahjongChatRoll() % 8]);
 	}
 }
 
@@ -2033,7 +2437,7 @@ static void BtnMahjongPongCallback(GUI_BUTTON* btn, UINT32 reason)
 	gGame->ClaimPong(0);
 	MahjongPlayBattleSnd("GOTIT");
 	MahjongPlay(MJ_SND_MELD, BTNVOLUME);
-	MahjongSystemSay(ST::format("You pong the {}", MahjongTileLabel(t)));
+	MahjongEventSay(ST::format("You pong the {}", MahjongTileLabel(t)));
 	MahjongEnterState(MJUI_PLAYER_TURN);
 }
 
@@ -2048,7 +2452,7 @@ static void BtnMahjongKongCallback(GUI_BUTTON* btn, UINT32 reason)
 		gGame->ClaimKong(0);
 		MahjongPlayBattleSnd("GOTIT");
 		MahjongPlay(MJ_SND_MELD, BTNVOLUME);
-		MahjongSystemSay(ST::format("You kong the {} - the discarder pays the bonus", MahjongTileLabel(t)));
+		MahjongEventSay(ST::format("You kong the {} - the discarder pays the bonus", MahjongTileLabel(t)));
 		MahjongEnterState(MJUI_PLAYER_TURN);
 	}
 	else if (guiMJState == MJUI_PLAYER_TURN)
@@ -2062,16 +2466,16 @@ static void BtnMahjongKongCallback(GUI_BUTTON* btn, UINT32 reason)
 			if (robber > 0)
 			{
 				gGame->ResolveRobKong(robber, t);
-				MahjongSystemSay(ST::format("{} ROBS your kong of the {}!",
+				MahjongEventSay(ST::format("{} ROBS your kong of the {}!",
 						MahjongSeatName(robber), MahjongTileLabel(t)));
-				MahjongAnnounce(gMJWinTaunt[robber][MahjongChatRoll() % 3]);
+				MahjongAnnounce(gMJWinTaunt[robber][MahjongChatRoll() % 8]);
 				return;
 			}
 		}
 		if (gGame->DeclareSelfKong(t))
 		{
 			MahjongPlay(MJ_SND_MELD, BTNVOLUME);
-			MahjongSystemSay(ST::format("You kong the {} - the table pays the bonus", MahjongTileLabel(t)));
+			MahjongEventSay(ST::format("You kong the {} - the table pays the bonus", MahjongTileLabel(t)));
 			MahjongEnterState(MJUI_PLAYER_TURN); // recompute tsumo/waits with the replacement
 		}
 	}
@@ -2459,10 +2863,40 @@ bool MahjongHandleTypedKey(UINT32 usParam, UINT16 usKeyState)
 					giMJStatBiggestHand, giMJStatDollars < 0 ? "-" : "",
 					giMJStatDollars < 0 ? -giMJStatDollars : giMJStatDollars));
 		}
+		else if (MahjongNow() < guiMJMutedUntil)
+		{
+			// still muted: the client swallows it
+			UINT32 const left = (guiMJMutedUntil - MahjongNow() + 999) / 1000;
+			MahjongSystemSay(ST::format("you are muted for another {} seconds", left));
+		}
 		else
 		{
-			MahjongSay(0, ST::string(gMJInput.c_str()));
-			MahjongBotConsider(gMJInput);
+			// the mod counts how fast you are talking
+			UINT32 const now = MahjongNow();
+			gubMJRecentPosts = now - guiMJLastPost < 4000 ? gubMJRecentPosts + 1 : 0;
+			guiMJLastPost = now;
+			if (gubMJRecentPosts >= 4)
+			{
+				gubMJRecentPosts = 0;
+				if (gubMJOffences < 250) ++gubMJOffences;
+				UINT32 const minutes = gubMJOffences;
+				guiMJMutedUntil = now + minutes * 60000;
+				static const char* const modLine[4] =
+				{
+					"please slow down!! I have to log these!!",
+					"sorry!! that's the rules!! I don't make them!! (she does)",
+					"I really really don't enjoy this part of the job",
+					"I warned you!! well- I meant to warn you!!",
+				};
+				MahjongSay(3, modLine[MahjongChatRoll() % 4]);
+				MahjongSystemSay(ST::format("@e11iot muted {} for {} minute{} (flooding)",
+						MahjongChatHandle(0), minutes, minutes == 1 ? "" : "s"));
+			}
+			else
+			{
+				MahjongSay(0, ST::string(gMJInput.c_str()));
+				MahjongBotConsider(gMJInput);
+			}
 		}
 		gMJInput.clear();
 		MahjongPlay(MJ_SND_SELECT, LOWVOLUME);
@@ -2495,29 +2929,34 @@ bool MahjongHandleTypedKey(UINT32 usParam, UINT16 usKeyState)
 static void MahjongChatArrowCallback(MOUSE_REGION* pRegion, UINT32 iReason)
 {
 	if (!(iReason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
-	INT32 const maxScroll = std::max(0, static_cast<INT32>(gMJChat.size()) - MahjongChatVisibleLines());
-	INT32 const was = giMJChatScroll;
-	giMJChatScroll = MSYS_GetRegionUserData(pRegion, 0) > 0
-		? std::min(maxScroll, giMJChatScroll + 1)
-		: std::max(0, giMJChatScroll - 1);
-	if (giMJChatScroll != was) MahjongPlay(MJ_SND_SELECT, LOWVOLUME);
+	INT32 const maxScroll = std::max(0, giMJContentH - MahjongChatViewH());
+	INT32 const was = giMJScrollTarget;
+	giMJScrollTarget = MSYS_GetRegionUserData(pRegion, 0) > 0
+		? std::max(0, giMJScrollTarget - 14)
+		: std::min(maxScroll, giMJScrollTarget + 14);
+	gfMJSticky = giMJScrollTarget >= maxScroll - 6;
+	if (giMJScrollTarget != was) MahjongPlay(MJ_SND_SELECT, LOWVOLUME);
 	MahjongRedraw();
 }
 
 
 static void MahjongChatScrollCallback(MOUSE_REGION* pRegion, UINT32 iReason)
 {
-	INT32 const maxScroll = std::max(0, static_cast<INT32>(gMJChat.size()) - MahjongChatVisibleLines());
-	INT32 const was = giMJChatScroll;
+	INT32 const maxScroll = std::max(0, giMJContentH - MahjongChatViewH());
+	INT32 const was = giMJScrollTarget;
+	INT32 const step = 3 * 14; // a trackpad notch should actually travel
 	if (iReason & MSYS_CALLBACK_REASON_WHEEL_UP)
 	{
-		giMJChatScroll = std::min(maxScroll, giMJChatScroll + 1);
+		giMJScrollTarget = std::max(0, giMJScrollTarget - step);
 	}
 	else if (iReason & MSYS_CALLBACK_REASON_WHEEL_DOWN)
 	{
-		giMJChatScroll = std::max(0, giMJChatScroll - 1);
+		giMJScrollTarget = std::min(maxScroll, giMJScrollTarget + step);
 	}
-	if (giMJChatScroll != was)
+	// stickiness is decided by where the user asked to be, never by the
+	// animation's own writes
+	gfMJSticky = giMJScrollTarget >= maxScroll - 6;
+	if (giMJScrollTarget != was)
 	{
 		MahjongPlay(MJ_SND_SELECT, LOWVOLUME);
 		MahjongRedraw();
@@ -2829,20 +3268,21 @@ static void MahjongPlaceChatRegions(bool fFirst)
 	}
 	INT32 const top = MahjongBarTop(), hh = MahjongBarH();
 	MSYS_DefineRegion(&gMJChatRegion, static_cast<UINT16>(MJ_X(2)), static_cast<UINT16>(MJ_Y(top)),
-				static_cast<UINT16>(MJ_X(MJ_CHAT_W)), static_cast<UINT16>(MJ_Y(top + hh)),
+				static_cast<UINT16>(MJ_X(498)), static_cast<UINT16>(MJ_Y(top + hh)),
 				MSYS_PRIORITY_NORMAL, CURSOR_WWW, MSYS_NO_CALLBACK, MahjongChatScrollCallback);
 	MSYS_DefineRegion(&gMJChatUpRegion, static_cast<UINT16>(MJ_X(MJ_CHAT_W - 14)), static_cast<UINT16>(MJ_Y(top + 2)),
 				static_cast<UINT16>(MJ_X(MJ_CHAT_W - 1)), static_cast<UINT16>(MJ_Y(top + 14)),
 				MSYS_PRIORITY_HIGH, CURSOR_WWW, MSYS_NO_CALLBACK, MahjongChatArrowCallback);
 	MSYS_SetRegionUserData(&gMJChatUpRegion, 0, 1);
-	MSYS_DefineRegion(&gMJChatDownRegion, static_cast<UINT16>(MJ_X(MJ_CHAT_W - 14)), static_cast<UINT16>(MJ_Y(top + hh - 14)),
-				static_cast<UINT16>(MJ_X(MJ_CHAT_W - 1)), static_cast<UINT16>(MJ_Y(top + hh - 2)),
+	// the down arrow moved up above the footer strip: its hit box follows
+	MSYS_DefineRegion(&gMJChatDownRegion, static_cast<UINT16>(MJ_X(MJ_CHAT_W - 14)), static_cast<UINT16>(MJ_Y(top + hh - 36)),
+				static_cast<UINT16>(MJ_X(MJ_CHAT_W - 1)), static_cast<UINT16>(MJ_Y(top + hh - 24)),
 				MSYS_PRIORITY_HIGH, CURSOR_WWW, MSYS_NO_CALLBACK, MahjongChatArrowCallback);
 	MSYS_SetRegionUserData(&gMJChatDownRegion, 0, -1);
 	static const char* const iconHelp[4] = { "Parlour home page", "Guestbook", "House rules", "Expand / collapse chat" };
 	for (int i = 0; i < 4; ++i)
 	{
-		UINT16 const ix = static_cast<UINT16>(MJ_X(3));
+		UINT16 const ix = static_cast<UINT16>(MJ_X(4));
 		// the toggle bubble never moves: same spot in either mode
 		UINT16 const iy = static_cast<UINT16>(i == 3
 				? MJ_Y(MJ_CHAT_Y + 6 + 3 * 22) : MJ_Y(top + 6 + i * 22));
@@ -3014,7 +3454,7 @@ void EnterMahjong()
 		MSYS_SetRegionUserData(&gMJHandRegion[i], 0, i);
 	}
 
-	guiMJNewGameBtn = CreateTextButton("New Game", FONT12ARIAL, FONT_MCOLOR_WHITE, FONT_MCOLOR_BLACK,
+	guiMJNewGameBtn = CreateTextButton("Deal Me In", FONT12ARIAL, FONT_MCOLOR_WHITE, FONT_MCOLOR_BLACK,
 					MJ_X(201), MJ_Y(MJ_SETUP_BTN_Y), 100, 22, MSYS_PRIORITY_HIGH, BtnMahjongNewGameCallback);
 	guiMJNewGameBtn->SetCursor(CURSOR_WWW);
 	SpecifyButtonSoundScheme(guiMJNewGameBtn, BUTTON_SOUND_SCHEME_COMPUTERBEEP2);
@@ -3123,6 +3563,8 @@ void ExitMahjong()
 	if (guiMJSelfFace)   { DeleteVideoObject(guiMJSelfFace);   guiMJSelfFace = nullptr; }
 	if (guiMJSelfFaceSurf) { DeleteVideoSurface(guiMJSelfFaceSurf); guiMJSelfFaceSurf = nullptr; }
 	if (guiMJShillSurf) { DeleteVideoSurface(guiMJShillSurf); guiMJShillSurf = nullptr; }
+	if (guiMJVisitorSurf) { DeleteVideoSurface(guiMJVisitorSurf); guiMJVisitorSurf = nullptr; }
+	gMJVisitorHandle.clear();
 	if (guiMJStatic)     { DeleteVideoObject(guiMJStatic);     guiMJStatic = nullptr; }
 	if (guiMJFeltRed)    { DeleteVideoObject(guiMJFeltRed);    guiMJFeltRed = nullptr; }
 	if (guiMJDragon)     { DeleteVideoObject(guiMJDragon);     guiMJDragon = nullptr; }
@@ -3290,6 +3732,23 @@ static void MahjongHandleFaceLife()
 	}
 }
 
+// a dial-up spinner: dots chasing each other round the feed
+static void MahjongDrawSpinner(INT32 cx, INT32 cy, INT32 r)
+{
+	UINT32 const phase = MahjongNow() / 90;
+	for (INT32 i = 0; i < 8; ++i)
+	{
+		double const a = i * 3.14159265 / 4.0;
+		INT32 const px = cx + static_cast<INT32>(r * std::cos(a));
+		INT32 const py = cy + static_cast<INT32>(r * std::sin(a));
+		INT32 const age = (i - static_cast<INT32>(phase % 8) + 8) % 8;
+		UINT16 const col = age < 2 ? Get16BPPColor(MJ_TOKEN_RGB)
+				: age < 4 ? Get16BPPColor(FROMRGB(40, 96, 58))
+				: Get16BPPColor(FROMRGB(18, 60, 38));
+		ColorFillVideoSurfaceArea(FRAME_BUFFER, px - 1, py - 1, px + 2, py + 2, col);
+	}
+}
+
 // the portrait boxes are "video feeds": static until a game connects, and
 // brief dropouts while playing
 static void MahjongDrawFeed(int opponent, INT32 x, INT32 y, bool large)
@@ -3305,9 +3764,20 @@ static void MahjongDrawFeed(int opponent, INT32 x, INT32 y, bool large)
 		// nobody dialed in yet: dark empty-seat silhouette
 		BltVideoObject(FRAME_BUFFER, guiMJStatic, base + 3, x, y);
 	}
-	else if (glitching && guiMJStatic)
+	else if (glitching)
 	{
-		BltVideoObject(FRAME_BUFFER, guiMJStatic, base + static_cast<UINT16>(MahjongNow() / 500 % 3), x, y);
+		// their line dropped: the feed reconnects in front of everyone
+		INT32 const w2 = large ? MJ_FACE65_W : MJ_FACE33_W;
+		INT32 const h2 = large ? MJ_FACE65_H : MJ_FACE33_H;
+		ColorFillVideoSurfaceArea(FRAME_BUFFER, x, y, x + w2, y + h2, Get16BPPColor(FROMRGB(9, 34, 21)));
+		MahjongDrawSpinner(x + w2 / 2, y + h2 / 2 - (large ? 4 : 0), large ? 13 : 7);
+		if (large)
+		{
+			SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_LTGREEN, FONT_MCOLOR_BLACK, 0);
+			SetFontForegroundRGB(MJ_TOKEN_RGB);
+			MPrint(x + 5, y + h2 - 14, "reconnecting");
+		}
+		(void)base;
 	}
 	else if (!disconnected && face)
 	{
@@ -3440,7 +3910,7 @@ static void MahjongRenderInfoBlock()
 	SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_LTGREEN, FONT_MCOLOR_BLACK, 0);
 	SetFontForegroundRGB(MJ_TOKEN_RGB);
 	{
-		INT32 const footY = MJ_Y(MahjongBarTop() + MahjongBarH()) - 13;
+		INT32 const footY = MJ_Y(MahjongBarTop() + MahjongBarH()) - 16;
 		MPrint(MJ_X(MJ_CHAT_W + 8), footY, ST::format("Hand {}/{}",
 				std::min(gGame->handNumber() + 1, static_cast<int>(MahjongGame::HANDS_PER_MATCH)),
 				MahjongGame::HANDS_PER_MATCH));
@@ -3489,7 +3959,7 @@ static void MahjongRenderInfoBlock()
 	// icon strip, terminal-green: bare glyphs, no button chrome
 	for (int i = 0; i < 4; ++i)
 	{
-		INT32 const ix = MJ_X(3);
+		INT32 const ix = MJ_X(4);
 		INT32 const iy = i == 3 ? MJ_Y(MJ_CHAT_Y + 6 + 3 * 22)
 				: MJ_Y(MahjongBarTop() + 6 + i * 22);
 		bool const hot = gMJIconRegion[i].uiFlags & MSYS_MOUSE_IN_AREA;
@@ -3540,8 +4010,10 @@ static void MahjongRenderInfoBlock()
 
 
 
-static void MahjongDrawFaceChip(INT8 who, INT32 cx, INT32 cy, UINT16 cw = 12, UINT16 ch = 10);
+static void MahjongDrawFaceChip(INT8 who, INT32 cx, INT32 cy, UINT16 cw = 15, UINT16 ch = 14, bool seatView = false);
 static void MahjongDrawTypingWave(INT32 dx, INT32 dy);
+static const char* MahjongRoleBadge(int who);
+static void MahjongDrawRoleBadge(INT32 bx, INT32 by, const char* label);
 
 static void MahjongRenderChatBar()
 {
@@ -3552,21 +4024,22 @@ static void MahjongRenderChatBar()
 	ColorFillVideoSurfaceArea(FRAME_BUFFER, MJ_X(2), y, MJ_X(498), y + 1, Get16BPPColor(FROMRGB(30, 60, 40)));
 	ColorFillVideoSurfaceArea(FRAME_BUFFER, MJ_X(2), y + h - 1, MJ_X(498), y + h, Get16BPPColor(FROMRGB(30, 60, 40)));
 	// footer strip: a proper status bar hosting input and table facts
-	ColorFillVideoSurfaceArea(FRAME_BUFFER, MJ_X(2), y + h - 18, MJ_X(498), y + h - 1,
+	ColorFillVideoSurfaceArea(FRAME_BUFFER, MJ_X(2), y + h - 22, MJ_X(498), y + h - 1,
 				Get16BPPColor(FROMRGB(6, 36, 20)));
-	ColorFillVideoSurfaceArea(FRAME_BUFFER, MJ_X(2), y + h - 19, MJ_X(498), y + h - 18,
+	ColorFillVideoSurfaceArea(FRAME_BUFFER, MJ_X(2), y + h - 23, MJ_X(498), y + h - 22,
 				Get16BPPColor(FROMRGB(30, 60, 40)));
 	// quiet divider between the icon rail and the chat text
-	ColorFillVideoSurfaceArea(FRAME_BUFFER, MJ_X(23), y + 4, MJ_X(24), y + h - 20,
+	ColorFillVideoSurfaceArea(FRAME_BUFFER, MJ_X(23), y + 4, MJ_X(24), y + h - 26,
 				Get16BPPColor(FROMRGB(18, 66, 38)));
 	// quiet divider before the info split
-	ColorFillVideoSurfaceArea(FRAME_BUFFER, MJ_X(MJ_CHAT_W + 1), y + 4, MJ_X(MJ_CHAT_W + 2), y + h - 20,
+	ColorFillVideoSurfaceArea(FRAME_BUFFER, MJ_X(MJ_CHAT_W + 1), y + 4, MJ_X(MJ_CHAT_W + 2), y + h - 26,
 				Get16BPPColor(FROMRGB(18, 66, 38)));
 
 	// mini avatar chip on the left edge of a spoken line
-	auto const drawChip = [&](INT8 who, INT32 cy) { MahjongDrawFaceChip(who, x + 30, cy); };
+	auto const drawChip = [&](INT8 who, INT32 cy) { MahjongDrawFaceChip(who, x + 27, cy - 3); };
+	MahjongReconcileScroll();
 	INT32 const total = static_cast<INT32>(gMJChat.size());
-	INT32 const last = total - giMJChatScroll;             // exclusive
+	INT32 const last = total;
 	// the newest system line is still printing itself out
 	auto const sysTyped = [&](INT32 idx, ST::string const& t) -> ST::string
 	{
@@ -3576,58 +4049,98 @@ static void MahjongRenderChatBar()
 		return ST::string(t.to_std_string().substr(0, shown));
 	};
 
-	// somebody mid-message keeps the bottom row for their typing indicator
-	bool const typingActive = !gMJPending.empty() && gMJPending.front().who > 0 && giMJChatScroll == 0;
-	INT32 const rows = std::max(1, visible - (typingActive ? 1 : 0));
-	INT32 const first = std::max(0, last - rows);
-	for (INT32 i = first; i < last; ++i)
+	bool const typingActive = MahjongTypingRowActive();
+	// every row has a fixed place in the content column; the view is a
+	// window onto it. rows outside the window are skipped, rows crossing
+	// the edge are drawn and clipped, so lines visibly slide out of frame
+	INT32 const paneTop = y + 4, paneBot = y + h - 26;
+	INT32 const originY = paneTop - giMJScrollY;
+	SetFontDestBuffer(FRAME_BUFFER, MJ_X(2), paneTop, MJ_X(MJ_CHAT_W - 16), paneBot);
+	std::vector<INT32> rel;
+	rel.reserve(gMJChat.size());
+	INT32 rely = 0;
+	for (std::size_t i = 0; i < gMJChat.size(); ++i)
+	{
+		rely += MahjongRowHeight(i);
+		rel.push_back(rely - 14); // top of the row's text
+	}
+	INT32 const firstDraw = 0;
+	INT32 flowY = originY;
+	for (INT32 i = firstDraw; i < last; ++i)
 	{
 		MahjongChatLine const& l = gMJChat[i];
-		INT32 const lineY = y + 6 + (i - first) * 14;
+		INT32 const lineY = originY + rel[i];
+		flowY = lineY + 14;
+		if (lineY > paneBot || lineY + 12 < paneTop) continue; // off-window
+		bool const rowVisible = lineY >= paneTop;
 		// consecutive lines from one author: chip and name only on the first
 		bool const cont = i > 0 && gMJChat[i - 1].who == l.who;
 		if (l.who == -2)
 		{
 			// squad kibitz from your side of the modem
-			if (!cont) drawChip(0, lineY);
+			if (!cont && rowVisible) drawChip(0, lineY);
 			SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_LTGRAY, FONT_MCOLOR_BLACK, 0);
-			MPrint(x + 45, lineY, ReduceStringLength(l.text, w - 72, FONT10ARIAL));
+			MPrint(x + 48, lineY, ReduceStringLength(l.text, w - 66, FONT10ARIAL));
+		}
+		else if (l.who == -5)
+		{
+			// wrapped continuation of a table event
+			SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_LTYELLOW, FONT_MCOLOR_BLACK, 0);
+			MPrint(x + 48, lineY, ReduceStringLength(sysTyped(i, l.text), w - 66, FONT10ARIAL));
+		}
+		else if (l.who == -4)
+		{
+			// a table event: louder than a notice, quieter than speech
+			if (!cont && rowVisible)
+			{
+				ColorFillVideoSurfaceArea(FRAME_BUFFER, x + 27, lineY - 3, x + 42, lineY + 11,
+							Get16BPPColor(FROMRGB(6, 36, 20)));
+				ColorFillVideoSurfaceArea(FRAME_BUFFER, x + 32, lineY + 2, x + 37, lineY + 7,
+							Get16BPPColor(FROMRGB(240, 220, 60)));
+			}
+			SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_LTYELLOW, FONT_MCOLOR_BLACK, 0);
+			MPrint(x + 48, lineY, ReduceStringLength(sysTyped(i, l.text), w - 66, FONT10ARIAL));
 		}
 		else if (l.who == -3)
 		{
 			// wrapped continuation of a system line
 			SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_LTGREEN, FONT_MCOLOR_BLACK, 0);
 			SetFontForegroundRGB(MJ_TOKEN_RGB);
-			MPrint(x + 45, lineY, ReduceStringLength(sysTyped(i, l.text), w - 72, FONT10ARIAL));
+			MPrint(x + 48, lineY, ReduceStringLength(sysTyped(i, l.text), w - 66, FONT10ARIAL));
 		}
 		else if (l.who < 0)
 		{
 			// system voice gets a placeholder avatar so the column stays true
-			if (!cont)
+			if (!cont && rowVisible)
 			{
-				ColorFillVideoSurfaceArea(FRAME_BUFFER, x + 30, lineY, x + 42, lineY + 10,
+				ColorFillVideoSurfaceArea(FRAME_BUFFER, x + 27, lineY - 3, x + 42, lineY + 11,
 							Get16BPPColor(FROMRGB(6, 36, 20)));
-				ColorFillVideoSurfaceArea(FRAME_BUFFER, x + 34, lineY + 3, x + 38, lineY + 7,
+				ColorFillVideoSurfaceArea(FRAME_BUFFER, x + 32, lineY + 2, x + 37, lineY + 7,
 							Get16BPPColor(MJ_TOKEN_RGB));
 			}
 			SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_LTGREEN, FONT_MCOLOR_BLACK, 0);
 			SetFontForegroundRGB(MJ_TOKEN_RGB);
-			MPrint(x + 45, lineY, ReduceStringLength(sysTyped(i, l.text), w - 72, FONT10ARIAL));
+			MPrint(x + 48, lineY, ReduceStringLength(sysTyped(i, l.text), w - 66, FONT10ARIAL));
 		}
 		else
 		{
-			// white handles, gray bodies: reads cleanly on the dark felt
+			// white handles, gray bodies, everything left-aligned
 			INT32 nameW = 0;
 			if (!cont)
 			{
-				drawChip(l.who, lineY);
+				if (rowVisible) drawChip(l.who, lineY);
 				ST::string const name = ST::format("{}:", MahjongChatHandle(l.who));
 				SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_WHITE, FONT_MCOLOR_BLACK, 0);
-				MPrint(x + 45, lineY, name);
+				MPrint(x + 48, lineY, name);
 				nameW = StringPixLength(name, FONT10ARIAL) + 4;
+				if (const char* const badge = MahjongRoleBadge(l.who))
+				{
+					if (rowVisible) MahjongDrawRoleBadge(x + 48 + nameW, lineY, badge);
+					nameW += StringPixLength(badge, FONT10ARIAL) + 12;
+				}
 			}
 			SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_LTGRAY, FONT_MCOLOR_BLACK, 0);
-			MPrint(x + 45 + nameW, lineY, ReduceStringLength(l.text, w - 72 - nameW, FONT10ARIAL));
+			MPrint(x + 48 + nameW, lineY, ReduceStringLength(l.text, w - 66 - nameW, FONT10ARIAL));
 		}
 	}
 	if (typingActive)
@@ -3635,21 +4148,21 @@ static void MahjongRenderChatBar()
 		// you watch them type it, mistakes and all
 		MahjongPendingLine const& pend = gMJPending.front();
 		int const twho = pend.who;
-		INT32 const lineY = y + 6 + (last - first) * 14;
+		INT32 const lineY = originY + rely + MJ_CLUSTER_GAP;
 		// mid-burst the room already knows who is talking: dots alone
 		bool const sameAuthor = !gMJChat.empty() && gMJChat.back().who == twho;
 		if (sameAuthor)
 		{
-			MahjongDrawTypingWave(x + 45, lineY);
+			MahjongDrawTypingWave(x + 48, lineY);
 		}
 		else
 		{
 			// the handle keeps its normal colour; only the state is green
-			MahjongDrawFaceChip(static_cast<INT8>(twho), x + 30, lineY);
+			MahjongDrawFaceChip(static_cast<INT8>(twho), x + 27, lineY - 3);
 			ST::string const handle = MahjongChatHandle(twho);
 			SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_WHITE, FONT_MCOLOR_BLACK, 0);
-			MPrint(x + 45, lineY, handle);
-			INT32 const sx = x + 45 + StringPixLength(handle, FONT10ARIAL) + 4;
+			MPrint(x + 48, lineY, handle);
+			INT32 const sx = x + 48 + StringPixLength(handle, FONT10ARIAL) + 4;
 			SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_LTGREEN, FONT_MCOLOR_BLACK, 0);
 			SetFontForegroundRGB(MJ_TOKEN_RGB);
 			MPrint(sx, lineY, "is typing");
@@ -3660,54 +4173,77 @@ static void MahjongRenderChatBar()
 
 	// scrollbar rail: muted like the ghost prompt, waking up under the cursor
 	{
-		INT32 const total = static_cast<INT32>(gMJChat.size());
-		INT32 const maxScroll = std::max(0, total - visible);
+		INT32 const maxScroll = std::max(0, giMJContentH - MahjongChatViewH());
 		INT32 const railX = MJ_X(MJ_CHAT_W - 12);
-		INT32 const trackY = y + 16, trackH = h - 32; // follows the active bar height
+		INT32 const trackY = y + 16, trackH = h - 54; // between the two arrows
 		bool const upHot   = gMJChatUpRegion.uiFlags & MSYS_MOUSE_IN_AREA;
 		bool const downHot = gMJChatDownRegion.uiFlags & MSYS_MOUSE_IN_AREA;
 		bool const railHot = (gMJChatRegion.uiFlags & MSYS_MOUSE_IN_AREA) &&
 					gMJChatRegion.MouseXPos >= railX - 3;
-		UINT16 const dim = Get16BPPColor(MJ_TOKEN_RGB);
+		UINT16 const dim = Get16BPPColor(FROMRGB(40, 96, 58)); // as quiet as the typing dots
 		UINT16 const hot = Get16BPPColor(FROMRGB(255, 255, 255));
-		ColorFillVideoSurfaceArea(FRAME_BUFFER, railX, y + 2, railX + 9, y + h - 2,
+		ColorFillVideoSurfaceArea(FRAME_BUFFER, railX, y + 2, railX + 9, y + h - 24,
 					Get16BPPColor(FROMRGB(6, 36, 20)));
 		for (INT32 r = 0; r < 6; ++r)
 		{
 			INT32 const half = r / 2;
 			ColorFillVideoSurfaceArea(FRAME_BUFFER, railX + 4 - half, y + 4 + r, railX + 5 + half, y + 5 + r,
 						upHot ? hot : dim);
-			ColorFillVideoSurfaceArea(FRAME_BUFFER, railX + 4 - half, y + h - 5 - r, railX + 5 + half, y + h - 4 - r,
+			ColorFillVideoSurfaceArea(FRAME_BUFFER, railX + 4 - half, y + h - 28 - r, railX + 5 + half, y + h - 27 - r,
 						downHot ? hot : dim);
 		}
-		ColorFillVideoSurfaceArea(FRAME_BUFFER, railX + 3, trackY, railX + 6, trackY + trackH,
+		ColorFillVideoSurfaceArea(FRAME_BUFFER, railX + 4, trackY, railX + 5, trackY + trackH,
 					Get16BPPColor(FROMRGB(11, 46, 27)));
 		if (maxScroll > 0)
 		{
-			INT32 const thumbH = std::max(6, trackH * visible / total);
-			INT32 const thumbY = trackY + (trackH - thumbH) * (maxScroll - giMJChatScroll) / maxScroll;
-			ColorFillVideoSurfaceArea(FRAME_BUFFER, railX + 2, thumbY, railX + 7, thumbY + thumbH,
+			INT32 const thumbH = std::max(6, trackH * MahjongChatViewH() / std::max(1, giMJContentH));
+			INT32 const thumbY = trackY + (trackH - thumbH) * giMJScrollY / maxScroll;
+			ColorFillVideoSurfaceArea(FRAME_BUFFER, railX + 3, thumbY, railX + 6, thumbY + thumbH,
 						railHot ? hot : dim);
 		}
 	}
 
+	SetFontDestBuffer(FRAME_BUFFER);
+
+	// the sliding chat can spill into the footer: repaint it on top
+	ColorFillVideoSurfaceArea(FRAME_BUFFER, MJ_X(2), y + h - 22, MJ_X(498), y + h - 1,
+				Get16BPPColor(FROMRGB(6, 36, 20)));
+	ColorFillVideoSurfaceArea(FRAME_BUFFER, MJ_X(2), y + h - 23, MJ_X(498), y + h - 22,
+				Get16BPPColor(FROMRGB(30, 60, 40)));
+
 	// input line: typed text, or the game prompt as a ghost placeholder
-	INT32 const inputY = y + h - 13;
+	INT32 const inputY = y + h - 16;
 	bool const caret = (MahjongNow() / 500) % 2 == 0;
 	if (gMJInput.empty())
 	{
 		SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_LTGREEN, FONT_MCOLOR_BLACK, 0);
 		SetFontForegroundRGB(MJ_TOKEN_RGB);
 		MPrint(x + 30, inputY, caret ? "> _" : "> ");
-		MPrint(x + 45, inputY, ReduceStringLength(gMJMessage, w - 72, FONT10ARIAL));
+		// the placeholder whispers, like the typing dots
+		SetFontForegroundRGB(FROMRGB(40, 96, 58));
+		if (MahjongNow() < guiMJMutedUntil)
+		{
+			UINT32 const left = (guiMJMutedUntil - MahjongNow() + 999) / 1000;
+			MPrint(x + 45, inputY, ST::format("muted by @e11iot - remaining {}s", left));
+		}
+		else
+		{
+			MPrint(x + 45, inputY, "write message...");
+		}
 	}
 	else
 	{
 		SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_LTGREEN, FONT_MCOLOR_BLACK, 0);
 		SetFontForegroundRGB(MJ_TOKEN_RGB);
 		MPrint(x + 30, inputY, ">");
-		ST::string const typed = ST::format("{}{}", gMJInput.c_str(), caret ? "_" : "");
-		MPrint(x + 45, inputY, ReduceStringLength(typed, w - 72, FONT10ARIAL));
+		// a real input field: it scrolls with the caret instead of cutting off
+		std::string typed = gMJInput + (caret ? "_" : "");
+		INT32 const field = w - 66;
+		while (typed.size() > 1 && StringPixLength(ST::string(typed), FONT10ARIAL) > field)
+		{
+			typed.erase(typed.begin());
+		}
+		MPrint(x + 45, inputY, ST::string(typed));
 	}
 }
 
@@ -3868,7 +4404,7 @@ static void MahjongRenderHand()
 			INT32 tx = MJ_X(MJ_HAND_X + 58);
 			for (size_t i = 0; i < waits.size() && i < 4; ++i)
 			{
-				MahjongDrawTile(tx, MJ_Y(214), MJ_MINI_W, MJ_MINI_H, waits[i], false);
+				MahjongDrawTile(tx, MJ_Y(184), MJ_MINI_W, MJ_MINI_H, waits[i], false);
 				tx += MJ_MINI_PITCH;
 			}
 		}
@@ -3876,7 +4412,7 @@ static void MahjongRenderHand()
 		{
 			int const shanten = gGame->ShantenFor(0);
 			SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_WHITE, FONT_MCOLOR_BLACK, 0);
-			MPrint(MJ_X(MJ_HAND_X), MJ_Y(228), shanten == 1
+			MPrint(MJ_X(MJ_HAND_X), MJ_Y(198), shanten == 1
 					? ST::string("1 tile from a waiting hand")
 					: ST::format("{} tiles from a waiting hand", shanten));
 		}
@@ -3884,12 +4420,37 @@ static void MahjongRenderHand()
 }
 
 
+// the room's pecking order, worn next to the handle. deliberately rare:
+// Elliot moderates (the Queen volunteered him), Kingpin owns the place
+static const char* MahjongRoleBadge(int who)
+{
+	if (who == 4) return "POTM";
+	if (who == 3)
+	{
+		if (giMJSeat3Persona == MJP_ELLIOT)  return "mod";
+		if (giMJSeat3Persona == MJP_KINGPIN) return "owner";
+	}
+	if (who == 2 && giMJSeat2Persona == MJP2_DARREN) return "staff";
+	return nullptr;
+}
+
+static void MahjongDrawRoleBadge(INT32 bx, INT32 by, const char* label)
+{
+	INT32 const bw = StringPixLength(label, FONT10ARIAL) + 8;
+	ColorFillVideoSurfaceArea(FRAME_BUFFER, bx, by - 1, bx + bw, by + 9,
+				Get16BPPColor(FROMRGB(24, 74, 46)));
+	SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_LTGREEN, FONT_MCOLOR_BLACK, 0);
+	SetFontForegroundRGB(MJ_TOKEN_RGB);
+	MPrint(bx + 4, by - 1, label);
+}
+
 // a braille-style wave of dots: the parlour's "still typing" spinner
 static void MahjongDrawTypingWave(INT32 dx, INT32 dy)
 {
 	static const INT32 lift[6] = { 0, -1, -2, -3, -2, -1 };
 	UINT32 const phase = MahjongNow() / 110;
-	UINT16 const col = Get16BPPColor(MJ_TOKEN_RGB);
+	// muted against the bar: present, not shouting
+	UINT16 const col = Get16BPPColor(FROMRGB(40, 96, 58));
 	for (INT32 i = 0; i < 3; ++i)
 	{
 		INT32 const y = dy + 6 + lift[(phase + 6 - i) % 6];
@@ -3898,17 +4459,24 @@ static void MahjongDrawTypingWave(INT32 dx, INT32 dy)
 }
 
 // small face chip: used on chat lines and score tables
-static void MahjongDrawFaceChip(INT8 who, INT32 cx, INT32 cy, UINT16 cw, UINT16 ch)
+static void MahjongDrawFaceChip(INT8 who, INT32 cx, INT32 cy, UINT16 cw, UINT16 ch, bool seatView)
 {
 	SGPVSurface* surf;
 	SGPBox src = { 5, 8, 19, 19 }; // square crop on the face itself
 	if (who <= 0)
 	{
-		surf = gfMJExhibition ? guiMJShillSurf : guiMJSelfFaceSurf;
+		// in the seat it is whoever holds the chair; in chat it is always
+		// you, because you are the one typing
+		SGPVSurface* const seat = gfMJExhibition ? guiMJShillSurf : guiMJSelfFaceSurf;
+		surf = seatView ? seat : (guiMJSelfFaceSurf ? guiMJSelfFaceSurf : seat);
 		src = SGPBox{ 24, 20, 58, 58 };
 	}
+	else if (who == 4) { surf = guiMJVisitorSurf; src = SGPBox{ 24, 20, 58, 58 }; }
 	else surf = guiMJChipSurf[who - 1];
 	if (!surf) return;
+	// a quiet frame separates the face from the felt
+	ColorFillVideoSurfaceArea(FRAME_BUFFER, cx - 1, cy - 1, cx + cw + 1, cy + ch + 1,
+				Get16BPPColor(FROMRGB(24, 74, 46)));
 	SGPBox const dst = { static_cast<UINT16>(cx), static_cast<UINT16>(cy), cw, ch };
 	BltStretchVideoSurface(FRAME_BUFFER, surf, &src, &dst);
 }
@@ -3971,7 +4539,7 @@ static void MahjongRenderOverlay()
 		// zebra stripes on the token's dark shades - no felt gaps
 		ColorFillVideoSurfaceArea(FRAME_BUFFER, rowL, lineY - 4, rowR, lineY + 34,
 					Get16BPPColor(i % 2 == 0 ? FROMRGB(22, 52, 38) : FROMRGB(14, 38, 28)));
-		MahjongDrawFaceChip(static_cast<INT8>(i), textX, lineY + 2, 26, 26);
+		MahjongDrawFaceChip(static_cast<INT8>(i), textX, lineY + 2, 26, 26, true);
 		SetFontAttributes(FONT12ARIAL, FONT_MCOLOR_WHITE, FONT_MCOLOR_BLACK, 0);
 		MPrint(nameX, lineY + 1, MahjongSeatName(i));
 		SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_DKGRAY, FONT_MCOLOR_BLACK, 0);
@@ -4165,9 +4733,11 @@ static void MahjongRenderRules()
 
 	ColorFillVideoSurfaceArea(FRAME_BUFFER, x + 14, y + h - 26, x + w - 14, y + h - 25, Get16BPPColor(FROMRGB(70, 84, 70)));
 	// unavailable directions stay visible, just barely: super subtle mute
-	SetFontAttributes(FONT10ARIAL, page > 0 ? FONT_MCOLOR_LTGREEN : FONT_NEARBLACK, FONT_MCOLOR_BLACK, 0);
+	SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_LTGREEN, FONT_MCOLOR_BLACK, 0);
+	if (page == 0) SetFontForegroundRGB(FROMRGB(40, 96, 58));
 	MPrint(x + 14, y + h - 18, "< prev");
-	SetFontAttributes(FONT10ARIAL, page < 3 ? FONT_MCOLOR_LTGREEN : FONT_NEARBLACK, FONT_MCOLOR_BLACK, 0);
+	SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_LTGREEN, FONT_MCOLOR_BLACK, 0);
+	if (page == 3) SetFontForegroundRGB(FROMRGB(40, 96, 58));
 	MPrint(x + w - 14 - StringPixLength("next >", FONT10ARIAL), y + h - 18, "next >");
 	SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_LTYELLOW, FONT_MCOLOR_BLACK, 0);
 	ST::string const pager = ST::format("page {}/4 - click elsewhere to close", page + 1);
@@ -4505,7 +5075,7 @@ static void MahjongExhibitionStep()
 				int const gwho = 1 + static_cast<int>(r % 3);
 				MahjongGuestPack const* const g = MahjongPackFor(gwho);
 				MahjongSay(gwho, g ? g->greet[MahjongChatRoll() % 3]
-								: gMJChatGreet[gwho - 1][MahjongChatRoll() % 5]);
+								: gMJChatGreet[gwho - 1][MahjongChatRoll() % 12]);
 			}
 			break;
 		}
@@ -4518,7 +5088,7 @@ static void MahjongExhibitionStep()
 				int const w = gGame->currentPlayer();
 				gGame->ResolveTsumo();
 				MahjongPlay(MJ_SND_WIN, LOWVOLUME);
-				MahjongSystemSay(ST::format("{} wins by self-draw", MahjongSeatName(w)));
+				MahjongEventSay(ST::format("{} wins by self-draw", MahjongSeatName(w)));
 			}
 			else
 			{
@@ -4534,7 +5104,7 @@ static void MahjongExhibitionStep()
 				int const d = gGame->lastDiscarder();
 				gGame->ResolveRon(claimant);
 				MahjongPlay(MJ_SND_WIN, LOWVOLUME);
-				MahjongSystemSay(ST::format("{} claims {}'s discard",
+				MahjongEventSay(ST::format("{} claims {}'s discard",
 						MahjongSeatName(claimant), MahjongSeatName(d)));
 				break;
 			}
@@ -4555,7 +5125,7 @@ static void MahjongExhibitionStep()
 				{
 					MahjongGuestPack const* const g = MahjongPackFor(mc);
 					MahjongSay(mc, g ? g->claim[MahjongChatRoll() % 3]
-							: gMJChatClaim[mc - 1][MahjongChatRoll() % 3]);
+							: gMJChatClaim[mc - 1][MahjongChatRoll() % 8]);
 				}
 			}
 			else gGame->PassRon();
@@ -4585,8 +5155,8 @@ static void MahjongExhibitionStep()
 		else
 		{
 			MahjongSay(who, MahjongChatRoll() % 2 == 0
-					? gMJChatWar[who - 1][MahjongWarTier() * 2 + MahjongChatRoll() % 2]
-					: gMJChatIdle[who - 1][MahjongChatRoll() % 15]);
+					? gMJChatWar[who - 1][MahjongWarTier() * 4 + MahjongChatRoll() % 4]
+					: gMJChatIdle[who - 1][MahjongChatRoll() % 30]);
 		}
 	}
 	else if (guiMJQuipCounter % 67 == 31)
@@ -4595,13 +5165,17 @@ static void MahjongExhibitionStep()
 	}
 	else if (guiMJQuipCounter % 53 == 19 && giMJBotWho < 0 && GetProfile(QUEEN).bLife > 0 && giMJSeat2Persona == MJP2_QUEEN)
 	{
-		MahjongBicker const& b = gMJBicker[MahjongChatRoll() % 14];
+		MahjongBicker const& b = gMJBicker[MahjongChatRoll() % 30];
 		MahjongSay(1, b.open);
 		MahjongBotQueueReply(b.replyWho, b.reply, MahjongChatRoll());
 	}
+	else if (guiMJQuipCounter % 97 == 53)
+	{
+		MahjongVisitorArrives();
+	}
 	else if (guiMJQuipCounter % 71 == 37 && giMJBotWho < 0)
 	{
-		MahjongCameo const& c = gMJCameo[MahjongChatRoll() % 8];
+		MahjongCameo const& c = gMJCameo[MahjongChatRoll() % 18];
 		MahjongSystemSay(c.join);
 		MahjongBotQueueReply(c.reactWho, c.react, MahjongChatRoll());
 		gMJPendingCameoLeave = c.leave;
@@ -4632,6 +5206,25 @@ void HandleMahjong()
 			MahjongRedraw();
 		}
 	}
+	// ease toward the target: time-based, so the speed does not depend on
+	// how often the page happens to repaint
+	MahjongReconcileScroll();
+	if (giMJScrollY != giMJScrollTarget)
+	{
+		static UINT32 uiLastEase = 0;
+		UINT32 const now = MahjongNow();
+		UINT32 const dt = std::min<UINT32>(64, now - uiLastEase);
+		if (dt >= 16)
+		{
+			uiLastEase = now;
+			INT32 const gap = giMJScrollTarget - giMJScrollY;
+			INT32 step = gap * static_cast<INT32>(dt) / 90;
+			if (step == 0) step = gap > 0 ? 1 : -1;
+			giMJScrollY += step;
+			if (std::abs(giMJScrollTarget - giMJScrollY) <= 1) giMJScrollY = giMJScrollTarget;
+			MahjongRedraw();
+		}
+	}
 	// the terminal prints its own lines out, fast
 	if (guiMJSysTypeLen > 0)
 	{
@@ -4643,6 +5236,28 @@ void HandleMahjong()
 			if (shown > guiMJSysTypeLen) guiMJSysTypeLen = 0;
 			MahjongRedraw();
 		}
+	}
+	// the visiting champion says their piece and moves on
+	if (!gMJVisitorHandle.empty() && MahjongNow() >= guiMJVisitorLeaves)
+	{
+		MahjongSystemSay(ST::format("{} has left the room", gMJVisitorHandle));
+		gMJVisitorHandle.clear();
+		if (guiMJVisitorSurf) { DeleteVideoSurface(guiMJVisitorSurf); guiMJVisitorSurf = nullptr; }
+	}
+
+	// the wanderers return once the room has moved on without them
+	for (int away = 1; away <= 3; ++away)
+	{
+		if (guiMJAwayUntil[away] == 0 || MahjongNow() < guiMJAwayUntil[away]) continue;
+		guiMJAwayUntil[away] = 0;
+		static const char* const backLine[4] =
+		{
+			"...ok back",
+			"back. what did I miss",
+			"sorry! I'm back!!",
+			"right. where were we",
+		};
+		MahjongSay(away, backLine[MahjongChatRoll() % 4]);
 	}
 	MahjongFlushPending();
 	// hover highlights must repaint the moment the cursor moves on or off
@@ -4716,7 +5331,10 @@ void HandleMahjong()
 		if (giMJGlitchWho < 0 && now >= guiMJNextGlitch)
 		{
 			giMJGlitchWho = 1 + static_cast<int>(now % 3);
-			guiMJGlitchEnd = now + 450;
+			// most are a blink; now and then somebody genuinely drops out
+			bool const outage = MahjongChatRoll() % 4 == 0;
+			guiMJGlitchEnd = now + (outage ? 5000 + MahjongChatRoll() % 6000 : 450);
+			if (outage) MahjongSystemSay(ST::format("{} lost connection", MahjongChatHandle(giMJGlitchWho)));
 			MahjongPlay(LAPTOPDIR "/static4.wav", LOWVOLUME, MahjongSeatPan(giMJGlitchWho));
 			MahjongRedraw();
 		}
@@ -4795,7 +5413,7 @@ void HandleMahjong()
 							gGame->ResolveRobKong(robber, t);
 							MahjongSystemSay(ST::format("{} ROBS {}'s kong of the {}",
 									MahjongSeatName(robber), MahjongSeatName(declarer), MahjongTileLabel(t)));
-							MahjongAnnounce(gMJWinTaunt[robber][MahjongChatRoll() % 3]);
+							MahjongAnnounce(gMJWinTaunt[robber][MahjongChatRoll() % 8]);
 							break;
 						}
 					}
@@ -4820,7 +5438,7 @@ void HandleMahjong()
 					{
 						MahjongGuestPack const* const g = MahjongPackFor(winner);
 						MahjongAnnounce(g ? g->winTaunt[MahjongChatRoll() % 3]
-										: gMJWinTaunt[winner][MahjongChatRoll() % 3]);
+										: gMJWinTaunt[winner][MahjongChatRoll() % 8]);
 					}
 					break;
 				}
@@ -4871,7 +5489,7 @@ void HandleMahjong()
 				int const declarer = gGame->currentPlayer();
 				gGame->DeclareSelfKong(gMJRobTile);
 				MahjongPlay(MJ_SND_MELD, BTNVOLUME, MahjongSeatPan(declarer));
-				MahjongSystemSay(ST::format("{} kongs the {} - everyone pays the bonus",
+				MahjongEventSay(ST::format("{} kongs the {} - everyone pays the bonus",
 						MahjongSeatName(declarer), MahjongTileLabel(gMJRobTile)));
 				MahjongEnterState(declarer == 0 ? MJUI_PLAYER_TURN : MJUI_AI_THINK);
 			}

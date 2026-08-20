@@ -68,6 +68,10 @@ In game: open the laptop, read your mail, and wait for the Parlour to find you. 
 | `docs/custom_artworks_source/laptop/generate_mahjong_tiles.py` | generates all STI art assets |
 | `src/game/Laptop/{Laptop,EMail}.*`, `src/game/Strategic/Game_Event_Hook.*` | integration: page registration, spam campaign, win/debt emails, save persistence |
 
+## Changelog
+
+See [docs/mahjong-changelog.md](docs/mahjong-changelog.md) for what changed and when.
+
 ## Roadmap
 
 More minigames for the laptop browser. San Mona has room for another establishment or two.
