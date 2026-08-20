@@ -79,7 +79,7 @@
 // and hit regions are both derived from these, so they cannot drift apart.
 // The chip is a fixed width so the arrows can sit hard against it without the
 // two drifting apart as the day number grows a digit.
-#define CH_CHIP_W       74
+#define CH_CHIP_W       66
 #define CH_CHIP_X       (CH_PANEL_X + (CH_PANEL_W - CH_CHIP_W) / 2)
 #define CH_ARROW_W      16
 #define CH_ARROW_H      20
@@ -423,6 +423,23 @@ namespace
 	void PrintCentred(SGPFont font, UINT8 colour, INT32 cx, INT32 y, const ST::string& text)
 	{
 		PrintAt(font, colour, cx - StringPixLength(text, font) / 2, y, text);
+	}
+
+	// A 14px icon and a label packed as one group, both centred on the same
+	// line. Eyeballing the two separately is what left them out of step.
+	INT32 ChessIconLabelWidth(SGPFont font, const ST::string& text)
+	{
+		return 14 + 4 + StringPixLength(text, font);
+	}
+
+	void ChessIconLabel(UINT16 icon, INT32 x, INT32 midY, SGPFont font, UINT8 colour,
+	                    const ST::string& text)
+	{
+		if (guiChessIcons)
+		{
+			BltVideoObject(FRAME_BUFFER, guiChessIcons, icon, CH_X(x), CH_Y(midY - 7));
+		}
+		PrintAt(font, colour, x + 18, midY - GetFontHeight(font) / 2, text);
 	}
 }
 
@@ -1027,27 +1044,18 @@ namespace
 		             CH_RADIUS, CH_RGB_CHROME);
 
 		const ST::string title = T(CHS_TITLE);
-		const INT32 titleW = StringPixLength(title, FONT10ARIALBOLD) + 18;
-		if (guiChessIcons)
-		{
-			BltVideoObject(FRAME_BUFFER, guiChessIcons, CH_ICON_PUZZLEMARK,
-			               CH_X(cx - titleW / 2), CH_Y(14));
-		}
-		PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, cx - titleW / 2 + 18, 15, title);
+		const INT32 titleW = ChessIconLabelWidth(FONT10ARIALBOLD, title);
+		ChessIconLabel(CH_ICON_PUZZLEMARK, cx - titleW / 2, 21,
+		               FONT10ARIALBOLD, FONT_MCOLOR_WHITE, title);
 
 		// date stepper: < [calendar] DAY n >
 		const ST::string day = ST::format("{} {}", T(CHS_DAY), giChessViewDay);
 		FillRounded(CH_CHIP_X, CH_DATE_Y, CH_CHIP_W, CH_ARROW_H,
 		            CH_RGB_PANEL_UP, 3, CH_RGB_PANEL_SUNK);
 		// icon and label centred in the chip as one group
-		const INT32 groupW = 14 + 4 + StringPixLength(day, FONT10ARIAL);
-		const INT32 groupX = CH_CHIP_X + (CH_CHIP_W - groupW) / 2;
-		if (guiChessIcons)
-		{
-			BltVideoObject(FRAME_BUFFER, guiChessIcons, CH_ICON_CALENDAR,
-			               CH_X(groupX), CH_Y(CH_DATE_Y + 3));
-		}
-		PrintAt(FONT10ARIAL, FONT_MCOLOR_WHITE, groupX + 18, CH_DATE_Y + 5, day);
+		const INT32 groupW = ChessIconLabelWidth(FONT10ARIAL, day);
+		ChessIconLabel(CH_ICON_CALENDAR, CH_CHIP_X + (CH_CHIP_W - groupW) / 2,
+		               CH_DATE_Y + CH_ARROW_H / 2, FONT10ARIAL, FONT_MCOLOR_WHITE, day);
 		// arrows grey out at the ends of the run; centred in their own hit
 		// regions rather than hung off the chip, which changes width
 		ChessDrawChevron(CH_PREV_X + CH_ARROW_W / 2, CH_DATE_Y + 10, true,
