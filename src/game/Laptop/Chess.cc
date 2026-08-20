@@ -104,6 +104,11 @@
 #define CH_ICON_PUZZLEMARK 6
 #define CH_ICON_FLAME      7
 
+// the ad slot and the counter fill the dead run under the board
+#define CH_BANNER_Y     (CH_BOARD_BOTTOM + 12)
+#define CH_BANNER_H     30
+#define CH_COUNTER_Y    (CH_BANNER_Y + CH_BANNER_H + 8)
+
 #define CH_REPLY_DELAY  650  // ms before the scripted reply lands
 
 // chess.com's palette, sampled from the live site
@@ -183,6 +188,7 @@ namespace
 	SGPVObject* guiChessCoach  = nullptr;  // Grunty, 29x33
 	SGPVObject* guiChessIcons  = nullptr;  // 7 nav and panel icons, 14x14
 	SGPVObject* guiChessLogo   = nullptr;  // green pawn, 22 and 14
+	SGPVObject* guiChessBanner = nullptr;  // 3 ad slots, 272x30
 	SGPVObject* guiChessSelf   = nullptr;  // the player's I.M.P. portrait
 	ST::string  gChessSelfNick;
 
@@ -191,6 +197,7 @@ namespace
 
 	MOUSE_REGION gChessSquare[64];
 	MOUSE_REGION gChessHintRegion;
+	MOUSE_REGION gChessNavRegion[5];
 	MOUSE_REGION gChessPrevDayRegion;
 	MOUSE_REGION gChessNextDayRegion;
 	MOUSE_REGION gChessModalCloseRegion;
@@ -214,6 +221,8 @@ namespace
 		CHS_MODAL_PERFECT, CHS_MODAL_SOLVED, CHS_MODAL_FAILED, CHS_MODAL_ARCHIVE,
 		CHS_MODAL_STREAK, CHS_MODAL_BEST,
 		CHS_DOWN_TITLE, CHS_DOWN_1, CHS_DOWN_2, CHS_DOWN_3,
+		CHS_STUB_TITLE, CHS_STUB_PLAY, CHS_STUB_LEARN, CHS_STUB_WATCH,
+		CHS_STUB_GROUPS, CHS_STUB_BACK, CHS_VISITOR,
 		CHS_COUNT
 	};
 
@@ -235,6 +244,13 @@ namespace
 			"ze machine is in my apartment.",
 			"ze apartment is not in Arulco.",
 			"back when my contract ends. - G.",
+			"UNDER CONSTRUCTION",
+			"ze server cannot hold two games at once.",
+			"I will write it when I understand it myself.",
+			"zere is nothing to watch. zis is a puzzle site.",
+			"a group needs two people.",
+			"back to ze puzzle",
+			"you are visitor no.",
 		},
 		{
 			"TAGESRAETSEL", "TAG", "WERTUNG", "WEISS ZIEHT", "SCHWARZ ZIEHT",
@@ -252,6 +268,13 @@ namespace
 			"der Rechner steht in meiner Wohnung.",
 			"die Wohnung steht nicht in Arulco.",
 			"zurueck nach dem Vertrag. - G.",
+			"IM AUFBAU",
+			"der Server haelt keine zwei Partien.",
+			"ich schreibe es, wenn ich es selbst verstehe.",
+			"es gibt nichts zu sehen. dies ist ein Raetsel.",
+			"eine Gruppe braucht zwei Leute.",
+			"zurueck zum Raetsel",
+			"Sie sind Besucher Nr.",
 		},
 	};
 
@@ -334,6 +357,8 @@ namespace
 	}
 
 	bool gfChessOffline = false;
+	// which nav section is showing its unfinished page, or -1 for the puzzle
+	int  giChessStub    = -1;
 
 	UINT32 ChessNow() { return GetJA2Clock(); }
 
@@ -671,7 +696,7 @@ namespace
 	void ChessSquareCallback(MOUSE_REGION* region, UINT32 reason)
 	{
 		if (!(reason & MSYS_CALLBACK_REASON_POINTER_DWN)) return;
-		if (gfChessModal || gfChessOffline) return;
+		if (gfChessModal || gfChessOffline || giChessStub >= 0) return;
 		if (gChessState != CHUI_PUZZLE || guiChessReplyDue != 0) return;
 
 		const UINT8 sq = UINT8(MSYS_GetRegionUserData(region, 0));
@@ -787,6 +812,15 @@ namespace
 		ChessRedraw();
 	}
 
+	void ChessNavCallback(MOUSE_REGION* region, UINT32 reason)
+	{
+		if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
+		const int item = int(MSYS_GetRegionUserData(region, 0));
+		// Puzzles is the site; everything else is a page he has not written
+		giChessStub = (item == 1) ? -1 : item;
+		ChessRedraw();
+	}
+
 	void ChessPlaceRegions()
 	{
 		MSYS_DefineRegion(&gChessDropRegion,
@@ -828,6 +862,17 @@ namespace
 		                  MSYS_PRIORITY_HIGH, CURSOR_WWW, MSYS_NO_CALLBACK, ChessDayCallback);
 		MSYS_SetRegionUserData(&gChessNextDayRegion, 0, 1);
 
+		for (int i = 0; i < 5; ++i)
+		{
+			const UINT16 y = UINT16(CH_Y(32 + i * 20 - 3));
+			MSYS_DefineRegion(&gChessNavRegion[i],
+			                  UINT16(CH_X(CH_NAV_X)), y,
+			                  UINT16(CH_X(CH_NAV_X + CH_NAV_W)), UINT16(y + 18),
+			                  MSYS_PRIORITY_HIGH, CURSOR_WWW, MSYS_NO_CALLBACK,
+			                  ChessNavCallback);
+			MSYS_SetRegionUserData(&gChessNavRegion[i], 0, i);
+		}
+
 		MSYS_DefineRegion(&gChessModalCloseRegion,
 		                  UINT16(CH_X(CH_MODAL_X + CH_MODAL_W - 20)), UINT16(CH_Y(CH_MODAL_Y + 2)),
 		                  UINT16(CH_X(CH_MODAL_X + CH_MODAL_W - 2)),  UINT16(CH_Y(CH_MODAL_Y + 20)),
@@ -863,6 +908,7 @@ namespace
 		MSYS_RemoveRegion(&gChessHintRegion);
 		MSYS_RemoveRegion(&gChessModalCloseRegion);
 		MSYS_RemoveRegion(&gChessModalArchiveRegion);
+		for (MOUSE_REGION& r : gChessNavRegion) MSYS_RemoveRegion(&r);
 		MSYS_RemoveRegion(&gChessPrevDayRegion);
 		MSYS_RemoveRegion(&gChessNextDayRegion);
 		gfChessRegionsUp = false;
@@ -922,7 +968,7 @@ namespace
 		for (int i = 0; i < 5; ++i)
 		{
 			const INT32 rowY = 32 + i * 20;
-			const bool active = i == 1;  // only Puzzles exists so far
+			const bool active = (giChessStub < 0) ? (i == 1) : (i == giChessStub);
 			if (active)
 			{
 				FillRounded(CH_NAV_X + 2, rowY - 3, CH_NAV_W - 4, 18,
@@ -1251,6 +1297,45 @@ namespace
 		}
 	}
 
+	// The ad slot: three creatives, rotating on the campaign clock, one of them
+	// a house ad and one a plug for the other site in the collection.
+	void ChessRenderBanner()
+	{
+		if (guiChessBanner)
+		{
+			const UINT16 slot = UINT16(giChessViewDay % 3);
+			BltVideoObject(FRAME_BUFFER, guiChessBanner, slot,
+			               CH_X(CH_BOARD_X), CH_Y(CH_BANNER_Y));
+		}
+		// A hit counter nobody has ever believed. Derived from the campaign
+		// clock rather than stored, so it climbs without costing save bytes.
+		const int hits = 148299 + giChessViewDay * 17 + gChessDay.bestStreak * 3;
+		PrintCentred(FONT10ARIAL, FONT_GRAY7, CH_BOARD_X + CH_BOARD_SIZE / 2,
+		             CH_COUNTER_Y, ST::format("{} {}", T(CHS_VISITOR), hits));
+	}
+
+	// Every other nav entry leads here, which is the honest state of them.
+	void ChessRenderStub()
+	{
+		FillRounded(CH_BOARD_X, CH_BOARD_Y, CH_BOARD_SIZE, CH_BOARD_SIZE,
+		            CH_RGB_PANEL, CH_RADIUS, CH_RGB_CHROME);
+		const INT32 cx = CH_BOARD_X + CH_BOARD_SIZE / 2;
+		const INT32 top = CH_BOARD_Y + 96;
+
+		static const ChessStr excuse[5] = {
+			CHS_STUB_PLAY, CHS_STUB_PLAY, CHS_STUB_LEARN, CHS_STUB_WATCH, CHS_STUB_GROUPS
+		};
+		if (guiChessIcons && giChessStub >= 0)
+		{
+			BltVideoObject(FRAME_BUFFER, guiChessIcons, UINT16(giChessStub),
+			               CH_X(cx - 7), CH_Y(top - 26));
+		}
+		PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_LTYELLOW, cx, top, T(CHS_STUB_TITLE));
+		PrintCentred(FONT10ARIAL, FONT_GRAY2, cx, top + 20,
+		             T(excuse[giChessStub < 0 ? 0 : giChessStub]));
+		PrintCentred(FONT10ARIAL, FONT_GRAY7, cx, top + 44, T(CHS_STUB_BACK));
+	}
+
 	void ChessRenderFooter()
 	{
 		PrintAt(FONT10ARIAL, FONT_GRAY7, CH_BOARD_X, CH_PAGE_H - 16, T(CHS_FOOTER));
@@ -1267,7 +1352,9 @@ void EnterChess()
 	guiChessCoach  = nullptr;
 	guiChessIcons  = nullptr;
 	guiChessLogo   = nullptr;
+	guiChessBanner = nullptr;
 	guiChessSelf   = nullptr;
+	giChessStub    = -1;
 	gChessSelfNick = ST::string();
 	try
 	{
@@ -1279,8 +1366,9 @@ void EnterChess()
 	}
 	try
 	{
-		guiChessIcons = AddVideoObjectFromFile("sti/laptop/chessicons.sti");
-		guiChessLogo  = AddVideoObjectFromFile("sti/laptop/chesslogo.sti");
+		guiChessIcons  = AddVideoObjectFromFile("sti/laptop/chessicons.sti");
+		guiChessLogo   = AddVideoObjectFromFile("sti/laptop/chesslogo.sti");
+		guiChessBanner = AddVideoObjectFromFile("sti/laptop/chessbanner.sti");
 	}
 	catch (...)
 	{
@@ -1339,6 +1427,7 @@ void ExitChess()
 	if (guiChessCoach)  { DeleteVideoObject(guiChessCoach);  guiChessCoach  = nullptr; }
 	if (guiChessIcons)  { DeleteVideoObject(guiChessIcons);  guiChessIcons  = nullptr; }
 	if (guiChessLogo)   { DeleteVideoObject(guiChessLogo);   guiChessLogo   = nullptr; }
+	if (guiChessBanner) { DeleteVideoObject(guiChessBanner); guiChessBanner = nullptr; }
 	if (guiChessSelf)   { DeleteVideoObject(guiChessSelf);   guiChessSelf   = nullptr; }
 }
 
@@ -1351,9 +1440,16 @@ void RenderChess()
 		ChessRenderOffline();
 		ChessRenderFooter();
 	}
+	else if (giChessStub >= 0)
+	{
+		ChessRenderStub();
+		ChessRenderBanner();
+		ChessRenderFooter();
+	}
 	else
 	{
 		ChessRenderBoard();
+		ChessRenderBanner();
 		ChessRenderPanel();
 		ChessRenderFooter();
 		ChessRenderModal();

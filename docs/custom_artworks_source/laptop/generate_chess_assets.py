@@ -62,8 +62,12 @@ PALETTE = [
     (215, 215, 212),  # 30 calendar paper
     (120, 118, 115),  # 31 calendar ink
     ( 86, 128,  45),  # 32 puzzle green dark
-    (250, 190,  70),  # 33 flame core
-    (230, 110,  40),  # 34 flame edge
+    (245, 240, 232),  # 33 banner paper
+    ( 24,  22,  20),  # 34 banner ink
+    (196,  36,  36),  # 35 banner red
+    (250, 205,  70),  # 36 banner gold
+    (250, 190,  70),  # 37 flame core
+    (230, 110,  40),  # 38 flame edge
 ]
 (TRANSPARENT, W_FILL, W_SHADE, W_LINE, B_FILL, B_SHADE, B_LINE,
  SQ_LIGHT, SQ_DARK, HL_LIGHT, HL_DARK,
@@ -71,7 +75,7 @@ PALETTE = [
  LOGO_SHADE, LOGO_LINE,
  PLAY_L, PLAY_D, PUZ_L, PUZ_D, LEARN_L, LEARN_D,
  WATCH_L, WATCH_D, COMM_L, COMM_D, CAL_L, CAL_D, PUZG_D,
- FLAME_L, FLAME_D) = range(35)
+ BAN_PAPER, BAN_INK, BAN_RED, BAN_GOLD, FLAME_L, FLAME_D) = range(39)
 
 WHITE_INKS = (W_FILL, W_SHADE, W_LINE)
 BLACK_INKS = (B_FILL, B_SHADE, B_LINE)
@@ -442,6 +446,55 @@ def make_icons(size=14):
     return [render_icon(name, size) for name in ICON_ORDER]
 
 
+def _banner_font(size):
+    """Any bold system face will do - these are 468x60 ad banners at heart."""
+    from PIL import ImageFont
+    for path in (
+        "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+        "/System/Library/Fonts/Supplemental/Impact.ttf",
+        "/Library/Fonts/Arial Bold.ttf",
+    ):
+        if Path(path).exists():
+            return ImageFont.truetype(path, size)
+    return ImageFont.load_default()
+
+
+def _banner(width, height, bg, rule_ink, lines):
+    """One ad: a ruled box with centred lines. lines is [(text, size, ink)]."""
+    img = Image.new("P", (width, height), bg)
+    img.putpalette([v for rgb in PALETTE for v in rgb] + [0] * (768 - 3 * len(PALETTE)))
+    d = ImageDraw.Draw(img)
+    d.rectangle([0, 0, width - 1, height - 1], outline=rule_ink)
+    d.rectangle([2, 2, width - 3, height - 3], outline=rule_ink)
+
+    total = sum(size + 1 for _, size, _ in lines) - 1
+    y = (height - total) // 2 - 1
+    for text, size, ink in lines:
+        font = _banner_font(size)
+        w = d.textlength(text, font=font)
+        d.text(((width - w) / 2, y), text, font=font, fill=ink)
+        y += size + 1
+    return img
+
+
+def make_banners(width=272, height=30):
+    """The rotating ad slot under the board. One house ad, two paid."""
+    return [
+        _banner(width, height, BAN_PAPER, BAN_INK, [
+            ("BOBBY RAY'S GUNS 'N' THINGS", 11, BAN_RED),
+            ("SHIP IT TODAY - SHOOT IT TONIGHT", 9, BAN_INK),
+        ]),
+        _banner(width, height, BAN_INK, BAN_GOLD, [
+            ("* GOLD CROWN MEMBERSHIP *", 11, BAN_GOLD),
+            ("COMING SOON - DO NOT ASK WHEN", 9, BAN_PAPER),
+        ]),
+        _banner(width, height, BAN_PAPER, BAN_INK, [
+            ("SAN MONA MAHJONG PARLOUR", 11, BAN_INK),
+            ("GAMES ARE FAIR BECAUSE MR. KLAUS SAYS SO", 8, BAN_RED),
+        ]),
+    ]
+
+
 def main():
     big = make_pieces(34)
     small = make_pieces(20)
@@ -449,6 +502,7 @@ def main():
     write_sti(OUT_DIR / "chesspiecessmall.sti", small)
     write_sti(OUT_DIR / "chesslogo.sti", make_logo())
     write_sti(OUT_DIR / "chessicons.sti", make_icons())
+    write_sti(OUT_DIR / "chessbanner.sti", make_banners())
     if "--preview" in sys.argv:
         write_preview(big, 34, Path("/tmp/chess_pieces_preview.png"))
         icons = make_icons(28) + make_logo()[:1] + [render_icon("play", 28)] * 3
