@@ -25,6 +25,7 @@
 #include "LaptopSave.h"
 #include "MercPortrait.h"
 #include "MouseSystem.h"
+#include "Sound_Control.h"
 #include "Soldier_Profile.h"
 #include "Timer_Control.h"
 #include "VObject.h"
@@ -265,6 +266,40 @@ namespace
 		if (giChessSaid == -1) return CHESS_COACH_GOOD[lang][giChessVariant];
 		if (giChessSaid == -2) return CHESS_COACH_BAD[lang][giChessVariant];
 		return CHESS_TEXT[lang][giChessSaid];
+	}
+
+	// chess.com's own cue set, externalized alongside the art
+	#define CH_SND_MOVE     SOUNDSDIR "/laptop/chach-move-self.mp3"
+	#define CH_SND_OPPONENT SOUNDSDIR "/laptop/chach-move-opponent.mp3"
+	#define CH_SND_CAPTURE  SOUNDSDIR "/laptop/chach-capture.mp3"
+	#define CH_SND_CHECK    SOUNDSDIR "/laptop/chach-move-check.mp3"
+	#define CH_SND_CASTLE   SOUNDSDIR "/laptop/chach-castle.mp3"
+	#define CH_SND_PROMOTE  SOUNDSDIR "/laptop/chach-promote.mp3"
+	#define CH_SND_ILLEGAL  SOUNDSDIR "/laptop/chach-illegal.mp3"
+	#define CH_SND_WRONG    SOUNDSDIR "/laptop/chach-incorrect.mp3"
+	#define CH_SND_LIFT     SOUNDSDIR "/laptop/chach-premove.mp3"
+
+	void ChessPlay(const char* file, UINT32 volume = MIDVOLUME)
+	{
+		try
+		{
+			PlayJA2SampleFromFile(file, volume, 1, MIDDLEPAN);
+		}
+		catch (...)
+		{
+			// missing sample: stay silent
+		}
+	}
+
+	// Which cue a move earns, in chess.com's order of precedence: the special
+	// cases speak first, and check outranks the capture that delivered it.
+	const char* ChessMoveSound(const ChessGame::Move& m, bool givesCheck, bool byUs)
+	{
+		if (givesCheck)                  return CH_SND_CHECK;
+		if (m.flags & ChessGame::MF_CASTLE) return CH_SND_CASTLE;
+		if (m.promo != ChessGame::NoPiece)  return CH_SND_PROMOTE;
+		if (m.flags & ChessGame::MF_CAPTURE) return CH_SND_CAPTURE;
+		return byUs ? CH_SND_MOVE : CH_SND_OPPONENT;
 	}
 
 	UINT32 ChessNow() { return GetJA2Clock(); }
@@ -523,6 +558,7 @@ namespace
 			gubChessLastFrom = want.from;
 			gubChessLastTo   = want.to;
 			gChessGame.MakeMove(want);
+			ChessPlay(ChessMoveSound(want, gChessGame.IsInCheck(gChessGame.SideToMove()), true));
 			++guiChessPly;
 			gbChessSelected = -1;
 
@@ -546,8 +582,13 @@ namespace
 		uci += char('1' + ChessGame::RankOf(to));
 		if (!gChessGame.ParseUci(uci).IsNull() || !gChessGame.ParseUci(uci + "q").IsNull())
 		{
+			ChessPlay(CH_SND_WRONG);
 			ChessSpendHeart();
 			if (gChessState == CHUI_PUZZLE) ChessCoachSay(-2);
+		}
+		else
+		{
+			ChessPlay(CH_SND_ILLEGAL, LOWVOLUME);
 		}
 		gbChessSelected = -1;
 	}
@@ -563,6 +604,7 @@ namespace
 		if (ours)
 		{
 			// lift it: a click is just a drag that never moved
+			if (gbChessSelected != INT8(sq)) ChessPlay(CH_SND_LIFT, LOWVOLUME);
 			gbChessSelected  = INT8(sq);
 			gfChessDragging  = true;
 			gubChessDragFrom = sq;
@@ -1133,6 +1175,7 @@ void HandleChess()
 			gubChessLastFrom = reply.from;
 			gubChessLastTo   = reply.to;
 			gChessGame.MakeMove(reply);
+			ChessPlay(ChessMoveSound(reply, gChessGame.IsInCheck(gChessGame.SideToMove()), false));
 			++guiChessPly;
 		}
 	}
