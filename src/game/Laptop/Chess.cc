@@ -117,7 +117,6 @@
 // the shift goes down: a sunk band, never a brighter one.
 #define CH_RGB_PANEL_SUNK  FROMRGB( 29,  26,  24)
 #define CH_RGB_CTA         FROMRGB(129, 182,  76)
-#define CH_RGB_HEART       FROMRGB(201,  70,  70)
 #define CH_RGB_HEART_SPENT FROMRGB( 70,  68,  65)
 // the account row: the nickname is suggested rather than set, two grey bars
 // standing in for text the way a low-res mock would
@@ -782,13 +781,13 @@ namespace
 {
 	// A small blocky heart, the tries counter. Drawn rather than blitted so the
 	// spent ones can be greyed without a second frame.
-	void ChessDrawHeart(INT32 x, INT32 y, UINT32 rgb)
+	void ChessDrawHeart(INT32 x, INT32 y, UINT32 rgb, INT32 s = 1)
 	{
-		FillRect(x,     y,     3, 2, rgb);
-		FillRect(x + 4, y,     3, 2, rgb);
-		FillRect(x,     y + 2, 7, 2, rgb);
-		FillRect(x + 1, y + 4, 5, 1, rgb);
-		FillRect(x + 2, y + 5, 3, 1, rgb);
+		FillRect(x,         y,         3 * s, 2 * s, rgb);
+		FillRect(x + 4 * s, y,         3 * s, 2 * s, rgb);
+		FillRect(x,         y + 2 * s, 7 * s, 2 * s, rgb);
+		FillRect(x + 1 * s, y + 4 * s, 5 * s, 1 * s, rgb);
+		FillRect(x + 2 * s, y + 5 * s, 3 * s, 1 * s, rgb);
 	}
 
 	// A blunt chevron: each row is a short bar stepped out from the point, so
@@ -1062,7 +1061,7 @@ namespace
 		for (int i = 0; i < CH_MAX_HEARTS; ++i)
 		{
 			ChessDrawHeart(CH_PANEL_X + 10 + i * CH_HEART_PITCH, heartY,
-			               i >= gubChessHearts ? CH_RGB_HEART_SPENT : CH_RGB_HEART);
+			               i >= gubChessHearts ? CH_RGB_HEART_SPENT : CH_RGB_CTA);
 		}
 
 		PrintAt(FONT10ARIAL, FONT_GRAY4, CH_PANEL_X + 10, heartY + 14,
@@ -1119,11 +1118,11 @@ namespace
 		             cx, y + 12, T(title));
 
 		// hearts left standing, in the CTA green rather than the counter's red
-		const INT32 heartsW = CH_MAX_HEARTS * 12 - 5;
+		const INT32 heartsW = CH_MAX_HEARTS * 18 - 4;
 		for (int i = 0; i < CH_MAX_HEARTS; ++i)
 		{
-			ChessDrawHeart(cx - heartsW / 2 + i * 12, y + 30,
-			               i < gubChessHearts ? CH_RGB_CTA : CH_RGB_PANEL_SUNK);
+			ChessDrawHeart(cx - heartsW / 2 + i * 18, y + 28,
+			               i < gubChessHearts ? CH_RGB_CTA : CH_RGB_PANEL_SUNK, 2);
 		}
 
 		FillRounded(x + 12, y + 46, w - 24, 22, CH_RGB_CTA, 3, CH_RGB_PANEL);
