@@ -118,22 +118,22 @@ PIECES = {
         ("poly", [(38, 52), (62, 52), (72, 78), (28, 78)]),
         ("rect", 21, 75, 79, 92, 4),
     ],
-    # The crown is one solid mass with the balls sitting on its rim; the
-    # notches between the points are cut out afterwards. Building it from
-    # wedges always came out as wire.
+    # The reference is simpler than everything tried before it: triangular
+    # prongs fanning from a common origin, a ball rounding each tip, and one
+    # wide footer overlapping the fan - wider than the fan itself. No collar,
+    # no skirt.
     "queen": [
-        ("circle", 50, 10, 7),
-        ("circle", 30, 13, 7),
-        ("circle", 70, 13, 7),
-        ("circle", 14, 22, 7),
-        ("circle", 86, 22, 7),
-        # the top edge is scalloped: a peak under each ball, a valley between
-        ("poly", [(11, 20), (22, 32), (30, 12), (40, 32), (50, 8),
-                  (60, 32), (70, 12), (78, 32), (89, 20),
-                  (82, 56), (18, 56)]),
-        ("rect", 28, 54, 72, 64, 3),
-        ("poly", [(35, 64), (65, 64), (74, 82), (26, 82)]),
-        ("rect", 19, 79, 81, 94, 4),
+        # computed radial fan: ball r10 over prongs 10 wide at the tip, inner
+        # pair 14 degrees off vertical so their balls close but do not merge
+        ("circle", 15, 38, 10),
+        ("circle", 35, 20, 10),
+        ("circle", 65, 20, 10),
+        ("circle", 85, 38, 10),
+        ("poly", [(11, 41), (18, 35), (53, 70), (40, 81)]),
+        ("poly", [(30, 21), (40, 19), (57, 72), (40, 76)]),
+        ("poly", [(60, 19), (70, 21), (60, 76), (43, 72)]),
+        ("poly", [(82, 35), (89, 41), (60, 81), (47, 70)]),
+        ("rect", 12, 76, 88, 95, 8),
     ],
     # A thick cross planted on one hard mass: a barely-tapered block down to
     # the collar, then the skirt. The arch is punched through the block.
