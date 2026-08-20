@@ -707,7 +707,8 @@
         "More Economic Recruiting Center",
         "McGillicutty's Mortuarium",
         "United Floral Service",
-        "Verzekeringsagenten voor A.I.M. contracten"
+        "Verzekeringsagenten voor A.I.M. contracten",
+        "San Mona Mahjong Parlour"
     ],
     "gzLateLocalizedString": [
         "De robot kan de sector niet verlaten als niemand de besturing gebruikt.",
@@ -887,6 +888,7 @@
         "Mortuarium",
         "Bloemist",
         "Verzekering",
+        "San Mahjong",
         "Stop"
     ],
     "pBullseyeStrings": [
@@ -1116,7 +1118,8 @@
         "%s was gedood",
         "Carmen kop v.e. terrorist gegeven",
         "Slay vertrok",
-        "%s vermoord"
+        "%s vermoord",
+        "Won the Bloody Invitational at the San Mona Mahjong Parlour"
     ],
     "pHistoryTitle": "Geschiedenis",
     "pIMPBeginScreenStrings": "( 8 Karakters Max )",
@@ -1652,7 +1655,8 @@
         "Bobby Rays",
         "Kingpin",
         "John Kulba",
-        "A.I.M."
+        "A.I.M.",
+        "Elliot"
     ],
     "pShortAttributeStrings": [
         "Bew",
@@ -1835,7 +1839,7 @@
         "McGillicutty's Mortuarium",
         "URL niet gevonden.",
         "Bobby Ray's - Recentelijke Zendingen",
-        "",
+        "San Mona Mahjong Parlour",
         ""
     ],
     "pWebTitle": "sir-FER 4.0",

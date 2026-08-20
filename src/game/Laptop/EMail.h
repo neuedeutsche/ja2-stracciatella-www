@@ -165,6 +165,15 @@ enum {
 	AIM_SITE,
 };
 
+// San Mona Mahjong Parlour: programmatic emails with no email.edt backing.
+// The ids sit far beyond any real email.edt offset; subject and body are
+// built in code from the mail's iFirstData (the dollar amount).
+#define MAHJONG_EMAIL_KINGPIN_WIN  5000
+#define MAHJONG_EMAIL_KINGPIN_DEBT 5001
+#define MAHJONG_EMAIL_ELLIOT_SECRET 5002
+#define MAHJONG_EMAIL_SPAM 5003 // the parlour advertises itself
+#define MAHJONG_ELLIOT_SENDER 51 // appended to pSenderNameList
+
 extern BOOLEAN fUnReadMailFlag;
 extern BOOLEAN fNewMailFlag;
 extern BOOLEAN  fOldNewMailFlag;

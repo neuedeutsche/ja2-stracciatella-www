@@ -707,7 +707,8 @@
         "More Economic Recruiting Center",
         "McGillicuttys Bestattungen",
         "Fleuropa",
-        "Versicherungsmakler für A.I.M.-Verträge"
+        "Versicherungsmakler für A.I.M.-Verträge",
+        "San Mona Mahjong Parlour"
     ],
     "gzLateLocalizedString": [
         "Der Roboter kann diesen Sektor nicht verlassen, wenn niemand die Fernbedienung benutzt.",
@@ -887,6 +888,7 @@
         "Bestattungsinst.",
         "Florist",
         "Versicherung",
+        "San Mahjong",
         "Abbruch"
     ],
     "pBullseyeStrings": [
@@ -1116,7 +1118,8 @@
         "%s wurde getötet",
         "Carmen den Kopf eines Terroristen gegeben",
         "Slay ist gegangen",
-        "%s gekillt"
+        "%s gekillt",
+        "Won the Bloody Invitational at the San Mona Mahjong Parlour"
     ],
     "pHistoryTitle": "Logbuch",
     "pIMPBeginScreenStrings": "(max. 8 Buchstaben)",
@@ -1652,7 +1655,8 @@
         "Bobby Rays",
         "Kingpin",
         "John Kulba",
-        "A.I.M."
+        "A.I.M.",
+        "Elliot"
     ],
     "pShortAttributeStrings": [
         "Bew",
@@ -1835,7 +1839,7 @@
         "McGillicuttys Bestattungen",
         "URL nicht gefunden.",
         "Bobby Rays - Letzte Lieferungen",
-        "",
+        "San Mona Mahjong Parlour",
         ""
     ],
     "pWebTitle": "sir-FER 4.0",

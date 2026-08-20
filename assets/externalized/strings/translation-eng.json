@@ -707,7 +707,8 @@
         "More Economic Recruiting Center",
         "McGillicutty's Mortuary",
         "United Floral Service",
-        "Insurance Brokers for A.I.M. contracts"
+        "Insurance Brokers for A.I.M. contracts",
+        "San Mona Mahjong Parlour"
     ],
     "gzLateLocalizedString": [
         "The robot cannot leave this sector when nobody is using the controller.",
@@ -887,6 +888,7 @@
         "Mortuary",
         "Florist",
         "Insurance",
+        "San Mahjong",
         "Cancel"
     ],
     "pBullseyeStrings": [
@@ -1116,7 +1118,8 @@
         "%s was killed",
         "Gave Carmen a terrorist's head",
         "Slay left",
-        "Killed %s"
+        "Killed %s",
+        "Won the Bloody Invitational at the San Mona Mahjong Parlour"
     ],
     "pHistoryTitle": "History Log",
     "pIMPBeginScreenStrings": "( 8 Characters Max )",
@@ -1652,7 +1655,8 @@
         "Bobby Rays",
         "Kingpin",
         "John Kulba",
-        "A.I.M."
+        "A.I.M.",
+        "Elliot"
     ],
     "pShortAttributeStrings": [
         "Agi",
@@ -1835,7 +1839,7 @@
         "McGillicutty's Mortuary",
         "URL not found.",
         "Bobby Ray's - Recent Shipments",
-        "",
+        "San Mona Mahjong Parlour",
         ""
     ],
     "pWebTitle": "sir-FER 4.0",
@@ -2160,9 +2164,9 @@
         "Show Tree Tops",
         "Show Wireframes",
         "Show 3D Cursor",
-		"Show Lights under Mercs",
-		"Hide Bullets",
-		"Tracking Mode"
+        "Show Lights under Mercs",
+        "Hide Bullets",
+        "Tracking Mode"
     ],
     "zSaveLoadText": [
         "Save Game",

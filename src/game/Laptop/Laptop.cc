@@ -47,6 +47,7 @@
 #include "Insurance_Info.h"
 #include "Insurance_Comments.h"
 #include "Funeral.h"
+#include "Mahjong.h"
 #include "Finances.h"
 #include "Personnel.h"
 #include "History.h"
@@ -57,6 +58,7 @@
 #include "WordWrap.h"
 #include "Game_Init.h"
 #include "Game_Clock.h"
+#include "Random.h"
 #include "Overhead.h"
 #include "Environment.h"
 #include "Music_Control.h"
@@ -516,6 +518,39 @@ static void EnterLaptop(void)
 
 	gfShowBookmarks = FALSE;
 	SetBookMark(AIM_BOOKMARK);
+	// the parlour has been spamming since day 2: on first online contact,
+	// backfill every notice that "already arrived" (stamped on its day) and
+	// schedule the rest to keep escalating until the site is visited
+	{
+		MahjongPersist mj = MahjongGetPersist();
+		if (!(mj.ubFlags & 0x10))
+		{
+			mj.ubFlags |= 0x10;
+			MahjongSetPersist(mj);
+			UINT32 const uiNow = GetWorldTotalMin();
+			static UINT32 const uiStageAt[4] =
+				{ 1 * 1440 + 540, 3 * 1440 + 615, 5 * 1440 + 680, 7 * 1440 + 825 };
+			UINT32 uiNext = 4;
+			for (UINT32 uiStage = 0; uiStage < 4; ++uiStage)
+			{
+				if (uiStageAt[uiStage] > uiNow) { uiNext = uiStage; break; }
+				AddEmailWithSpecialData(MAHJONG_EMAIL_SPAM, 0, KING_PIN, uiStageAt[uiStage],
+							static_cast<INT32>(uiStage), 0);
+			}
+			if (uiNext == 0)
+			{
+				// brand-new campaign: the first ad lands the moment you go online
+				AddEmailWithSpecialData(MAHJONG_EMAIL_SPAM, 0, KING_PIN, uiNow, 0, 0);
+				uiNext = 1;
+			}
+			SetBookMark(MAHJONG_BOOKMARK);
+			if (uiNext < 4)
+			{
+				AddStrategicEvent(EVENT_MAHJONG_KINGPIN_EMAIL,
+						std::max(uiStageAt[uiNext], uiNow + 720), 0x40000000 | uiNext);
+			}
+		}
+	}
 
 	DrawDeskTopBackground();
 
@@ -694,6 +729,8 @@ static void RenderLaptop(void)
 		case LAPTOP_MODE_INSURANCE_COMMENTS:       RenderInsuranceComments(); break;
 
 		case LAPTOP_MODE_FUNERAL:                  RenderFuneral();           break;
+
+		case LAPTOP_MODE_MAHJONG:                  RenderMahjong();           break;
 
 		case LAPTOP_MODE_FINANCES:                 RenderFinances();          break;
 		case LAPTOP_MODE_PERSONNEL:                RenderPersonnel();         break;
@@ -890,6 +927,8 @@ do_nothing:
 
 		case LAPTOP_MODE_FUNERAL:                  EnterFuneral();           break;
 
+		case LAPTOP_MODE_MAHJONG:                  EnterMahjong();           break;
+
 		case LAPTOP_MODE_FINANCES:                 EnterFinances();          break;
 		case LAPTOP_MODE_PERSONNEL:                EnterPersonnel();         break;
 		case LAPTOP_MODE_HISTORY:                  EnterHistory();           break;
@@ -938,6 +977,8 @@ static void HandleLapTopHandles(void)
 		case LAPTOP_MODE_BOBBY_R:                  HandleBobbyR();            break;
 		case LAPTOP_MODE_BOBBY_R_MAILORDER:        HandleBobbyRMailOrder();   break;
 		case LAPTOP_MODE_BOBBYR_SHIPMENTS:         HandleBobbyRShipments();   break;
+
+		case LAPTOP_MODE_MAHJONG:                  HandleMahjong();           break;
 
 		case LAPTOP_MODE_CHAR_PROFILE:             HandleCharProfile();       break;
 
@@ -1266,6 +1307,8 @@ static void ExitLaptopMode(LaptopMode uiMode)
 		case LAPTOP_MODE_INSURANCE_COMMENTS:       ExitInsuranceComments(); break;
 
 		case LAPTOP_MODE_FUNERAL:                  ExitFuneral();           break;
+
+		case LAPTOP_MODE_MAHJONG:                  ExitMahjong();           break;
 
 		case LAPTOP_MODE_FINANCES:                 ExitFinances();          break;
 		case LAPTOP_MODE_PERSONNEL:                ExitPersonnel();         break;
@@ -1808,6 +1851,11 @@ void GoToWebPage(INT32 iPageId)
 		case INSURANCE_BOOKMARK:
 			guiCurrentWWWMode    = LAPTOP_MODE_INSURANCE;
 			guiCurrentLaptopMode = LAPTOP_MODE_INSURANCE;
+			break;
+
+		case MAHJONG_BOOKMARK:
+			guiCurrentWWWMode    = LAPTOP_MODE_MAHJONG;
+			guiCurrentLaptopMode = LAPTOP_MODE_MAHJONG;
 			break;
 
 		default: return;
@@ -2745,6 +2793,9 @@ void HandleKeyBoardShortCutsForLapTop(UINT16 usEvent, UINT32 usParam, UINT16 usK
 
 	if (usEvent != KEY_DOWN) return;
 
+	// mahjong site: the chat input line eats printable keys first
+	if (guiCurrentLaptopMode == LAPTOP_MODE_MAHJONG && MahjongHandleTypedKey(usParam, usKeyState)) return;
+
 	switch (usParam)
 	{
 		case SDLK_ESCAPE:
@@ -3303,7 +3354,18 @@ void SaveLaptopInfoToSavedGame(HWFILE const f)
 	INJ_U32(  d, l.uiFlowerOrderNumber)
 	INJ_U32(  d, l.uiTotalMoneyPaidToSpeck)
 	INJ_U8(   d, l.ubLastMercAvailableId)
-	INJ_SKIP( d, 87)
+	{
+		// San Mona Mahjong Parlour: 16 bytes of the old reserve
+		MahjongPersist const mj = MahjongGetPersist();
+		INJ_U16( d, mj.usMatches)
+		INJ_U16( d, mj.usMatchesWon)
+		INJ_U16( d, mj.usHandsWon)
+		INJ_I32( d, mj.iBiggestHand)
+		INJ_I32( d, mj.iDollarsNet)
+		INJ_U8(  d, mj.ubFlags)
+		INJ_U8(  d, mj.ubGrudge)
+	}
+	INJ_SKIP( d, 71)
 	Assert(d.getConsumed() == lengthof(data));
 
 	f->write(data, sizeof(data));
@@ -3390,7 +3452,19 @@ void LoadLaptopInfoFromSavedGame(HWFILE const f)
 	EXTR_U32(  d, l.uiFlowerOrderNumber)
 	EXTR_U32(  d, l.uiTotalMoneyPaidToSpeck)
 	EXTR_U8(   d, l.ubLastMercAvailableId)
-	EXTR_SKIP( d, 87)
+	{
+		// San Mona Mahjong Parlour: old saves read harmless zeroes here
+		MahjongPersist mj;
+		EXTR_U16( d, mj.usMatches)
+		EXTR_U16( d, mj.usMatchesWon)
+		EXTR_U16( d, mj.usHandsWon)
+		EXTR_I32( d, mj.iBiggestHand)
+		EXTR_I32( d, mj.iDollarsNet)
+		EXTR_U8(  d, mj.ubFlags)
+		EXTR_U8(  d, mj.ubGrudge)
+		MahjongSetPersist(mj);
+	}
+	EXTR_SKIP( d, 71)
 	Assert(d.getConsumed() == lengthof(data));
 
 	// Handle old saves in M.E.R.C. module

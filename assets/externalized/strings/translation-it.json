@@ -707,7 +707,8 @@
         "Centro più economico di reclutamento",
         "Impresa di pompe funebri McGillicutty",
         "Servizio Fioristi Riuniti",
-        "Contratti assicurativi per agenti A.I.M."
+        "Contratti assicurativi per agenti A.I.M.",
+        "San Mona Mahjong Parlour"
     ],
     "gzLateLocalizedString": [
         "Il robot non può lasciare questo settore, se nessuno sta usando il controller.",
@@ -887,6 +888,7 @@
         "Pompe funebri",
         "Fiorista",
         "Assicurazione",
+        "San Mahjong",
         "Annulla"
     ],
     "pBullseyeStrings": [
@@ -1116,7 +1118,8 @@
         "%s è stato ucciso",
         "Data a Carmen la testa di un terrorista",
         "Massacro sinistro",
-        "Ucciso %s"
+        "Ucciso %s",
+        "Won the Bloody Invitational at the San Mona Mahjong Parlour"
     ],
     "pHistoryTitle": "Registro",
     "pIMPBeginScreenStrings": "(max 8 personaggi)",
@@ -1652,7 +1655,8 @@
         "Bobby Ray",
         "Capo",
         "John Kulba",
-        "A.I.M."
+        "A.I.M.",
+        "Elliot"
     ],
     "pShortAttributeStrings": [
         "Abi",
@@ -1835,7 +1839,7 @@
         "Servizio di pompe funebri di McGillicutty",
         "URL non ritrovato.",
         "Bobby Ray - Spedizioni recenti",
-        "",
+        "San Mona Mahjong Parlour",
         ""
     ],
     "pWebTitle": "sir-FER 4.0",

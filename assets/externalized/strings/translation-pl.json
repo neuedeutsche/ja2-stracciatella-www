@@ -707,7 +707,8 @@
         "Bardziej Ekonomiczne Centrum Rekrutacyjne",
         "McGillicutty's - Zakład pogrzebowy",
         "United Floral Service",
-        "Brokerzy ubezpieczeniowi"
+        "Brokerzy ubezpieczeniowi",
+        "San Mona Mahjong Parlour"
     ],
     "gzLateLocalizedString": [
         "Robot nie może opuścić sektora bez operatora.",
@@ -887,6 +888,7 @@
         "Pogrzeby",
         "Kwiaty",
         "Ubezpieczenia",
+        "San Mahjong",
         "Anuluj"
     ],
     "pBullseyeStrings": [
@@ -1116,7 +1118,8 @@
         "%s zabity(ta)",
         "Przekazano Carmenowi głowę terrorysty",
         "Slay odszedł",
-        "Zabito: %s"
+        "Zabito: %s",
+        "Won the Bloody Invitational at the San Mona Mahjong Parlour"
     ],
     "pHistoryTitle": "Historia",
     "pIMPBeginScreenStrings": "( Maks. 8 znaków )",
@@ -1652,7 +1655,8 @@
         "Bobby Ray",
         "Kingpin",
         "John Kulba",
-        "A.I.M."
+        "A.I.M.",
+        "Elliot"
     ],
     "pShortAttributeStrings": [
         "Zwn",
@@ -1835,7 +1839,7 @@
         "McGillicutty - Zakład pogrzebowy",
         "Nie odnaleziono URL.",
         "Bobby Ray's - Ostatnie dostawy",
-        "",
+        "San Mona Mahjong Parlour",
         ""
     ],
     "pWebTitle": "sir-FER 4.0",

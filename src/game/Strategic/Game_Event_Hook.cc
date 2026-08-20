@@ -30,6 +30,7 @@
 #include "Strategic_Status.h"
 #include "Soldier_Profile.h"
 #include "Laptop.h"
+#include "Mahjong.h"
 #include "Campaign.h"
 #include "Debug.h"
 #include "Observable.h"
@@ -289,6 +290,34 @@ BOOLEAN ExecuteStrategicEvent( STRATEGICEVENT *pEvent )
 		case EVENT_RPC_WHINE_ABOUT_PAY:
 			RPCWhineAboutNoPay(GetMan(pEvent->uiParam));
 			break;
+
+		case EVENT_MAHJONG_KINGPIN_EMAIL:
+		{
+			// param packs the dollar amount; bit31 marks a debt notice and
+			// bit30 the one-time parlour spam that reveals the bookmark
+			if (pEvent->uiParam & 0x40000000)
+			{
+				// escalating ad campaign: repeats daily until the site is
+				// visited, growing less "spam" and more "Kingpin" each time
+				UINT32 const uiStage = pEvent->uiParam & 0x3;
+				if (uiStage > 0 && (MahjongGetPersist().ubFlags & 0x20)) break;
+				AddEmailWithSpecialData(MAHJONG_EMAIL_SPAM, 0, KING_PIN, pEvent->uiTimeStamp,
+							static_cast<INT32>(uiStage), 0);
+				SetBookMark(MAHJONG_BOOKMARK);
+				if (uiStage < 3)
+				{
+					AddStrategicEvent(EVENT_MAHJONG_KINGPIN_EMAIL,
+							GetWorldTotalMin() + 1440 + Random(720),
+							0x40000000 | (uiStage + 1));
+				}
+				break;
+			}
+			UINT32 const uiAmount = pEvent->uiParam & 0x3FFFFFFF;
+			BOOLEAN const fDebt = (pEvent->uiParam & 0x80000000) != 0;
+			AddEmailWithSpecialData(fDebt ? MAHJONG_EMAIL_KINGPIN_DEBT : MAHJONG_EMAIL_KINGPIN_WIN,
+						0, KING_PIN, pEvent->uiTimeStamp, static_cast<INT32>(uiAmount), 0);
+			break;
+		}
 
 		case EVENT_HAVENT_MADE_IMP_CHARACTER_EMAIL:
 			HaventMadeImpMercEmailCallBack();

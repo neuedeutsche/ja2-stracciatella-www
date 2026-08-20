@@ -536,8 +536,34 @@ void AddEmailMessage(INT32 iMessageOffset, INT32 iMessageLength, INT32 iDate, UI
 	pTempEmail->iFirstData = iFirstData;
 	pTempEmail->uiSecondData = uiSecondData;
 
-	ST::string pSubject = LoadEMailText(iMessageOffset);
-	pSubject = ReplaceMercNameAndAmountWithProperData(pSubject, pTempEmail);
+	ST::string pSubject;
+	if (iMessageOffset == MAHJONG_EMAIL_KINGPIN_WIN)
+	{
+		pSubject = "Your winnings - San Mona Mahjong Parlour";
+	}
+	else if (iMessageOffset == MAHJONG_EMAIL_KINGPIN_DEBT)
+	{
+		pSubject = "Outstanding balance - San Mona Mahjong Parlour";
+	}
+	else if (iMessageOffset == MAHJONG_EMAIL_ELLIOT_SECRET)
+	{
+		pSubject = "please delete after reading";
+	}
+	else if (iMessageOffset == MAHJONG_EMAIL_SPAM)
+	{
+		switch (pTempEmail->iFirstData)
+		{
+			case 1:  pSubject = "SECOND NOTICE: your table is WAITING"; break;
+			case 2:  pSubject = "We MISS you!! (special offer inside!!)"; break;
+			case 3:  pSubject = "a personal letter from the management"; break;
+			default: pSubject = "CONGRATULATIONS!!! You are PRE-APPROVED to WIN"; break;
+		}
+	}
+	else
+	{
+		pSubject = LoadEMailText(iMessageOffset);
+		pSubject = ReplaceMercNameAndAmountWithProperData(pSubject, pTempEmail);
+	}
 	pTempEmail->pSubject = ST::format(" {}", pSubject);
 
 	// place into list
@@ -1673,6 +1699,7 @@ static void ReDisplayBoxes(void)
 
 
 static void HandleIMPCharProfileResultsMessage(void);
+static void HandleMahjongKingpinMessage(UINT16 usMessageId, const Email* pMail);
 static void ModifyInsuranceEmails(UINT16 usMessageId, Email* pMail, UINT8 ubNumberOfRecords);
 
 
@@ -1689,6 +1716,13 @@ static void HandleMailSpecialMessages(UINT16 usMessageId, Email* pMail)
 			SetBookMark( MERC_BOOKMARK );
 			fReDrawScreenFlag = TRUE;
 		break;
+
+		case MAHJONG_EMAIL_KINGPIN_WIN:
+		case MAHJONG_EMAIL_KINGPIN_DEBT:
+		case MAHJONG_EMAIL_ELLIOT_SECRET:
+		case MAHJONG_EMAIL_SPAM:
+			HandleMahjongKingpinMessage(usMessageId, pMail);
+			break;
 
 
 		case INSUR_PAYMENT:
@@ -1866,6 +1900,117 @@ enum PhysicalBits
 	PHYS_LDR  = 1 << 5
 };
 ENUM_BITSET(PhysicalBits)
+
+
+static void HandleMahjongKingpinMessage(UINT16 usMessageId, const Email* pMail)
+{
+	if (pMessageRecordList != NULL) return;
+	auto const blank = []() { AddEmailRecordToList(" "); };
+
+	if (usMessageId == MAHJONG_EMAIL_SPAM && pMail->iFirstData == 1)
+	{
+		AddEmailRecordToList("Dear customer (STILL valued!!),");
+		blank();
+		AddEmailRecordToList("Our records show you have NOT yet visited the SAN MONA MAHJONG PARLOUR despite being PRE-APPROVED.");
+		AddEmailRecordToList("Did the modem eat our invitation?? It happens!! Modems!!");
+		blank();
+		AddEmailRecordToList("The tables are still hot. The celebrity guests still ask about you.");
+		AddEmailRecordToList("One of them commands an army, so, you know. Awkward.");
+		blank();
+		AddEmailRecordToList("Your bookmark is installed and waiting. It gets lonely.");
+		blank();
+		AddEmailRecordToList("- The San Mona Mahjong Parlour (a Klaus Entertainment property)");
+		return;
+	}
+	if (usMessageId == MAHJONG_EMAIL_SPAM && pMail->iFirstData == 2)
+	{
+		AddEmailRecordToList("Dear friend of the Parlour (we checked - we ARE friends),");
+		blank();
+		AddEmailRecordToList("Have you been receiving our letters? Our marketing department (Darren's nephew) worries our TONE was wrong. So:");
+		blank();
+		AddEmailRecordToList("* THIS WEEK ONLY: the rake is HALF OFF!!");
+		AddEmailRecordToList("* FREE souvenir chip with your first buy-in!! (chip may be virtual)");
+		AddEmailRecordToList("* Testimonial: \"I lost everything and I STILL had a wonderful time!!\" - E., palace employee");
+		blank();
+		AddEmailRecordToList("We miss you. The modem misses you. Even the Queen asked who keeps not showing up.");
+		blank();
+		AddEmailRecordToList("- The San Mona Mahjong Parlour (now with 40% more felt)");
+		return;
+	}
+	if (usMessageId == MAHJONG_EMAIL_SPAM && pMail->iFirstData == 3)
+	{
+		AddEmailRecordToList("Friend,");
+		blank();
+		AddEmailRecordToList("Forget the coupons. My marketing people mean well, but subtlety is not sold in San Mona.");
+		blank();
+		AddEmailRecordToList("Here is the truth. Every night the same three sit at my online table: the exile, the Queen, and the Queen's nervous little assistant. Every night she wins. Every night the table gets a little quieter.");
+		blank();
+		AddEmailRecordToList("I run gambling houses. Quiet tables are bad for business.");
+		blank();
+		AddEmailRecordToList("Come play a hand. Humble her once - just once - and your first evening is on the house.");
+		blank();
+		AddEmailRecordToList("I do not often ask twice. I have never asked four times.");
+		blank();
+		AddEmailRecordToList("- K., San Mona");
+		return;
+	}
+	if (usMessageId == MAHJONG_EMAIL_SPAM)
+	{
+		AddEmailRecordToList("Dear VALUED customer,");
+		blank();
+		AddEmailRecordToList("You have been PERSONALLY SELECTED (by our modem) to join the SAN MONA MAHJONG PARLOUR - the premier online gaming destination of the Las Vegas of Arulco!!!");
+		blank();
+		AddEmailRecordToList("* REAL tables! REAL opponents! Celebrity guests you would NOT believe!");
+		AddEmailRecordToList("* $250 buy-in. 20 points to the dollar. The house takes 10% and you take THE REST!");
+		AddEmailRecordToList("* Fights at the Hummer afterwards (ask for Darren). Unwind at the Shady Lady.");
+		AddEmailRecordToList("* Tony deals in CASH ONLY. You did not hear that from us.");
+		blank();
+		AddEmailRecordToList("Find us in your web bookmarks. Dial-up friendly. Fully licensed by the only authority that matters in San Mona.");
+		blank();
+		AddEmailRecordToList("To unsubscribe, visit the manor south of town and ask for Mr. Klaus personally. Bring identification. And a will.");
+		blank();
+		AddEmailRecordToList("- The San Mona Mahjong Parlour");
+		return;
+	}
+
+	if (usMessageId == MAHJONG_EMAIL_ELLIOT_SECRET)
+	{
+		AddEmailRecordToList("hello. it's me. from the mahjong table.");
+		blank();
+		AddEmailRecordToList("I have now finished three evenings with MORE points than I started with. Three. I counted twice.");
+		blank();
+		AddEmailRecordToList("I am telling you because you seem nice and because if Her Highness finds out I am capable of winning ANYTHING she will find new ways to test it.");
+		blank();
+		AddEmailRecordToList("please delete this. please. - E.");
+		return;
+	}
+
+	ST::string const amount = SPrintMoney(pMail->iFirstData);
+	if (usMessageId == MAHJONG_EMAIL_KINGPIN_WIN)
+	{
+		AddEmailRecordToList("Friend,");
+		blank();
+		AddEmailRecordToList(ST::format("Word gets around when somebody walks away from my tables with {}.", amount));
+		AddEmailRecordToList("The wire transfer is done. The house already took its cut - consider it a membership fee.");
+		blank();
+		AddEmailRecordToList("Enjoy it. Spend it. Then come back and lose it like everybody else does.");
+		blank();
+		AddEmailRecordToList("- K., San Mona");
+	}
+	else
+	{
+		AddEmailRecordToList("Friend,");
+		blank();
+		AddEmailRecordToList(ST::format("You sat at my table, you played, and you lost {}.", amount));
+		AddEmailRecordToList("It has been collected from your account. Nothing personal - just arithmetic.");
+		blank();
+		AddEmailRecordToList("A word of advice: the Queen's little adjutant loses every night too, and look where apologizing gets him.");
+		blank();
+		AddEmailRecordToList("The table is always open. So is the hole you are standing in.");
+		blank();
+		AddEmailRecordToList("- K., San Mona");
+	}
+}
 
 
 static ST::string LoadIMPResultText(UINT32 Offset)
@@ -2332,8 +2477,9 @@ static void PreProcessEmail(Email* const m)
 	}
 
 	Record* start = pMessageRecordList;
-	if (start && m->usOffset != IMP_EMAIL_PROFILE_RESULTS)
-	{ // pass the subject line
+	if (start && m->usOffset != IMP_EMAIL_PROFILE_RESULTS &&
+		!(m->usOffset >= MAHJONG_EMAIL_KINGPIN_WIN && m->usOffset <= MAHJONG_EMAIL_SPAM))
+	{ // pass the subject line (programmatic bodies have no subject record)
 		start = start->Next;
 	}
 

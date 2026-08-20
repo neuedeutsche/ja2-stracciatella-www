@@ -707,7 +707,8 @@
         "Mouvement pour l'Entraînement et le Recrutement des Commandos",
         "Morgue McGillicutty",
         "Service des Fleuristes Associés",
-        "Courtiers d'Assurance des Mercenaires de l'A.I.M."
+        "Courtiers d'Assurance des Mercenaires de l'A.I.M.",
+        "San Mona Mahjong Parlour"
     ],
     "gzLateLocalizedString": [
         "Le robot ne peut quitter ce secteur par lui-même.",
@@ -887,6 +888,7 @@
         "Morgue",
         "Fleuriste",
         "Assurance",
+        "San Mahjong",
         "Annuler"
     ],
     "pBullseyeStrings": [
@@ -1116,7 +1118,8 @@
         "%s a été tué(e)",
         "Tête de terroriste donnée à Carmen",
         "Reste Slay",
-        "%s a été tué(e)"
+        "%s a été tué(e)",
+        "Won the Bloody Invitational at the San Mona Mahjong Parlour"
     ],
     "pHistoryTitle": "Historique",
     "pIMPBeginScreenStrings": "( 8 Caractères Max )",
@@ -1652,7 +1655,8 @@
         "Bobby Ray",
         "Kingpin",
         "John Kulba",
-        "A.I.M."
+        "A.I.M.",
+        "Elliot"
     ],
     "pShortAttributeStrings": [
         "Agi",
@@ -1835,7 +1839,7 @@
         "Morgue McGillicutty",
         "URL introuvable.",
         "Bobby Ray - Dernières commandes",
-        "",
+        "San Mona Mahjong Parlour",
         ""
     ],
     "pWebTitle": "sir-FER 4.0",

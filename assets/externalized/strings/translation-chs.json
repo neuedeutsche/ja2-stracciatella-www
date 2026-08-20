@@ -707,7 +707,8 @@
         "廉价新兵中心",
         "McGillicutty公墓",
         "联合花卉服务公司",
-        "A.I.M指定保险代理人"
+        "A.I.M指定保险代理人",
+        "San Mona Mahjong Parlour"
     ],
     "gzLateLocalizedString": [
         "由于无人在用遥控器, 机器人无法离开本区域.",
@@ -887,6 +888,7 @@
         "公墓",
         "花店",
         "M.I.S 保险公司",
+        "San Mahjong",
         "取消"
     ],
     "pBullseyeStrings": [
@@ -1116,7 +1118,8 @@
         "%s被干掉了",
         "把一个恐怖分子的头颅给了Carmen.",
         "Slay走了",
-        "干掉了%s"
+        "干掉了%s",
+        "Won the Bloody Invitational at the San Mona Mahjong Parlour"
     ],
     "pHistoryTitle": "历史记录",
     "pIMPBeginScreenStrings": "( 最多8个字符 )",
@@ -1652,7 +1655,8 @@
         "Bobby Rays",
         "Kingpin",
         "John Kulba",
-        "A.I.M."
+        "A.I.M.",
+        "Elliot"
     ],
     "pShortAttributeStrings": [
         "敏捷",
@@ -1835,7 +1839,7 @@
         "McGillicutty's 公墓",
         "无法找到UR",
         "Bobby Ray's - 最近的运货",
-        "",
+        "San Mona Mahjong Parlour",
         ""
     ],
     "pWebTitle": "sir-FER 4.0",
