@@ -47,7 +47,7 @@ PALETTE = [
     (232, 230, 227),  # 16 text primary         #E8E6E3
     (139, 137, 135),  # 17 text secondary       #8B8987
     (106, 150,  62),  # 18 logo pawn shade
-    ( 56,  79,  33),  # 19 logo pawn outline
+    ( 74, 104,  44),  # 19 logo pawn shade side (light falls from the left)
     # nav icon colours, one light/dark pair each
     (198, 160, 110),  # 20 play tan
     (140, 110,  70),  # 21 play tan dark
@@ -218,8 +218,13 @@ def _dot_mask(name, size, margin):
     return mask.resize((size, size), Image.BOX).point(lambda v: 255 if v >= 128 else 0)
 
 
-def render_piece(name, inks, size, margin=1):
-    """One indexed frame: flat fill, 1px inner outline, shade band on the base."""
+def render_piece(name, inks, size, margin=1, directional=False):
+    """One indexed frame: flat fill, 1px inner outline, shade band on the base.
+
+    With directional=True the outline stops being uniform: edges that face left
+    catch the light and take the lit ink, everything else takes the shade. That
+    is what stops the small logo pawn reading as a sticker.
+    """
     fill_ink, shade_ink, line_ink = inks
     sil = _silhouette(name, size, margin)
     # MinFilter erodes: the ring that erosion removes becomes the outline
@@ -236,7 +241,9 @@ def render_piece(name, inks, size, margin=1):
             if not sil_px[x, y]:
                 continue
             if not inner_px[x, y]:
-                out_px[x, y] = line_ink
+                # a left-facing edge is one with nothing filled to its left
+                lit = directional and (x == 0 or not sil_px[x - 1, y])
+                out_px[x, y] = fill_ink if lit else line_ink
             elif y >= shade_from:
                 out_px[x, y] = shade_ink
             else:
@@ -339,7 +346,8 @@ def write_preview(frames, size, path, zoom=6):
 
 def make_logo():
     """The site mark: chess.com's green pawn, at two sizes."""
-    return [render_piece("pawn", LOGO_INKS, 22), render_piece("pawn", LOGO_INKS, 14)]
+    return [render_piece("pawn", LOGO_INKS, 22, directional=True),
+            render_piece("pawn", LOGO_INKS, 14, directional=True)]
 
 
 # Nav and panel icons, each a list of (primitives, palette index) layers painted

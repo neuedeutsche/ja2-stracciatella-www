@@ -79,7 +79,6 @@
 #define CH_RAIL_SEARCH_Y  (CH_PAGE_H - 118)
 #define CH_RAIL_LANG_Y    (CH_PAGE_H - 102)
 #define CH_RAIL_AVATAR_Y  (CH_PAGE_H - 82)
-#define CH_RAIL_HEART_Y   (CH_PAGE_H - 40)
 #define CH_AVATAR_SIZE    33
 
 // frame indices into chessicons.sti
@@ -101,11 +100,14 @@
 #define CH_RGB_HL_DARK     FROMRGB(185, 202,  67)
 #define CH_RGB_DOT_LIGHT   FROMRGB(200, 201, 178)
 #define CH_RGB_DOT_DARK    FROMRGB( 98, 127,  70)
-#define CH_RGB_CHROME      FROMRGB( 48,  46,  43)
-#define CH_RGB_PANEL       FROMRGB( 38,  37,  34)
-#define CH_RGB_PANEL_UP    FROMRGB( 60,  59,  57)
+// Warm greys: the neutral values read green next to the board, so red leads
+// and blue trails in every one of these.
+#define CH_RGB_CHROME      FROMRGB( 52,  47,  42)
+#define CH_RGB_PANEL       FROMRGB( 42,  38,  34)
+#define CH_RGB_PANEL_UP    FROMRGB( 66,  60,  54)
+// Sections are separated by a shift in ground tone rather than by rules.
+#define CH_RGB_PANEL_SOFT  FROMRGB( 50,  45,  40)
 #define CH_RGB_CTA         FROMRGB(129, 182,  76)
-#define CH_RGB_RULE        FROMRGB( 62,  60,  57)
 #define CH_RGB_HEART       FROMRGB(201,  70,  70)
 #define CH_RGB_HEART_SPENT FROMRGB( 70,  68,  65)
 // the account row: the nickname is suggested rather than set, two grey bars
@@ -552,60 +554,65 @@ namespace
 
 	void ChessSquareCallback(MOUSE_REGION* region, UINT32 reason)
 	{
+		if (!(reason & MSYS_CALLBACK_REASON_POINTER_DWN)) return;
 		if (gChessState != CHUI_PUZZLE || guiChessReplyDue != 0) return;
 
 		const UINT8 sq = UINT8(MSYS_GetRegionUserData(region, 0));
 		const bool ours = !gChessGame.IsEmpty(sq) && gChessGame.ColorAt(sq) == gChessSolver;
 
-		// press: lift one of our pieces off the board
-		if (reason & MSYS_CALLBACK_REASON_POINTER_DWN)
+		if (ours)
 		{
-			if (ours)
-			{
-				gbChessSelected  = INT8(sq);
-				gfChessDragging  = true;
-				gubChessDragFrom = sq;
-				ChessRedraw();
-			}
-			return;
+			// lift it: a click is just a drag that never moved
+			gbChessSelected  = INT8(sq);
+			gfChessDragging  = true;
+			gubChessDragFrom = sq;
 		}
-
-		if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
-
-		// release somewhere other than where we lifted from: that is the move
-		if (gfChessDragging)
+		else if (gbChessSelected >= 0)
 		{
-			const UINT8 from = gubChessDragFrom;
-			gfChessDragging  = false;
-			gubChessDragFrom = ChessGame::NO_SQUARE;
-			if (sq != from)
-			{
-				if (ours) gbChessSelected = INT8(sq);  // dropped on our own man
-				else      ChessTryMove(from, sq);
-				ChessRedraw();
-				return;
-			}
-			// same square: a click, so leave it selected and let the next click
-			// finish the move
+			// click-to-move: second click lands the piece already selected
+			ChessTryMove(UINT8(gbChessSelected), sq);
+		}
+		ChessRedraw();
+	}
+
+	// Where the pointer is over the board, or NO_SQUARE if it is off it.
+	UINT8 ChessSquareUnderPointer()
+	{
+		const INT32 col = (INT32(gusMouseXPos) - CH_X(CH_BOARD_X)) / CH_SQ;
+		const INT32 row = (INT32(gusMouseYPos) - CH_Y(CH_BOARD_Y)) / CH_SQ;
+		if (INT32(gusMouseXPos) < CH_X(CH_BOARD_X) || INT32(gusMouseYPos) < CH_Y(CH_BOARD_Y) ||
+		    col < 0 || col > 7 || row < 0 || row > 7)
+		{
+			return ChessGame::NO_SQUARE;
+		}
+		return ScreenToSquare(int(col), int(row));
+	}
+
+	// MSYS locks the mouse to the region that was pressed and then deliberately
+	// withholds the button-up when the pointer has moved elsewhere, so a drop on
+	// a different square never reaches a callback. Resolve it from the pointer
+	// instead, on the tick the button comes back up.
+	void ChessResolveDrop()
+	{
+		const UINT8 from = gubChessDragFrom;
+		gfChessDragging  = false;
+		gubChessDragFrom = ChessGame::NO_SQUARE;
+
+		const UINT8 to = ChessSquareUnderPointer();
+		// released off the board, or back where it started: it snaps home and
+		// stays selected, so the click path can still finish the move
+		if (to == ChessGame::NO_SQUARE || to == from)
+		{
 			ChessRedraw();
 			return;
 		}
-
-		if (gbChessSelected < 0)
+		if (!gChessGame.IsEmpty(to) && gChessGame.ColorAt(to) == gChessSolver)
 		{
-			if (ours) gbChessSelected = INT8(sq);
-		}
-		else if (UINT8(gbChessSelected) == sq)
-		{
-			gbChessSelected = -1;
-		}
-		else if (ours)
-		{
-			gbChessSelected = INT8(sq);
+			gbChessSelected = INT8(to);  // dropped on another of our own men
 		}
 		else
 		{
-			ChessTryMove(UINT8(gbChessSelected), sq);
+			ChessTryMove(from, to);
 		}
 		ChessRedraw();
 	}
@@ -743,9 +750,9 @@ namespace
 		if (guiChessLogo)
 		{
 			// frame 1 is the 14px pawn; the 22px one will not sit on one line
-			BltVideoObject(FRAME_BUFFER, guiChessLogo, 1, CH_X(lockX), CH_Y(10));
+			BltVideoObject(FRAME_BUFFER, guiChessLogo, 1, CH_X(lockX), CH_Y(9));
 		}
-		PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, lockX + 16, 11, "chach");
+		PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, lockX + 16, 12, "chach");
 		PrintAt(FONT10ARIAL, FONT_GRAY2,
 		        lockX + 16 + StringPixLength("chach", FONT10ARIALBOLD), 11, ".com");
 
@@ -792,15 +799,6 @@ namespace
 			FillRect(barX, CH_RAIL_AVATAR_Y + 9,  24, 4, CH_RGB_NICK);
 			FillRect(barX, CH_RAIL_AVATAR_Y + 16, 16, 3, CH_RGB_NICK_DIM);
 		}
-
-		// tries, in the rail under the avatar
-		for (int i = 0; i < CH_MAX_HEARTS; ++i)
-		{
-			ChessDrawHeart(CH_NAV_X + 6 + i * CH_HEART_PITCH, CH_RAIL_HEART_Y,
-			               i >= gubChessHearts ? CH_RGB_HEART_SPENT : CH_RGB_HEART);
-		}
-		PrintAt(FONT10ARIAL, FONT_GRAY4, CH_NAV_X + 6, CH_RAIL_HEART_Y + 10,
-		        ST::format("{} {}", gubChessHearts, T(CHS_TRIES)));
 	}
 
 	void ChessRenderBoard()
@@ -868,9 +866,9 @@ namespace
 			const char rankGlyph[2] = { char('1' + ChessGame::RankOf(rankSq)), '\0' };
 			const char fileGlyph[2] = { char('a' + ChessGame::FileOf(fileSq)), '\0' };
 			PrintAt(FONT10ARIAL, IsLightSquare(rankSq) ? FONT_GRAY7 : FONT_WHITE,
-			        CH_BOARD_X + 3, CH_BOARD_Y + i * CH_SQ + 1, rankGlyph);
+			        CH_BOARD_X + 3, CH_BOARD_Y + i * CH_SQ + 4, rankGlyph);
 			PrintAt(FONT10ARIAL, IsLightSquare(fileSq) ? FONT_GRAY7 : FONT_WHITE,
-			        CH_BOARD_X + i * CH_SQ + CH_SQ - 8, CH_BOARD_BOTTOM - 13, fileGlyph);
+			        CH_BOARD_X + i * CH_SQ + CH_SQ - 8, CH_BOARD_BOTTOM - 11, fileGlyph);
 		}
 
 		RoundCorners(CH_BOARD_X, CH_BOARD_Y, CH_BOARD_SIZE, CH_BOARD_SIZE,
@@ -945,7 +943,12 @@ namespace
 		const INT32 cx = CH_PANEL_X + CH_PANEL_W / 2;
 		const ChessPuzzle& puzzle = CHESS_PUZZLES[giChessPuzzle];
 
-		// title, with the green puzzle mark beside it
+		// header band: a lighter ground stands in for the rule that used to
+		// sit under the date
+		FillRect(CH_PANEL_X, CH_INSET, CH_PANEL_W, 52, CH_RGB_PANEL_SOFT);
+		RoundCorners(CH_PANEL_X, CH_INSET, CH_PANEL_W, CH_PAGE_H - 2 * CH_INSET,
+		             CH_RADIUS, CH_RGB_CHROME);
+
 		const ST::string title = T(CHS_TITLE);
 		const INT32 titleW = StringPixLength(title, FONT10ARIALBOLD) + 18;
 		if (guiChessIcons)
@@ -958,7 +961,7 @@ namespace
 		// date stepper: < [calendar] DAY n >
 		const ST::string day = ST::format("{} {}", T(CHS_DAY), giChessViewDay);
 		const INT32 stepW = StringPixLength(day, FONT10ARIAL) + 20;
-		FillRect(cx - stepW / 2, CH_DATE_Y, stepW, 16, CH_RGB_PANEL_UP);
+		FillRounded(cx - stepW / 2, CH_DATE_Y, stepW, 16, CH_RGB_PANEL_UP, 3, CH_RGB_PANEL_SOFT);
 		if (guiChessIcons)
 		{
 			BltVideoObject(FRAME_BUFFER, guiChessIcons, CH_ICON_CALENDAR,
@@ -972,28 +975,41 @@ namespace
 		PrintCentred(FONT10ARIAL, giChessViewDay < ChessToday() ? FONT_MCOLOR_WHITE : FONT_GRAY7,
 		             CH_NEXT_X + CH_ARROW_W / 2, CH_DATE_Y + 3, ">");
 
-		FillRect(CH_PANEL_X + 8, CH_DATE_Y + 22, CH_PANEL_W - 16, 1, CH_RGB_RULE);
-
 		ChessRenderCoach(CH_COACH_Y);
 
-		PrintAt(FONT10ARIAL, FONT_GRAY4, CH_PANEL_X + 10, CH_COACH_Y + CH_COACH_TILE + 18,
+		// tries, directly under the coach: she is the one keeping count
+		const INT32 heartY = CH_COACH_Y + CH_COACH_TILE + 16;
+		for (int i = 0; i < CH_MAX_HEARTS; ++i)
+		{
+			ChessDrawHeart(CH_PANEL_X + 10 + i * CH_HEART_PITCH, heartY,
+			               i >= gubChessHearts ? CH_RGB_HEART_SPENT : CH_RGB_HEART);
+		}
+		PrintAt(FONT10ARIAL, FONT_GRAY4,
+		        CH_PANEL_X + 14 + CH_MAX_HEARTS * CH_HEART_PITCH, heartY - 2,
+		        ST::format("{} {}", gubChessHearts, T(CHS_TRIES)));
+
+		PrintAt(FONT10ARIAL, FONT_GRAY4, CH_PANEL_X + 10, heartY + 14,
 		        ST::format("{} {}", T(CHS_RATING), puzzle.rating));
-		PrintAt(FONT10ARIALBOLD, FONT_GRAY2, CH_PANEL_X + 10, CH_COACH_Y + CH_COACH_TILE + 32,
+		PrintAt(FONT10ARIALBOLD, FONT_GRAY2, CH_PANEL_X + 10, heartY + 28,
 		        gChessSolver == ChessGame::White ? T(CHS_WHITE_MOVES) : T(CHS_BLACK_MOVES));
 
-		PrintAt(FONT10ARIAL, FONT_GRAY4, CH_PANEL_X + 10, 176, T(CHS_SOLVED_BY));
+		// solvers sit on their own darker ground, again instead of a rule
 		const int shown = int(sizeof(CHESS_SOLVERS) / sizeof(CHESS_SOLVERS[0]));
+		const INT32 listY = 172;
+		const INT32 listH = 20 + shown * 13 + 14;
+		FillRect(CH_PANEL_X, listY, CH_PANEL_W, listH, CH_RGB_PANEL_SOFT);
+		PrintAt(FONT10ARIAL, FONT_GRAY4, CH_PANEL_X + 10, listY + 4, T(CHS_SOLVED_BY));
 		for (int i = 0; i < shown; ++i)
 		{
-			PrintAt(FONT10ARIAL, FONT_GRAY7, CH_PANEL_X + 14, 190 + i * 13, CHESS_SOLVERS[i]);
+			PrintAt(FONT10ARIAL, FONT_GRAY7, CH_PANEL_X + 14, listY + 18 + i * 13,
+			        CHESS_SOLVERS[i]);
 		}
 		if (gubChessFlags & CH_FLAG_SOLVED)
 		{
-			PrintAt(FONT10ARIAL, FONT_MCOLOR_LTGREEN, CH_PANEL_X + 14, 190 + shown * 13,
-			        T(CHS_AND_YOU));
+			PrintAt(FONT10ARIAL, FONT_MCOLOR_LTGREEN, CH_PANEL_X + 14,
+			        listY + 18 + shown * 13, T(CHS_AND_YOU));
 		}
 
-		FillRect(CH_PANEL_X + 10, CH_PAGE_H - 96, CH_PANEL_W - 20, 1, CH_RGB_RULE);
 		PrintAt(FONT10ARIAL, FONT_GRAY2, CH_PANEL_X + 10, CH_PAGE_H - 88,
 		        ST::format(T(CHS_STREAK), gubChessStreak));
 		PrintAt(FONT10ARIAL, FONT_GRAY4, CH_PANEL_X + 10, CH_PAGE_H - 74,
@@ -1001,8 +1017,8 @@ namespace
 
 		// the hint button greys out once it has been spent
 		const bool hintLive = gChessState == CHUI_PUZZLE && !(gubChessFlags & CH_FLAG_HINT_USED);
-		FillRect(CH_PANEL_X + 10, CH_PAGE_H - 46, CH_PANEL_W - 20, 22,
-		         hintLive ? CH_RGB_PANEL_UP : CH_RGB_PANEL);
+		FillRounded(CH_PANEL_X + 10, CH_PAGE_H - 46, CH_PANEL_W - 20, 22,
+		            hintLive ? CH_RGB_PANEL_UP : CH_RGB_PANEL_SOFT, 3, CH_RGB_PANEL);
 		PrintCentred(FONT10ARIAL, hintLive ? FONT_MCOLOR_WHITE : FONT_GRAY7,
 		             cx, CH_PAGE_H - 40, T(CHS_HINT));
 	}
@@ -1045,9 +1061,10 @@ void EnterChess()
 	try
 	{
 		// Buns coaches: a schoolteacher by trade, and German, which is why the
-		// site has a language switch at all
-		guiChessCoach = AddVideoObjectFromFile(
-			ST::format(FACESDIR "/33face/b{02d}.sti", GetProfile(BUNS).ubFaceIndex));
+		// site has a language switch at all. Merc faces have to come through
+		// Load33Portrait - the raw FACESDIR path only resolves for NPCs, which
+		// is why the tile was empty.
+		guiChessCoach = Load33Portrait(GetProfile(BUNS));
 	}
 	catch (...)
 	{
@@ -1097,8 +1114,13 @@ void RenderChess()
 
 void HandleChess()
 {
-	// a piece in hand has to be repainted every frame to keep up with the pointer
-	if (gfChessDragging) ChessRedraw();
+	// a piece in hand has to be repainted every frame to keep up with the
+	// pointer, and the drop is resolved here rather than in a region callback
+	if (gfChessDragging)
+	{
+		if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) ChessRedraw();
+		else                                      ChessResolveDrop();
+	}
 
 	if (guiChessReplyDue == 0 || ChessNow() < guiChessReplyDue) return;
 	guiChessReplyDue = 0;
