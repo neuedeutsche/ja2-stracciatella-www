@@ -708,7 +708,8 @@
         "Morgue McGillicutty",
         "Service des Fleuristes Associés",
         "Courtiers d'Assurance des Mercenaires de l'A.I.M.",
-        "San Mona Mahjong Parlour"
+        "San Mona Mahjong Parlour",
+        "chach.com - Grunty's daily chess puzzle"
     ],
     "gzLateLocalizedString": [
         "Le robot ne peut quitter ce secteur par lui-même.",
@@ -889,6 +890,7 @@
         "Fleuriste",
         "Assurance",
         "San Mahjong",
+        "chach.com",
         "Annuler"
     ],
     "pBullseyeStrings": [
@@ -1840,7 +1842,7 @@
         "URL introuvable.",
         "Bobby Ray - Dernières commandes",
         "San Mona Mahjong Parlour",
-        ""
+        "chach.com"
     ],
     "pWebTitle": "sir-FER 4.0",
     "pwMineStrings": [

@@ -47,6 +47,7 @@
 #include "Insurance_Info.h"
 #include "Insurance_Comments.h"
 #include "Funeral.h"
+#include "Chess.h"
 #include "Mahjong.h"
 #include "Finances.h"
 #include "Personnel.h"
@@ -518,6 +519,9 @@ static void EnterLaptop(void)
 
 	gfShowBookmarks = FALSE;
 	SetBookMark(AIM_BOOKMARK);
+	// chach.com is a merc's personal homepage, linked from his A.I.M. profile,
+	// so it is simply there from the moment you have a browser
+	SetBookMark(CHESS_BOOKMARK);
 	// the parlour has been spamming since day 2: on first online contact,
 	// backfill every notice that "already arrived" (stamped on its day) and
 	// schedule the rest to keep escalating until the site is visited
@@ -731,6 +735,7 @@ static void RenderLaptop(void)
 		case LAPTOP_MODE_FUNERAL:                  RenderFuneral();           break;
 
 		case LAPTOP_MODE_MAHJONG:                  RenderMahjong();           break;
+		case LAPTOP_MODE_CHESS:                    RenderChess();             break;
 
 		case LAPTOP_MODE_FINANCES:                 RenderFinances();          break;
 		case LAPTOP_MODE_PERSONNEL:                RenderPersonnel();         break;
@@ -928,6 +933,7 @@ do_nothing:
 		case LAPTOP_MODE_FUNERAL:                  EnterFuneral();           break;
 
 		case LAPTOP_MODE_MAHJONG:                  EnterMahjong();           break;
+		case LAPTOP_MODE_CHESS:                    EnterChess();             break;
 
 		case LAPTOP_MODE_FINANCES:                 EnterFinances();          break;
 		case LAPTOP_MODE_PERSONNEL:                EnterPersonnel();         break;
@@ -979,6 +985,7 @@ static void HandleLapTopHandles(void)
 		case LAPTOP_MODE_BOBBYR_SHIPMENTS:         HandleBobbyRShipments();   break;
 
 		case LAPTOP_MODE_MAHJONG:                  HandleMahjong();           break;
+		case LAPTOP_MODE_CHESS:                    HandleChess();             break;
 
 		case LAPTOP_MODE_CHAR_PROFILE:             HandleCharProfile();       break;
 
@@ -1309,6 +1316,7 @@ static void ExitLaptopMode(LaptopMode uiMode)
 		case LAPTOP_MODE_FUNERAL:                  ExitFuneral();           break;
 
 		case LAPTOP_MODE_MAHJONG:                  ExitMahjong();           break;
+		case LAPTOP_MODE_CHESS:                    ExitChess();             break;
 
 		case LAPTOP_MODE_FINANCES:                 ExitFinances();          break;
 		case LAPTOP_MODE_PERSONNEL:                ExitPersonnel();         break;
@@ -1851,6 +1859,11 @@ void GoToWebPage(INT32 iPageId)
 		case INSURANCE_BOOKMARK:
 			guiCurrentWWWMode    = LAPTOP_MODE_INSURANCE;
 			guiCurrentLaptopMode = LAPTOP_MODE_INSURANCE;
+			break;
+
+		case CHESS_BOOKMARK:
+			guiCurrentWWWMode    = LAPTOP_MODE_CHESS;
+			guiCurrentLaptopMode = LAPTOP_MODE_CHESS;
 			break;
 
 		case MAHJONG_BOOKMARK:
@@ -3365,7 +3378,17 @@ void SaveLaptopInfoToSavedGame(HWFILE const f)
 		INJ_U8(  d, mj.ubFlags)
 		INJ_U8(  d, mj.ubGrudge)
 	}
-	INJ_SKIP( d, 71)
+	{
+		// chach.com daily puzzle: 8 more bytes of the old reserve
+		ChessPersist const ch = ChessGetPersist();
+		INJ_U16( d, ch.usDay)
+		INJ_U16( d, ch.usLastSolvedDay)
+		INJ_U8(  d, ch.ubStreak)
+		INJ_U8(  d, ch.ubBestStreak)
+		INJ_U8(  d, ch.ubHearts)
+		INJ_U8(  d, ch.ubFlags)
+	}
+	INJ_SKIP( d, 63)
 	Assert(d.getConsumed() == lengthof(data));
 
 	f->write(data, sizeof(data));
@@ -3464,7 +3487,18 @@ void LoadLaptopInfoFromSavedGame(HWFILE const f)
 		EXTR_U8(  d, mj.ubGrudge)
 		MahjongSetPersist(mj);
 	}
-	EXTR_SKIP( d, 71)
+	{
+		// chach.com: old saves read harmless zeroes here
+		ChessPersist ch;
+		EXTR_U16( d, ch.usDay)
+		EXTR_U16( d, ch.usLastSolvedDay)
+		EXTR_U8(  d, ch.ubStreak)
+		EXTR_U8(  d, ch.ubBestStreak)
+		EXTR_U8(  d, ch.ubHearts)
+		EXTR_U8(  d, ch.ubFlags)
+		ChessSetPersist(ch);
+	}
+	EXTR_SKIP( d, 63)
 	Assert(d.getConsumed() == lengthof(data));
 
 	// Handle old saves in M.E.R.C. module

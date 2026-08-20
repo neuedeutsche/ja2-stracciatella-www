@@ -28,6 +28,7 @@ set(JA2_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/BobbyRUsed.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/BrokenLink.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/CharProfile.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/Chess.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/ChessGame.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/ChessPuzzles.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/EMail.cc

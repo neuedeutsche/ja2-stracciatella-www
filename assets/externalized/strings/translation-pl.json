@@ -708,7 +708,8 @@
         "McGillicutty's - Zakład pogrzebowy",
         "United Floral Service",
         "Brokerzy ubezpieczeniowi",
-        "San Mona Mahjong Parlour"
+        "San Mona Mahjong Parlour",
+        "chach.com - Grunty's daily chess puzzle"
     ],
     "gzLateLocalizedString": [
         "Robot nie może opuścić sektora bez operatora.",
@@ -889,6 +890,7 @@
         "Kwiaty",
         "Ubezpieczenia",
         "San Mahjong",
+        "chach.com",
         "Anuluj"
     ],
     "pBullseyeStrings": [
@@ -1840,7 +1842,7 @@
         "Nie odnaleziono URL.",
         "Bobby Ray's - Ostatnie dostawy",
         "San Mona Mahjong Parlour",
-        ""
+        "chach.com"
     ],
     "pWebTitle": "sir-FER 4.0",
     "pwMineStrings": [

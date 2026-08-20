@@ -708,7 +708,8 @@
         "Похоронное агенство Макгилликати",
         "Цветы по Всему Миру",
         "Страховые агенты по контрактам A.I.M.",
-        "San Mona Mahjong Parlour"
+        "San Mona Mahjong Parlour",
+        "chach.com - Grunty's daily chess puzzle"
     ],
     "gzLateLocalizedString": [
         "Робот не может покинуть сектор, если им никто не управляет.",
@@ -889,6 +890,7 @@
         "Цветы",
         "Страховка",
         "San Mahjong",
+        "chach.com",
         "Отмена"
     ],
     "pBullseyeStrings": [
@@ -1840,7 +1842,7 @@
         "URL не найден.",
         "Бобби Рэй - Последние поставки",
         "San Mona Mahjong Parlour",
-        ""
+        "chach.com"
     ],
     "pWebTitle": "сир-ФЕР 4.0",
     "pwMineStrings": [
