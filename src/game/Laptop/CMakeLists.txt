@@ -1,5 +1,11 @@
 file(GLOB LOCAL_JA2_HEADERS ${CMAKE_CURRENT_SOURCE_DIR}/*.h)
 
+if (WITH_UNITTESTS)
+    set(LOCAL_JA2_UNITTEST_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/MahjongGame_unittest.cc
+    )
+endif()
+
 set(JA2_SOURCES
     ${JA2_SOURCES}
     ${LOCAL_JA2_HEADERS}
@@ -54,12 +60,15 @@ set(JA2_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/Insurance_Info.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/Insurance_Text.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/Laptop.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/Mahjong.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/MahjongGame.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/Mercs.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/Mercs_Account.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/Mercs_Files.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/Mercs_No_Account.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/Personnel.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/Store_Inventory.cc
+    ${LOCAL_JA2_UNITTEST_SOURCES}
     PARENT_SCOPE
 )
 
