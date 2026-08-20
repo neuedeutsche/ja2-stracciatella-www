@@ -1,54 +1,78 @@
 # ja2-stracciatella-www
 
-*New websites for Jagged Alliance 2's in-game laptop browser, built on
-[JA2 Stracciatella](https://github.com/ja2-stracciatella/ja2-stracciatella).
-Arulco's internet, circa 1999, expanded.*
+*Arulco has an internet. This is a project to fill it in.*
+
+Built on [JA2 Stracciatella](https://github.com/ja2-stracciatella/ja2-stracciatella).
 
 ![The Parlour lobby](docs/screenshots/lobby.png)
 
-## What is this?
+## The angle
 
-An unofficial fan fork that adds new sites to the laptop's web browser —
-playable, written, and dressed in the worst web design 1999 had to offer.
-Each one is discovered the way you discovered anything back then: it emails
-you first.
+Jagged Alliance 2 hands you a laptop with a working web browser, and in 1999
+that was the joke and the worldbuilding at once: you hire soldiers off a
+website, order rifles from a catalogue, read a flower shop's condolence
+options, and buy life insurance from a man who should clearly not be selling
+it. The sites are terrible in exactly the way real 1999 sites were terrible —
+hit counters, guestbooks, "best viewed in" badges, unearned confidence — and
+that is what makes Arulco feel like a country with a modem in it.
 
-**Now live: the San Mona Mahjong Parlour** — a fully playable online mahjong
-room run by mob boss Peter "Kingpin" Klaus, where you face Enrico, Deidranna
-and Elliot for real campaign money.
+The vanilla browser has about a dozen bookmarks and then stops. **This repo
+treats that browser as a platform.** Every site added here is a real,
+interactive page inside the game: written in-universe, wired into the
+campaign, and dressed in period-correct bad web design. Not menus with a
+skin — pages that email you, remember you, take your money, and have
+opinions about how you play.
+
+Anything Arulco's population would plausibly have put online is fair game.
+Some of it is a game you play, some of it is a place you read. The point is
+that the browser stops being a handful of dead links and starts being an
+ecosystem.
+
+## What's online
+
+### San Mona Mahjong Parlour ✅
+
+A fully playable Sichuan mahjong room run by mob boss Peter "Kingpin" Klaus,
+where you face Enrico, Deidranna and Elliot for real campaign money.
 
 > est. 1999 — a Kingpin establishment. Games are fair because Mr. Klaus says so.
 
-Face **Enrico**, **Deidranna** and **Elliot** (plus a rotating cast of San Mona regulars) over dial-up, for real campaign money.
+**The game.** Full Sichuan rules (血战到底, bloody to the end): 108 suit tiles,
+the three-tile exchange, a declared void suit, pong and kong with replacement
+draws, robbing the kong, fan scoring with roots, kong bonuses, and tenpai and
+flower-pig settlements — winners retire and the hand fights on until three
+stand or the wall dies. The rules core is engine-free, deterministic by seed
+and unit-tested; the opponents have distinct skill levels, error rates and a
+grudge model.
 
-## Features
+**The world.** A $250 buy-in settled through the Finances screen at 20 points
+to the dollar, a 10% house rake, Kingpin loans at 20% vig, and a
+triple-stakes invitational every seventh day. Kingpin wires your winnings and
+collects your debts by email. The cast rotates with the campaign calendar,
+the chatter tracks how your war is going, and characters speak in their own
+mined voice samples.
 
-**The game**
-- Full Sichuan rules (血战到底, "bloody to the end"): 108 suit tiles, the three-tile exchange (huan san zhang), a declared void suit (que yi men), pong and kong with replacement draws, robbing the kong, fan scoring with roots, kong bonuses, tenpai and flower-pig settlements — winners retire and the hand fights on until three stand or the wall dies
-- Engine-free deterministic core with a 154-test suite; AI opponents with distinct skill levels, error rates and a grudge model (the Queen keeps count)
+**The 1999 of it all.** An AIM-style home page, a Yahoo-style ratings ladder
+(with one player permanently banned), paged house rules signed by the
+proprietor, a guestbook, a hit counter, and a chat client that behaves like
+one: people type before they speak, take pauses, say "brb" and actually
+leave, occasionally type something and never send it, and get muted by the
+room's moderator if you flood it. When nobody is seated, the House plays an
+exhibition you can watch.
 
-**The world**
-- Real stakes: $250 buy-in settled through the Finances screen at 20:1, a 10% house rake, Kingpin loans at 20% vig, and the triple-stakes BLOODY INVITATIONAL every 7th day
-- Kingpin emails your winnings and collects your debts via delayed strategic events; Elliot writes you a letter he immediately regrets
-- Seat rotation tied to the campaign calendar: Elliot most nights, Kingpin and Tony dropping in, and Darren or Madame Layla covering when the Queen is busy running your war
-- The table knows the war: chatter, voice samples ("Elliot, you idiot!") and moods track your campaign progress — and what happens in Meduna does not stay out of the chat
+### Under construction
 
-**The 1999 of it all**
-- AIM-style home page with a WARNING block, a live-table lobby, a House Ladder with Yahoo-style ratings (provisional asterisk included, one entry permanently BANNED), paged house rules signed by the proprietor, a guestbook, and a hit counter
-- chess.com-style chat with mini avatars, an ELIZA-flavoured chatbot that answers what you type, away messages, lurker cameos, house PA announcements, and superstition rituals when the losing streaks bite
-- Webcam portrait feeds with blinking, facial ticks, dropouts, and a dead-account glitch nobody at the table wants to talk about
-- When nobody is seated, the House plays an exhibition four-hander you can watch live — mid-game, chat already scrolling
+- **A dating site.** Arulco is full of lonely, heavily armed people.
+- **A chess puzzle page.** Somebody's shareware, badly monetised.
 
-**The pipeline**
-- Every asset — tiles, felt, neon sign, chips, dragons, TV static, even Kingpin's handwritten signature — is generated programmatically into indexed STI sheets by one Python script
+## Branches
 
-## Screenshots
-
-| | |
+| branch | what |
 |---|---|
-| ![Lobby](docs/screenshots/lobby.png) | ![Table](docs/screenshots/table.png) |
-| ![Ladder](docs/screenshots/ladder.png) | ![House rules](docs/screenshots/rules.png) |
-| ![Hand over](docs/screenshots/handover.png) | ![Spam](docs/screenshots/spam.png) |
+| `main` | everything shipped, always playable |
+| `site/<name>` | one site under construction |
+
+A site lives on its own branch until it is finished, then lands on `main`.
 
 ## Building
 
@@ -63,29 +87,41 @@ make -j$(sysctl -n hw.ncpu)
 ./ja2
 ```
 
-Point `~/.ja2/ja2.json`'s `game_dir` at your JA2 installation. For other platforms, follow upstream's [COMPILATION.md](COMPILATION.md).
+Point `~/.ja2/ja2.json`'s `game_dir` at your JA2 installation. For other
+platforms, follow upstream's [COMPILATION.md](COMPILATION.md).
 
-In game: open the laptop, read your mail, and wait for the Parlour to find you. It will.
+In game: open the laptop, read your mail, and wait for the Parlour to find
+you. It will.
 
-## Code map
+## How a site is built
 
 | Where | What |
 |---|---|
-| `src/game/Laptop/MahjongGame.{h,cc}` | engine-free Sichuan rules core (no JA2 headers, deterministic by seed) |
-| `src/game/Laptop/MahjongGame_unittest.cc` | gtest coverage: win detection, zero-sum payments, meld bookkeeping |
-| `src/game/Laptop/Mahjong.{h,cc}` | the entire website: lobby, table, ladder, rules, chat, exhibition |
-| `docs/custom_artworks_source/laptop/generate_mahjong_tiles.py` | generates all STI art assets |
-| `src/game/Laptop/{Laptop,EMail}.*`, `src/game/Strategic/Game_Event_Hook.*` | integration: page registration, spam campaign, win/debt emails, save persistence |
+| `src/game/Laptop/Mahjong.{h,cc}` | the site itself: pages, chat, layout, input |
+| `src/game/Laptop/MahjongGame.{h,cc}` | engine-free game rules, no JA2 headers |
+| `src/game/Laptop/MahjongGame_unittest.cc` | gtest coverage for those rules |
+| `docs/custom_artworks_source/laptop/generate_mahjong_tiles.py` | generates every art asset as indexed STI |
+| `src/game/Laptop/{Laptop,EMail}.*`, `src/game/Strategic/Game_Event_Hook.*` | registration, discovery mail, delayed events, save persistence |
+
+The recipe is the same for each new site: a `LAPTOP_MODE_*` entry and
+bookmark, a render/handle pair, strings across the nine translation files, an
+email that introduces it, and art generated by script rather than drawn by
+hand — so the whole thing rebuilds from source with no binary assets to
+misplace.
 
 ## Changelog
 
-See [docs/mahjong-changelog.md](docs/mahjong-changelog.md) for what changed and when.
-
-## Roadmap
-
-More sites for the browser. San Mona has room for another establishment or
-two, and Arulco's other institutions have not been online yet at all.
+See [docs/mahjong-changelog.md](docs/mahjong-changelog.md) for what changed
+and when. The live page carries its own build number in the corner.
 
 ## Credits & license
 
-Built on [JA2 Stracciatella](https://github.com/ja2-stracciatella/ja2-stracciatella) — all credit for the port, engine and tooling belongs to that project and its contributors. This fork's additions follow the same terms as upstream: changes are released to the public domain; the original Jagged Alliance 2 source was released by Strategy First Inc. in 2004 under the SFI Source Code License Agreement (see *SFI Source Code license agreement.txt*). Jagged Alliance 2 and its characters are the property of their respective rights holders; this is an unofficial fan project and requires an original copy of the game.
+Built on [JA2 Stracciatella](https://github.com/ja2-stracciatella/ja2-stracciatella)
+— all credit for the port, engine and tooling belongs to that project and its
+contributors. This fork's additions follow the same terms as upstream:
+changes are released to the public domain; the original Jagged Alliance 2
+source was released by Strategy First Inc. in 2004 under the SFI Source Code
+License Agreement (see *SFI Source Code license agreement.txt*). Jagged
+Alliance 2 and its characters are the property of their respective rights
+holders; this is an unofficial fan project and requires an original copy of
+the game.
