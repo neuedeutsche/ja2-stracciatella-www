@@ -1113,7 +1113,9 @@ namespace
 		const ChessStr title = !won                          ? CHS_MODAL_FAILED
 		                     : gubChessHearts == CH_MAX_HEARTS ? CHS_MODAL_PERFECT
 		                                                       : CHS_MODAL_SOLVED;
-		PrintCentred(FONT10ARIALBOLD, won ? FONT_MCOLOR_LTGREEN : FONT_MCOLOR_LTRED,
+		// white on a win: the green hearts below already carry that. Red is kept
+		// for the loss, which has nothing else saying so.
+		PrintCentred(FONT10ARIALBOLD, won ? FONT_MCOLOR_WHITE : FONT_MCOLOR_LTRED,
 		             cx, y + 12, T(title));
 
 		// hearts left standing, in the CTA green rather than the counter's red
