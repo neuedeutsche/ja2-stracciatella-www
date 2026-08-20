@@ -89,7 +89,6 @@
 // rail furniture, measured down from the page foot
 #define CH_RAIL_SEARCH_Y  (CH_PAGE_H - 118)
 #define CH_RAIL_LANG_Y    (CH_PAGE_H - 102)
-#define CH_RAIL_AVATAR_Y  (CH_PAGE_H - 38)
 #define CH_AVATAR_SIZE    33
 
 // frame indices into chessicons.sti
@@ -877,19 +876,25 @@ namespace
 		// nickname suggested by two grey bars rather than set in type. The
 		// portrait's real size is read off the sub-image - assuming 29x33 put
 		// the bars a whole portrait's width away from it.
-		INT32 faceW = 29, faceH = 33;
+		INT32 faceW = 26, faceH = 30;
 		if (guiChessSelf)
 		{
 			const ETRLEObject& e = guiChessSelf->SubregionProperties(0);
 			faceW = e.usWidth;
 			faceH = e.usHeight;
-			BltVideoObject(FRAME_BUFFER, guiChessSelf, 0,
-			               CH_X(CH_NAV_X + 3), CH_Y(CH_RAIL_AVATAR_Y));
+		}
+		// anchored to the rail's bottom-left corner off the portrait's real
+		// height, so a shorter image does not leave it floating
+		const INT32 faceX = CH_NAV_X + 3;
+		const INT32 faceY = CH_PAGE_H - faceH - 5;
+		if (guiChessSelf)
+		{
+			BltVideoObject(FRAME_BUFFER, guiChessSelf, 0, CH_X(faceX), CH_Y(faceY));
 		}
 		if (!gChessSelfNick.empty())
 		{
-			const INT32 barX = CH_NAV_X + 3 + faceW + 4;
-			const INT32 mid  = CH_RAIL_AVATAR_Y + faceH / 2;
+			const INT32 barX = faceX + faceW + 4;
+			const INT32 mid  = faceY + faceH / 2;
 			FillRect(barX, mid - 6, 22, 4, CH_RGB_NICK);
 			FillRect(barX, mid + 1, 15, 3, CH_RGB_NICK_DIM);
 		}
