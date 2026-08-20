@@ -77,10 +77,14 @@
 // The day stepper's arrows sit at fixed points on the panel edges while the
 // chip between them is centred and changes width with the day number. Glyphs
 // and hit regions are both derived from these, so they cannot drift apart.
-#define CH_PREV_X       (CH_PANEL_X + 8)
-#define CH_NEXT_X       (CH_PANEL_X + CH_PANEL_W - 34)
-#define CH_ARROW_W      26
-#define CH_ARROW_H      16
+// The chip is a fixed width so the arrows can sit hard against it without the
+// two drifting apart as the day number grows a digit.
+#define CH_CHIP_W       74
+#define CH_CHIP_X       (CH_PANEL_X + (CH_PANEL_W - CH_CHIP_W) / 2)
+#define CH_ARROW_W      16
+#define CH_ARROW_H      20
+#define CH_PREV_X       (CH_CHIP_X - CH_ARROW_W - 2)
+#define CH_NEXT_X       (CH_CHIP_X + CH_CHIP_W + 2)
 
 // rail furniture, measured down from the page foot
 #define CH_RAIL_SEARCH_Y  (CH_PAGE_H - 118)
@@ -1033,24 +1037,27 @@ namespace
 
 		// date stepper: < [calendar] DAY n >
 		const ST::string day = ST::format("{} {}", T(CHS_DAY), giChessViewDay);
-		const INT32 stepW = StringPixLength(day, FONT10ARIAL) + 20;
-		FillRounded(cx - stepW / 2, CH_DATE_Y, stepW, 16, CH_RGB_PANEL_UP, 3, CH_RGB_PANEL_SUNK);
+		FillRounded(CH_CHIP_X, CH_DATE_Y, CH_CHIP_W, CH_ARROW_H,
+		            CH_RGB_PANEL_UP, 3, CH_RGB_PANEL_SUNK);
+		// icon and label centred in the chip as one group
+		const INT32 groupW = 14 + 4 + StringPixLength(day, FONT10ARIAL);
+		const INT32 groupX = CH_CHIP_X + (CH_CHIP_W - groupW) / 2;
 		if (guiChessIcons)
 		{
 			BltVideoObject(FRAME_BUFFER, guiChessIcons, CH_ICON_CALENDAR,
-			               CH_X(cx - stepW / 2 + 3), CH_Y(CH_DATE_Y + 1));
+			               CH_X(groupX), CH_Y(CH_DATE_Y + 3));
 		}
-		PrintAt(FONT10ARIAL, FONT_MCOLOR_WHITE, cx - stepW / 2 + 20, CH_DATE_Y + 3, day);
+		PrintAt(FONT10ARIAL, FONT_MCOLOR_WHITE, groupX + 18, CH_DATE_Y + 5, day);
 		// arrows grey out at the ends of the run; centred in their own hit
 		// regions rather than hung off the chip, which changes width
-		ChessDrawChevron(CH_PREV_X + CH_ARROW_W / 2, CH_DATE_Y + 8, true,
+		ChessDrawChevron(CH_PREV_X + CH_ARROW_W / 2, CH_DATE_Y + 10, true,
 		                 giChessViewDay > 1 ? FROMRGB(232, 230, 227) : FROMRGB(110, 104, 98));
-		ChessDrawChevron(CH_NEXT_X + CH_ARROW_W / 2, CH_DATE_Y + 8, false,
+		ChessDrawChevron(CH_NEXT_X + CH_ARROW_W / 2, CH_DATE_Y + 10, false,
 		                 giChessViewDay < ChessToday() ? FROMRGB(232, 230, 227) : FROMRGB(110, 104, 98));
 
 		// the day's title, under the stepper. Titles run with the rating sort,
 		// so they escalate from contract work to the war itself.
-		PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, cx, CH_DATE_Y + 22,
+		PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, cx, CH_DATE_Y + 26,
 		             puzzle.title);
 
 		ChessRenderCoach(CH_COACH_Y);
