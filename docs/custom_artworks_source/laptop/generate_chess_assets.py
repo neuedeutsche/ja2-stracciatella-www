@@ -62,13 +62,16 @@ PALETTE = [
     (215, 215, 212),  # 30 calendar paper
     (120, 118, 115),  # 31 calendar ink
     ( 86, 128,  45),  # 32 puzzle green dark
+    (250, 190,  70),  # 33 flame core
+    (230, 110,  40),  # 34 flame edge
 ]
 (TRANSPARENT, W_FILL, W_SHADE, W_LINE, B_FILL, B_SHADE, B_LINE,
  SQ_LIGHT, SQ_DARK, HL_LIGHT, HL_DARK,
  CHROME, PANEL, PANEL_UP, CTA, CTA_LIT, TEXT, TEXT_DIM,
  LOGO_SHADE, LOGO_LINE,
  PLAY_L, PLAY_D, PUZ_L, PUZ_D, LEARN_L, LEARN_D,
- WATCH_L, WATCH_D, COMM_L, COMM_D, CAL_L, CAL_D, PUZG_D) = range(33)
+ WATCH_L, WATCH_D, COMM_L, COMM_D, CAL_L, CAL_D, PUZG_D,
+ FLAME_L, FLAME_D) = range(35)
 
 WHITE_INKS = (W_FILL, W_SHADE, W_LINE)
 BLACK_INKS = (B_FILL, B_SHADE, B_LINE)
@@ -347,7 +350,7 @@ def write_preview(frames, size, path, zoom=6):
 def make_logo():
     """The site mark: chess.com's green pawn, at two sizes."""
     return [render_piece("pawn", LOGO_INKS, 22, directional=True),
-            render_piece("pawn", LOGO_INKS, 14, directional=True)]
+            render_piece("pawn", LOGO_INKS, 17, directional=True)]
 
 
 # Nav and panel icons, each a list of (primitives, palette index) layers painted
@@ -398,6 +401,12 @@ ICONS = {
           for r in (48, 68) for c in (20, 44, 68)], CAL_D),
     ],
     "puzzlemark": _jigsaw(PUZG_D, CTA),
+    # the streak marker: an outer flame with a hotter core
+    "flame": [
+        ([("poly", [(50, 2), (74, 36), (80, 62), (68, 88), (50, 98),
+                    (32, 88), (20, 62), (26, 36)])], FLAME_D),
+        ([("poly", [(50, 38), (66, 64), (60, 86), (40, 86), (34, 64)])], FLAME_L),
+    ],
 }
 
 
@@ -421,7 +430,8 @@ def render_icon(name, size, margin=1):
     return img
 
 
-ICON_ORDER = ["play", "puzzles", "learn", "watch", "community", "calendar", "puzzlemark"]
+ICON_ORDER = ["play", "puzzles", "learn", "watch", "community", "calendar",
+              "puzzlemark", "flame"]
 
 
 def make_icons(size=14):

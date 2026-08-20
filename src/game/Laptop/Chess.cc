@@ -64,6 +64,12 @@
 // hearts live in the rail beside the avatar, so they are the small variant
 #define CH_HEART_PITCH  9
 
+// the result card, centred on the board
+#define CH_MODAL_W      204
+#define CH_MODAL_H      116
+#define CH_MODAL_X      (CH_BOARD_X + (CH_BOARD_SIZE - CH_MODAL_W) / 2)
+#define CH_MODAL_Y      (CH_BOARD_Y + (CH_BOARD_SIZE - CH_MODAL_H) / 2)
+
 #define CH_DATE_Y       34
 #define CH_COACH_Y      64
 #define CH_COACH_TILE   36
@@ -79,7 +85,7 @@
 // rail furniture, measured down from the page foot
 #define CH_RAIL_SEARCH_Y  (CH_PAGE_H - 118)
 #define CH_RAIL_LANG_Y    (CH_PAGE_H - 102)
-#define CH_RAIL_AVATAR_Y  (CH_PAGE_H - 82)
+#define CH_RAIL_AVATAR_Y  (CH_PAGE_H - 46)
 #define CH_AVATAR_SIZE    33
 
 // frame indices into chessicons.sti
@@ -90,6 +96,7 @@
 #define CH_ICON_COMMUNITY  4
 #define CH_ICON_CALENDAR   5
 #define CH_ICON_PUZZLEMARK 6
+#define CH_ICON_FLAME      7
 
 #define CH_MAX_HEARTS   5
 #define CH_REPLY_DELAY  650  // ms before the scripted reply lands
@@ -103,11 +110,12 @@
 #define CH_RGB_DOT_DARK    FROMRGB( 98, 127,  70)
 // Warm greys: the neutral values read green next to the board, so red leads
 // and blue trails in every one of these.
-#define CH_RGB_CHROME      FROMRGB( 52,  47,  42)
-#define CH_RGB_PANEL       FROMRGB( 42,  38,  34)
-#define CH_RGB_PANEL_UP    FROMRGB( 66,  60,  54)
-// Sections are separated by a shift in ground tone rather than by rules.
-#define CH_RGB_PANEL_SOFT  FROMRGB( 50,  45,  40)
+#define CH_RGB_CHROME      FROMRGB( 46,  42,  38)
+#define CH_RGB_PANEL       FROMRGB( 36,  33,  30)
+#define CH_RGB_PANEL_UP    FROMRGB( 60,  55,  50)
+// Sections are separated by a shift in ground tone rather than by rules, and
+// the shift goes down: a sunk band, never a brighter one.
+#define CH_RGB_PANEL_SUNK  FROMRGB( 29,  26,  24)
 #define CH_RGB_CTA         FROMRGB(129, 182,  76)
 #define CH_RGB_HEART       FROMRGB(201,  70,  70)
 #define CH_RGB_HEART_SPENT FROMRGB( 70,  68,  65)
@@ -147,6 +155,9 @@ namespace
 	UINT8  gubChessLastFrom = ChessGame::NO_SQUARE;
 	UINT8  gubChessLastTo   = ChessGame::NO_SQUARE;
 	bool   gfChessHintShown = false;
+	// the result card, raised on the move that ends the day and dismissed by
+	// hand; revisiting a finished day does not raise it again
+	bool   gfChessModal     = false;
 	// what the coach is currently saying, kept as an id so the language switch
 	// re-renders it rather than freezing whatever was said last
 	int    giChessSaid      = 0;   // ChessStr, or -1/-2 for a good/bad variant
@@ -179,16 +190,12 @@ namespace
 	MOUSE_REGION gChessPrevDayRegion;
 	MOUSE_REGION gChessNextDayRegion;
 	MOUSE_REGION gChessLangRegion;
+	MOUSE_REGION gChessModalCloseRegion;
+	MOUSE_REGION gChessModalArchiveRegion;
 	// sits behind everything and catches a piece released off the board, which
 	// would otherwise leave it stuck to the cursor
 	MOUSE_REGION gChessDropRegion;
 	bool         gfChessRegionsUp = false;
-
-	// The solvers list is padded, obviously, and everyone knows it.
-	const char* const CHESS_SOLVERS[] = {
-		"@ivan_d", "@grunty", "@the_house", "@e11iot",
-		"@no_refunds", "@shady_lady", "@ringside_d", "@666",
-	};
 
 	// The site is English by default and the proprietor is not, so the rail
 	// carries a switch. Umlauts are spelled out: the laptop fonts are ASCII.
@@ -200,6 +207,8 @@ namespace
 		CHS_NAV_PLAY, CHS_NAV_PUZZLES, CHS_NAV_LEARN, CHS_NAV_WATCH, CHS_NAV_COMMUNITY,
 		CHS_ST_WHITE, CHS_ST_BLACK, CHS_ST_CORRECT, CHS_ST_WRONG, CHS_ST_HINT,
 		CHS_ST_ALREADY, CHS_ST_OUT, CHS_ST_DONE, CHS_ST_YOUR_MOVE, CHS_ST_ARCHIVE,
+		CHS_MODAL_PERFECT, CHS_MODAL_SOLVED, CHS_MODAL_FAILED, CHS_MODAL_ARCHIVE,
+		CHS_MODAL_STREAK, CHS_MODAL_BEST,
 		CHS_COUNT
 	};
 
@@ -215,6 +224,8 @@ namespace
 			"solved. come back tomorrow.", "out of tries. the solution is on the board.",
 			"correct. the position is resolved.", "your move again.",
 			"from the archive. this one is finished.",
+			"PERFECT!", "SOLVED", "OUT OF TRIES", "OLDER PUZZLES",
+			"STREAK", "BEST",
 		},
 		{
 			"TAGESRAETSEL", "TAG", "WERTUNG", "WEISS ZIEHT", "SCHWARZ ZIEHT",
@@ -226,6 +237,8 @@ namespace
 			"geloest. kommen Sie morgen wieder.", "keine Versuche mehr. die Loesung steht.",
 			"richtig. die Stellung ist geklaert.", "Sie sind wieder am Zug.",
 			"aus dem Archiv. dieses ist erledigt.",
+			"PERFEKT!", "GELOEST", "KEINE VERSUCHE", "AELTERE RAETSEL",
+			"SERIE", "BESTE",
 		},
 	};
 
@@ -525,6 +538,7 @@ namespace
 		gubChessBestStreak = std::max(gubChessBestStreak, gubChessStreak);
 		gusChessLastSolved = today;
 		gubChessFlags |= CH_FLAG_SOLVED;
+		gfChessModal = true;
 		gChessState  = CHUI_SOLVED;
 		giChessSaid = CHS_ST_DONE;
 	}
@@ -532,6 +546,7 @@ namespace
 	void ChessRecordFailed()
 	{
 		gubChessFlags |= CH_FLAG_FAILED;
+		gfChessModal   = true;
 		gubChessStreak = 0;
 		ChessPlayOutSolution();
 		gChessState  = CHUI_FAILED;
@@ -596,6 +611,7 @@ namespace
 	void ChessSquareCallback(MOUSE_REGION* region, UINT32 reason)
 	{
 		if (!(reason & MSYS_CALLBACK_REASON_POINTER_DWN)) return;
+		if (gfChessModal) return;
 		if (gChessState != CHUI_PUZZLE || guiChessReplyDue != 0) return;
 
 		const UINT8 sq = UINT8(MSYS_GetRegionUserData(region, 0));
@@ -779,6 +795,19 @@ namespace
 		FillRect(x + 2, y + 5, 3, 1, rgb);
 	}
 
+	// A blunt chevron: each row is a short bar stepped out from the point, so
+	// it reads at 9px where a text glyph reads as a comma.
+	void ChessDrawChevron(INT32 cx, INT32 cy, bool left, UINT32 rgb)
+	{
+		const INT32 half = 4;
+		for (INT32 r = -half; r <= half; ++r)
+		{
+			const INT32 step = (r < 0 ? -r : r);
+			const INT32 x = left ? cx - 2 + step : cx + 2 - step - 3;
+			FillRect(x, cy + r, 3, 1, rgb);
+		}
+	}
+
 	void ChessRenderNav()
 	{
 		// flush left and full height: the rail is page furniture, not a card
@@ -792,7 +821,7 @@ namespace
 		if (guiChessLogo)
 		{
 			// frame 1 is the 14px pawn; the 22px one will not sit on one line
-			BltVideoObject(FRAME_BUFFER, guiChessLogo, 1, CH_X(lockX), CH_Y(9));
+			BltVideoObject(FRAME_BUFFER, guiChessLogo, 1, CH_X(lockX + 2), CH_Y(7));
 		}
 		PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, lockX + 16, 12, "chach");
 		PrintAt(FONT10ARIAL, FONT_GRAY2,
@@ -803,7 +832,7 @@ namespace
 		};
 		for (int i = 0; i < 5; ++i)
 		{
-			const INT32 rowY = 40 + i * 20;
+			const INT32 rowY = 32 + i * 20;
 			const bool active = i == 1;  // only Puzzles exists so far
 			if (active)
 			{
@@ -837,9 +866,9 @@ namespace
 		}
 		if (!gChessSelfNick.empty())
 		{
-			const INT32 barX = CH_NAV_X + 3 + CH_AVATAR_SIZE + 4;
-			FillRect(barX, CH_RAIL_AVATAR_Y + 9,  24, 4, CH_RGB_NICK);
-			FillRect(barX, CH_RAIL_AVATAR_Y + 16, 16, 3, CH_RGB_NICK_DIM);
+			const INT32 barX = CH_NAV_X + 3 + 29 + 3;
+			FillRect(barX, CH_RAIL_AVATAR_Y + 10, 22, 4, CH_RGB_NICK);
+			FillRect(barX, CH_RAIL_AVATAR_Y + 17, 15, 3, CH_RGB_NICK_DIM);
 		}
 	}
 
@@ -949,14 +978,14 @@ namespace
 	// no caption - the portrait is the label.
 	void ChessRenderCoach(INT32 y)
 	{
-		const INT32 faceX = CH_PANEL_X + 8;
+		const INT32 faceX = CH_PANEL_X + 4;
 		if (guiChessCoach)
 		{
 			BltVideoObject(FRAME_BUFFER, guiChessCoach, 0, CH_X(faceX), CH_Y(y));
 		}
 
-		const INT32 bubbleX = faceX + 29 + 7;
-		const INT32 bubbleW = CH_PANEL_X + CH_PANEL_W - 8 - bubbleX;
+		const INT32 bubbleX = faceX + 29 + 5;
+		const INT32 bubbleW = CH_PANEL_X + CH_PANEL_W - 4 - bubbleX;
 		FillRounded(bubbleX, y, bubbleW, CH_COACH_TILE, CH_RGB_BUBBLE, 3, CH_RGB_PANEL);
 
 		// The tail narrows to a point as it travels away from the bubble and
@@ -973,8 +1002,8 @@ namespace
 		const UINT8 colour = gChessState == CHUI_SOLVED ? FONT_DKGREEN
 		                   : gChessState == CHUI_FAILED ? FONT_DKRED
 		                   : FONT_MCOLOR_BLACK;
-		DisplayWrappedString(UINT16(CH_X(bubbleX + 5)), UINT16(CH_Y(y + 5)),
-		                     UINT16(bubbleW - 10), 1, FONT10ARIAL, colour,
+		DisplayWrappedString(UINT16(CH_X(bubbleX + 4)), UINT16(CH_Y(y + 5)),
+		                     UINT16(bubbleW - 8), 1, FONT10ARIAL, colour,
 		                     ChessCoachLine(), FONT_MCOLOR_WHITE, LEFT_JUSTIFIED);
 	}
 
@@ -987,7 +1016,7 @@ namespace
 
 		// header band: a lighter ground stands in for the rule that used to
 		// sit under the date
-		FillRect(CH_PANEL_X, CH_INSET, CH_PANEL_W, 52, CH_RGB_PANEL_SOFT);
+		FillRect(CH_PANEL_X, CH_INSET, CH_PANEL_W, 52, CH_RGB_PANEL_SUNK);
 		RoundCorners(CH_PANEL_X, CH_INSET, CH_PANEL_W, CH_PAGE_H - 2 * CH_INSET,
 		             CH_RADIUS, CH_RGB_CHROME);
 
@@ -1003,7 +1032,7 @@ namespace
 		// date stepper: < [calendar] DAY n >
 		const ST::string day = ST::format("{} {}", T(CHS_DAY), giChessViewDay);
 		const INT32 stepW = StringPixLength(day, FONT10ARIAL) + 20;
-		FillRounded(cx - stepW / 2, CH_DATE_Y, stepW, 16, CH_RGB_PANEL_UP, 3, CH_RGB_PANEL_SOFT);
+		FillRounded(cx - stepW / 2, CH_DATE_Y, stepW, 16, CH_RGB_PANEL_UP, 3, CH_RGB_PANEL_SUNK);
 		if (guiChessIcons)
 		{
 			BltVideoObject(FRAME_BUFFER, guiChessIcons, CH_ICON_CALENDAR,
@@ -1012,57 +1041,96 @@ namespace
 		PrintAt(FONT10ARIAL, FONT_MCOLOR_WHITE, cx - stepW / 2 + 20, CH_DATE_Y + 3, day);
 		// arrows grey out at the ends of the run; centred in their own hit
 		// regions rather than hung off the chip, which changes width
-		PrintCentred(FONT10ARIAL, giChessViewDay > 1 ? FONT_MCOLOR_WHITE : FONT_GRAY7,
-		             CH_PREV_X + CH_ARROW_W / 2, CH_DATE_Y + 3, "<");
-		PrintCentred(FONT10ARIAL, giChessViewDay < ChessToday() ? FONT_MCOLOR_WHITE : FONT_GRAY7,
-		             CH_NEXT_X + CH_ARROW_W / 2, CH_DATE_Y + 3, ">");
+		ChessDrawChevron(CH_PREV_X + CH_ARROW_W / 2, CH_DATE_Y + 8, true,
+		                 giChessViewDay > 1 ? FROMRGB(232, 230, 227) : FROMRGB(110, 104, 98));
+		ChessDrawChevron(CH_NEXT_X + CH_ARROW_W / 2, CH_DATE_Y + 8, false,
+		                 giChessViewDay < ChessToday() ? FROMRGB(232, 230, 227) : FROMRGB(110, 104, 98));
 
 		ChessRenderCoach(CH_COACH_Y);
 
-		// tries, directly under the coach: she is the one keeping count
+		// tries, directly under the coach: she is the one keeping count. The
+		// hearts are the label.
 		const INT32 heartY = CH_COACH_Y + CH_COACH_TILE + 16;
 		for (int i = 0; i < CH_MAX_HEARTS; ++i)
 		{
 			ChessDrawHeart(CH_PANEL_X + 10 + i * CH_HEART_PITCH, heartY,
 			               i >= gubChessHearts ? CH_RGB_HEART_SPENT : CH_RGB_HEART);
 		}
-		PrintAt(FONT10ARIAL, FONT_GRAY4,
-		        CH_PANEL_X + 14 + CH_MAX_HEARTS * CH_HEART_PITCH, heartY - 2,
-		        ST::format("{} {}", gubChessHearts, T(CHS_TRIES)));
 
 		PrintAt(FONT10ARIAL, FONT_GRAY4, CH_PANEL_X + 10, heartY + 14,
 		        ST::format("{} {}", T(CHS_RATING), puzzle.rating));
 		PrintAt(FONT10ARIALBOLD, FONT_GRAY2, CH_PANEL_X + 10, heartY + 28,
 		        gChessSolver == ChessGame::White ? T(CHS_WHITE_MOVES) : T(CHS_BLACK_MOVES));
 
-		// solvers sit on their own darker ground, again instead of a rule
-		const int shown = int(sizeof(CHESS_SOLVERS) / sizeof(CHESS_SOLVERS[0]));
-		const INT32 listY = 172;
-		const INT32 listH = 20 + shown * 13 + 14;
-		FillRect(CH_PANEL_X, listY, CH_PANEL_W, listH, CH_RGB_PANEL_SOFT);
-		PrintAt(FONT10ARIAL, FONT_GRAY4, CH_PANEL_X + 10, listY + 4, T(CHS_SOLVED_BY));
-		for (int i = 0; i < shown; ++i)
+		// the streak, at the foot: a flame and a number, nothing else
+		if (guiChessIcons)
 		{
-			PrintAt(FONT10ARIAL, FONT_GRAY7, CH_PANEL_X + 14, listY + 18 + i * 13,
-			        CHESS_SOLVERS[i]);
+			BltVideoObject(FRAME_BUFFER, guiChessIcons, CH_ICON_FLAME,
+			               CH_X(CH_PANEL_X + 10), CH_Y(CH_PAGE_H - 76));
 		}
-		if (gubChessFlags & CH_FLAG_SOLVED)
-		{
-			PrintAt(FONT10ARIAL, FONT_MCOLOR_LTGREEN, CH_PANEL_X + 14,
-			        listY + 18 + shown * 13, T(CHS_AND_YOU));
-		}
-
-		PrintAt(FONT10ARIAL, FONT_GRAY2, CH_PANEL_X + 10, CH_PAGE_H - 88,
-		        ST::format(T(CHS_STREAK), gubChessStreak));
-		PrintAt(FONT10ARIAL, FONT_GRAY4, CH_PANEL_X + 10, CH_PAGE_H - 74,
-		        ST::format(T(CHS_BEST), gubChessBestStreak));
+		PrintAt(FONT10ARIALBOLD, gubChessStreak > 0 ? FONT_MCOLOR_WHITE : FONT_GRAY7,
+		        CH_PANEL_X + 28, CH_PAGE_H - 75, ST::format("{}", gubChessStreak));
 
 		// the hint button greys out once it has been spent
 		const bool hintLive = gChessState == CHUI_PUZZLE && !(gubChessFlags & CH_FLAG_HINT_USED);
 		FillRounded(CH_PANEL_X + 10, CH_PAGE_H - 46, CH_PANEL_W - 20, 22,
-		            hintLive ? CH_RGB_PANEL_UP : CH_RGB_PANEL_SOFT, 3, CH_RGB_PANEL);
+		            hintLive ? CH_RGB_PANEL_UP : CH_RGB_PANEL_SUNK, 3, CH_RGB_PANEL);
 		PrintCentred(FONT10ARIAL, hintLive ? FONT_MCOLOR_WHITE : FONT_GRAY7,
 		             cx, CH_PAGE_H - 40, T(CHS_HINT));
+	}
+
+	// The result card, over a scanline-dimmed board. Square corners on purpose:
+	// rounding it would need the board colour behind each corner, and the board
+	// is not one colour.
+	void ChessRenderModal()
+	{
+		if (!gfChessModal) return;
+
+		// dim by dropping every other scanline to the chrome tone
+		for (INT32 row = 0; row < CH_BOARD_SIZE; row += 2)
+		{
+			FillRect(CH_BOARD_X, CH_BOARD_Y + row, CH_BOARD_SIZE, 1, CH_RGB_CHROME);
+		}
+
+		const INT32 w = CH_MODAL_W, h = CH_MODAL_H;
+		const INT32 x = CH_MODAL_X, y = CH_MODAL_Y;
+		const INT32 cx = x + w / 2;
+
+		FillRect(x - 1, y - 1, w + 2, h + 2, CH_RGB_PANEL_UP);
+		FillRect(x, y, w, h, CH_RGB_PANEL);
+
+		PrintAt(FONT10ARIAL, FONT_GRAY4, x + w - 14, y + 4, "X");
+
+		const bool won = gChessState == CHUI_SOLVED;
+		const ChessStr title = !won                          ? CHS_MODAL_FAILED
+		                     : gubChessHearts == CH_MAX_HEARTS ? CHS_MODAL_PERFECT
+		                                                       : CHS_MODAL_SOLVED;
+		PrintCentred(FONT10ARIALBOLD, won ? FONT_MCOLOR_LTGREEN : FONT_MCOLOR_LTRED,
+		             cx, y + 12, T(title));
+
+		// hearts left standing, in the CTA green rather than the counter's red
+		const INT32 heartsW = CH_MAX_HEARTS * 12 - 5;
+		for (int i = 0; i < CH_MAX_HEARTS; ++i)
+		{
+			ChessDrawHeart(cx - heartsW / 2 + i * 12, y + 30,
+			               i < gubChessHearts ? CH_RGB_CTA : CH_RGB_PANEL_SUNK);
+		}
+
+		FillRounded(x + 12, y + 46, w - 24, 22, CH_RGB_CTA, 3, CH_RGB_PANEL);
+		PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, cx, y + 52, T(CHS_MODAL_ARCHIVE));
+
+		// streak and best, side by side on sunk ground
+		const INT32 boxW = (w - 30) / 2;
+		const INT32 boxY = y + 76;
+		for (int i = 0; i < 2; ++i)
+		{
+			const INT32 bx = x + 12 + i * (boxW + 6);
+			FillRect(bx, boxY, boxW, 28, CH_RGB_PANEL_SUNK);
+			PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, bx + boxW / 2, boxY + 3,
+			             ST::format("{}", i == 0 ? gubChessStreak : gubChessBestStreak));
+			PrintCentred(FONT10ARIAL, FONT_GRAY4, bx + boxW / 2, boxY + 15,
+			             T(i == 0 ? CHS_MODAL_STREAK : CHS_MODAL_BEST));
+		}
 	}
 
 	void ChessRenderFooter()
@@ -1147,6 +1215,7 @@ void RenderChess()
 	ChessRenderBoard();
 	ChessRenderPanel();
 	ChessRenderFooter();
+	ChessRenderModal();
 
 	MarkButtonsDirty();
 	RenderWWWProgramTitleBar();
