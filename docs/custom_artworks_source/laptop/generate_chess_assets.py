@@ -31,7 +31,7 @@ PALETTE = [
     (0, 0, 0),        # 0  transparent
     (250, 250, 250),  # 1  white piece fill
     (206, 205, 203),  # 2  white piece shade (under the base)
-    (61, 59, 56),     # 3  white piece outline
+    (92, 90, 86),     # 3  white piece outline (Neo's is grey, not black)
     (64, 61, 57),     # 4  black piece fill
     (44, 42, 39),     # 5  black piece shade
     (26, 25, 23),     # 6  black piece outline
@@ -90,85 +90,89 @@ SUPERSAMPLE = 6
 # All primitives union into one silhouette before the outline is derived, which
 # is what gives Neo its single-piece-of-plastic look.
 PIECES = {
+    # Neo's grammar, read off the set: a short body, a collar ring, a skirt
+    # that flares, and every piece standing on the same flat base slab. The
+    # mass sits low - these are not tall thin Staunton silhouettes.
     "pawn": [
-        ("circle", 50, 31, 17),
-        ("poly", [(41, 43), (59, 43), (66, 67), (34, 67)]),
-        ("rect", 30, 61, 70, 72, 5),
-        ("poly", [(31, 72), (69, 72), (77, 83), (23, 83)]),
-        ("rect", 16, 81, 84, 96, 6),
+        ("circle", 50, 24, 14),
+        # no separate collar ring: at 34px it only spikes the silhouette
+        ("poly", [(41, 34), (59, 34), (71, 78), (29, 78)]),
+        ("rect", 21, 75, 79, 92, 4),
     ],
     "rook": [
-        # battlements: one slab, two notches cut back out after the union
-        ("rect", 21, 17, 79, 35, 3),
-        ("rect", 27, 33, 73, 45, 3),
-        ("poly", [(34, 45), (66, 45), (64, 67), (36, 67)]),
-        ("poly", [(32, 67), (68, 67), (79, 82), (21, 82)]),
-        ("rect", 14, 80, 86, 96, 5),
+        ("rect", 21, 13, 79, 32, 2),
+        ("rect", 26, 30, 74, 41, 2),
+        ("poly", [(32, 41), (68, 41), (71, 74), (29, 74)]),
+        ("rect", 21, 71, 79, 90, 3),
     ],
     "bishop": [
-        ("circle", 50, 12, 7),
-        ("poly", [(43, 19), (57, 19), (68, 42), (32, 42)]),
-        ("circle", 50, 38, 18),
-        ("rect", 28, 49, 72, 60, 5),
-        ("poly", [(33, 60), (67, 60), (76, 81), (24, 81)]),
-        ("rect", 14, 80, 86, 96, 5),
+        ("circle", 50, 9, 6),
+        ("poly", [(43, 12), (57, 12), (69, 44), (31, 44)]),
+        ("circle", 50, 38, 17),
+        ("poly", [(38, 52), (62, 52), (72, 78), (28, 78)]),
+        ("rect", 21, 75, 79, 92, 4),
     ],
-    # crown as a solid band plus five fat wedges, balls on the tips - the
-    # zigzag-polygon version reads as wire at 34px
+    # The crown is a zigzag with a ball on each of its five points, not spikes
+    # and not stalks.
     "queen": [
-        ("circle", 50, 9, 7),
-        ("circle", 31, 14, 7),
-        ("circle", 69, 14, 7),
-        ("circle", 13, 23, 7),
-        ("circle", 87, 23, 7),
-        ("poly", [(43, 46), (57, 46), (50, 12)]),
-        ("poly", [(25, 46), (38, 46), (31, 17)]),
-        ("poly", [(62, 46), (75, 46), (69, 17)]),
-        ("poly", [(16, 46), (28, 46), (13, 26)]),
-        ("poly", [(72, 46), (84, 46), (87, 26)]),
-        ("rect", 17, 42, 83, 58, 2),
-        ("rect", 22, 56, 78, 67, 5),
-        ("poly", [(30, 67), (70, 67), (78, 82), (22, 82)]),
-        ("rect", 13, 80, 87, 96, 5),
+        ("circle", 50, 8, 7),
+        ("circle", 29, 14, 7),
+        ("circle", 71, 14, 7),
+        ("circle", 16, 27, 7),
+        ("circle", 84, 27, 7),
+        # fat wedges up to each ball over a solid band: a thin zigzag reads as
+        # wire once it is down at this size
+        ("poly", [(42, 48), (58, 48), (50, 11)]),
+        ("poly", [(22, 48), (36, 48), (29, 17)]),
+        ("poly", [(64, 48), (78, 48), (71, 17)]),
+        ("poly", [(11, 48), (27, 48), (16, 29)]),
+        ("poly", [(73, 48), (89, 48), (84, 29)]),
+        ("rect", 18, 44, 82, 58, 2),
+        ("poly", [(34, 58), (66, 58), (73, 80), (27, 80)]),
+        ("rect", 21, 77, 79, 93, 4),
     ],
+    # A cross, then a crown pierced by an arch - the hole is what makes it
+    # read as a king rather than a bishop.
     "king": [
-        ("rect", 45, 2, 55, 30, 2),
-        ("rect", 34, 11, 66, 21, 2),
-        ("circle", 30, 34, 9),
-        ("circle", 70, 34, 9),
-        ("poly", [(23, 32), (77, 32), (73, 56), (27, 56)]),
-        ("rect", 22, 54, 78, 66, 5),
-        ("poly", [(30, 66), (70, 66), (78, 82), (22, 82)]),
-        ("rect", 13, 80, 87, 96, 5),
+        ("rect", 45, 1, 55, 25, 1),
+        ("rect", 35, 8, 65, 17, 1),
+        ("rect", 28, 26, 72, 56, 11),
+        ("poly", [(34, 54), (66, 54), (73, 80), (27, 80)]),
+        ("rect", 21, 77, 79, 93, 4),
     ],
-    # Traced clockwise from the back ear: mane down the right, plinth, up the
-    # chest, out along the throat to the muzzle, then back up the face.
+    # Traced clockwise from the back ear: mane down the right, then onto the
+    # same slab the rest of the set stands on.
     "knight": [
         ("poly", [
-            (52, 6), (60, 20), (70, 30), (76, 44), (73, 54), (79, 66),
-            (81, 80), (81, 85), (23, 85), (23, 80), (27, 68), (25, 56),
-            (18, 52), (10, 53), (6, 46), (9, 38), (18, 33), (27, 27),
-            (33, 17), (38, 9), (44, 19),
+            (52, 5), (60, 19), (70, 29), (76, 43), (73, 53), (79, 64),
+            (80, 74), (25, 74), (28, 64), (26, 52),
+            (18, 48), (10, 49), (6, 42), (9, 34), (18, 29), (27, 23),
+            (33, 13), (38, 5), (44, 15),
         ]),
-        ("rect", 14, 82, 86, 96, 5),
+        ("poly", [(30, 66), (70, 66), (74, 78), (26, 78)]),
+        ("rect", 21, 75, 79, 91, 4),
     ],
 }
 
 # Cut back out of the silhouette after the union.
 CUTOUTS = {
     "rook": [
-        ("rect", 36, 13, 45, 30, 0),
-        ("rect", 55, 13, 64, 30, 0),
+        ("rect", 36, 10, 45, 28, 0),
+        ("rect", 55, 10, 64, 28, 0),
+    ],
+    # the arch through the king's crown
+    "king": [
+        ("rect", 41, 36, 59, 58, 9),
     ],
     "bishop": [
         # the mitre's diagonal slit: short, upper right down to lower left
-        ("poly", [(57, 24), (61, 28), (48, 41), (44, 37)]),
+        ("poly", [(57, 23), (61, 27), (47, 41), (43, 37)]),
     ],
 }
 
 # Punched in outline colour rather than cut to transparent.
 DOTS = {
-    "knight": [("circle", 27, 34, 5), ("circle", 13, 45, 3)],  # eye, nostril
+    "knight": [("circle", 27, 30, 5), ("circle", 12, 41, 3)],  # eye, nostril
 }
 
 

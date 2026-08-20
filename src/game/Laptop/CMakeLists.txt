@@ -2,6 +2,7 @@ file(GLOB LOCAL_JA2_HEADERS ${CMAKE_CURRENT_SOURCE_DIR}/*.h)
 
 if (WITH_UNITTESTS)
     set(LOCAL_JA2_UNITTEST_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/ChessDaily_unittest.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/ChessGame_unittest.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/MahjongGame_unittest.cc
     )
@@ -29,6 +30,7 @@ set(JA2_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/BrokenLink.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/CharProfile.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/Chess.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/ChessDaily.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/ChessGame.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/ChessPuzzles.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/EMail.cc

@@ -9,6 +9,7 @@
 
 #include "Chess.h"
 
+#include "ChessDaily.h"
 #include "ChessGame.h"
 #include "ChessPuzzles.h"
 
@@ -101,7 +102,6 @@
 #define CH_ICON_PUZZLEMARK 6
 #define CH_ICON_FLAME      7
 
-#define CH_MAX_HEARTS   5
 #define CH_REPLY_DELAY  650  // ms before the scripted reply lands
 
 // chess.com's palette, sampled from the live site
@@ -152,7 +152,6 @@ namespace
 	// so both idioms work the way they do on the live site.
 	bool   gfChessDragging  = false;
 	UINT8  gubChessDragFrom = ChessGame::NO_SQUARE;
-	UINT8  gubChessHearts   = CH_MAX_HEARTS;
 	UINT32 guiChessReplyDue = 0;     // when the scripted reply lands, 0 if none
 	UINT8  gubChessLastFrom = ChessGame::NO_SQUARE;
 	UINT8  gubChessLastTo   = ChessGame::NO_SQUARE;
@@ -165,17 +164,9 @@ namespace
 	int    giChessSaid      = 0;   // ChessStr, or -1/-2 for a good/bad variant
 	int    giChessVariant   = 0;
 
-	// persisted
-	UINT16 gusChessDay        = 0;
-	UINT16 gusChessLastSolved = 0;
-	UINT8  gubChessStreak     = 0;
-	UINT8  gubChessBestStreak = 0;
-	UINT8  gubChessFlags      = 0;
-
-	constexpr UINT8 CH_FLAG_SOLVED     = 0x01;
-	constexpr UINT8 CH_FLAG_FAILED     = 0x02;
-	constexpr UINT8 CH_FLAG_HINT_USED  = 0x04;
-	constexpr UINT8 CH_FLAG_DISCOVERED = 0x08;
+	// persisted; the rules that move it live in ChessDaily, where they are
+	// tested without a laptop or a save game in sight
+	ChessDaily::State gChessDay;
 
 	SGPVObject* guiChessPieces = nullptr;  // 12 frames, 34x34
 	SGPVObject* guiChessCoach  = nullptr;  // Grunty, 29x33
@@ -332,23 +323,23 @@ namespace
 ChessPersist ChessGetPersist()
 {
 	ChessPersist p;
-	p.usDay           = gusChessDay;
-	p.usLastSolvedDay = gusChessLastSolved;
-	p.ubStreak        = gubChessStreak;
-	p.ubBestStreak    = gubChessBestStreak;
-	p.ubHearts        = gubChessHearts;
-	p.ubFlags         = gubChessFlags;
+	p.usDay           = gChessDay.day;
+	p.usLastSolvedDay = gChessDay.lastSolvedDay;
+	p.ubStreak        = gChessDay.streak;
+	p.ubBestStreak    = gChessDay.bestStreak;
+	p.ubHearts        = gChessDay.hearts;
+	p.ubFlags         = gChessDay.flags;
 	return p;
 }
 
 void ChessSetPersist(const ChessPersist& p)
 {
-	gusChessDay        = p.usDay;
-	gusChessLastSolved = p.usLastSolvedDay;
-	gubChessStreak     = p.ubStreak;
-	gubChessBestStreak = p.ubBestStreak;
-	gubChessHearts     = std::min<UINT8>(p.ubHearts, CH_MAX_HEARTS);
-	gubChessFlags      = p.ubFlags;
+	gChessDay.day           = p.usDay;
+	gChessDay.lastSolvedDay = p.usLastSolvedDay;
+	gChessDay.streak        = p.ubStreak;
+	gChessDay.bestStreak    = p.ubBestStreak;
+	gChessDay.hearts        = std::min<UINT8>(p.ubHearts, ChessDaily::MAX_HEARTS);
+	gChessDay.flags         = p.ubFlags;
 }
 
 // --- board geometry -------------------------------------------------------
@@ -463,8 +454,7 @@ namespace
 
 	void ChessLoadPuzzleForDay(int day)
 	{
-		giChessPuzzle = NUM_CHESS_PUZZLES > 0
-			? int((day <= 0 ? 0 : day - 1) % NUM_CHESS_PUZZLES) : 0;
+		giChessPuzzle = ChessDaily::PuzzleIndexForDay(day, NUM_CHESS_PUZZLES);
 
 		const ChessPuzzle& puzzle = CHESS_PUZZLES[giChessPuzzle];
 		gChessGame.SetFen(puzzle.fen);
@@ -496,11 +486,7 @@ namespace
 	// Roll the daily state over when the campaign has moved on to a new day.
 	void ChessRollOverDay()
 	{
-		const UINT16 today = ChessToday();
-		if (gusChessDay == today) return;
-		gusChessDay     = today;
-		gubChessHearts  = CH_MAX_HEARTS;
-		gubChessFlags  &= CH_FLAG_DISCOVERED;
+		ChessDaily::RollOverDay(gChessDay, ChessToday());
 	}
 
 	// Show one day. Today is playable; anything earlier is archive, opened with
@@ -516,13 +502,13 @@ namespace
 			gChessState = CHUI_REVIEW;
 			giChessSaid = CHS_ST_ARCHIVE;
 		}
-		else if (gubChessFlags & CH_FLAG_SOLVED)
+		else if (gChessDay.flags & ChessDaily::FLAG_SOLVED)
 		{
 			ChessPlayOutSolution();
 			gChessState = CHUI_SOLVED;
 			giChessSaid = CHS_ST_ALREADY;
 		}
-		else if (gubChessFlags & CH_FLAG_FAILED)
+		else if (gChessDay.flags & ChessDaily::FLAG_FAILED)
 		{
 			ChessPlayOutSolution();
 			gChessState = CHUI_FAILED;
@@ -566,13 +552,7 @@ namespace
 
 	void ChessRecordSolved()
 	{
-		const UINT16 today = ChessToday();
-		// a day missed breaks the run; solving on consecutive days extends it
-		gubChessStreak = (gusChessLastSolved != 0 && gusChessLastSolved + 1 == today)
-			? UINT8(std::min<int>(gubChessStreak + 1, 255)) : 1;
-		gubChessBestStreak = std::max(gubChessBestStreak, gubChessStreak);
-		gusChessLastSolved = today;
-		gubChessFlags |= CH_FLAG_SOLVED;
+		ChessDaily::RecordSolved(gChessDay, ChessToday());
 		ChessSetModal(true);
 		gChessState  = CHUI_SOLVED;
 		giChessSaid = CHS_ST_DONE;
@@ -580,9 +560,8 @@ namespace
 
 	void ChessRecordFailed()
 	{
-		gubChessFlags |= CH_FLAG_FAILED;
+		ChessDaily::RecordFailed(gChessDay);
 		ChessSetModal(true);
-		gubChessStreak = 0;
 		ChessPlayOutSolution();
 		gChessState  = CHUI_FAILED;
 		giChessSaid = CHS_ST_OUT;
@@ -590,8 +569,7 @@ namespace
 
 	void ChessSpendHeart()
 	{
-		if (gubChessHearts > 0) --gubChessHearts;
-		if (gubChessHearts == 0) ChessRecordFailed();
+		if (ChessDaily::SpendHeart(gChessDay)) ChessRecordFailed();
 	}
 
 	// The player picked a square to move to. Only the recorded solution counts;
@@ -712,10 +690,10 @@ namespace
 	{
 		if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
 		if (gChessState != CHUI_PUZZLE || guiChessReplyDue != 0) return;
-		if (gubChessFlags & CH_FLAG_HINT_USED) return;
+		if (gChessDay.flags & ChessDaily::FLAG_HINT_USED) return;
 		if (guiChessPly >= gChessSolution.size()) return;
 
-		gubChessFlags |= CH_FLAG_HINT_USED;
+		gChessDay.flags |= ChessDaily::FLAG_HINT_USED;
 		gfChessHintShown = true;
 		giChessSaid = CHS_ST_HINT;
 		ChessSpendHeart();
@@ -1110,10 +1088,10 @@ namespace
 		// tries, directly under the coach: she is the one keeping count. The
 		// hearts are the label.
 		const INT32 heartY = CH_COACH_Y + CH_COACH_TILE + 7;
-		for (int i = 0; i < CH_MAX_HEARTS; ++i)
+		for (int i = 0; i < ChessDaily::MAX_HEARTS; ++i)
 		{
 			ChessDrawHeart(CH_PANEL_X + 10 + i * CH_HEART_PITCH, heartY,
-			               i >= gubChessHearts ? CH_RGB_HEART_SPENT : CH_RGB_CTA);
+			               i >= gChessDay.hearts ? CH_RGB_HEART_SPENT : CH_RGB_CTA);
 		}
 
 		PrintAt(FONT10ARIAL, FONT_GRAY4, CH_PANEL_X + 10, heartY + 14,
@@ -1127,11 +1105,11 @@ namespace
 			BltVideoObject(FRAME_BUFFER, guiChessIcons, CH_ICON_FLAME,
 			               CH_X(CH_PANEL_X + 10), CH_Y(CH_PAGE_H - 76));
 		}
-		PrintAt(FONT10ARIALBOLD, gubChessStreak > 0 ? FONT_MCOLOR_WHITE : FONT_GRAY7,
-		        CH_PANEL_X + 28, CH_PAGE_H - 75, ST::format("{}", gubChessStreak));
+		PrintAt(FONT10ARIALBOLD, gChessDay.streak > 0 ? FONT_MCOLOR_WHITE : FONT_GRAY7,
+		        CH_PANEL_X + 28, CH_PAGE_H - 75, ST::format("{}", gChessDay.streak));
 
 		// the hint button greys out once it has been spent
-		const bool hintLive = gChessState == CHUI_PUZZLE && !(gubChessFlags & CH_FLAG_HINT_USED);
+		const bool hintLive = gChessState == CHUI_PUZZLE && !(gChessDay.flags & ChessDaily::FLAG_HINT_USED);
 		FillRounded(CH_PANEL_X + 10, CH_HINT_Y, CH_PANEL_W - 20, CH_HINT_H,
 		            hintLive ? CH_RGB_PANEL_UP : CH_RGB_PANEL_SUNK, 3, CH_RGB_PANEL);
 		PrintCentred(FONT10ARIAL, hintLive ? FONT_MCOLOR_WHITE : FONT_GRAY7,
@@ -1162,7 +1140,7 @@ namespace
 
 		const bool won = gChessState == CHUI_SOLVED;
 		const ChessStr title = !won                          ? CHS_MODAL_FAILED
-		                     : gubChessHearts == CH_MAX_HEARTS ? CHS_MODAL_PERFECT
+		                     : gChessDay.hearts == ChessDaily::MAX_HEARTS ? CHS_MODAL_PERFECT
 		                                                       : CHS_MODAL_SOLVED;
 		// white on a win: the green hearts below already carry that. Red is kept
 		// for the loss, which has nothing else saying so.
@@ -1170,11 +1148,11 @@ namespace
 		             cx, y + 12, T(title));
 
 		// hearts left standing, in the CTA green rather than the counter's red
-		const INT32 heartsW = CH_MAX_HEARTS * 18 - 4;
-		for (int i = 0; i < CH_MAX_HEARTS; ++i)
+		const INT32 heartsW = ChessDaily::MAX_HEARTS * 18 - 4;
+		for (int i = 0; i < ChessDaily::MAX_HEARTS; ++i)
 		{
 			ChessDrawHeart(cx - heartsW / 2 + i * 18, y + 28,
-			               i < gubChessHearts ? CH_RGB_CTA : CH_RGB_PANEL_SUNK, 2);
+			               i < gChessDay.hearts ? CH_RGB_CTA : CH_RGB_PANEL_SUNK, 2);
 		}
 
 		FillRounded(x + 12, y + 46, w - 24, 22, CH_RGB_CTA, 3, CH_RGB_PANEL);
@@ -1188,7 +1166,7 @@ namespace
 			const INT32 bx = x + 12 + i * (boxW + 6);
 			FillRect(bx, boxY, boxW, 28, CH_RGB_PANEL_SUNK);
 			PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, bx + boxW / 2, boxY + 3,
-			             ST::format("{}", i == 0 ? gubChessStreak : gubChessBestStreak));
+			             ST::format("{}", i == 0 ? gChessDay.streak : gChessDay.bestStreak));
 			PrintCentred(FONT10ARIAL, FONT_GRAY4, bx + boxW / 2, boxY + 15,
 			             T(i == 0 ? CHS_MODAL_STREAK : CHS_MODAL_BEST));
 		}
@@ -1204,7 +1182,7 @@ namespace
 
 void EnterChess()
 {
-	gubChessFlags |= CH_FLAG_DISCOVERED;
+	gChessDay.flags |= ChessDaily::FLAG_DISCOVERED;
 
 	guiChessPieces = nullptr;
 	guiChessCoach  = nullptr;
