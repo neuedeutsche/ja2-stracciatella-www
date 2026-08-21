@@ -1,6 +1,9 @@
 #include "Directories.h"
 #include "Font.h"
 #include "Laptop.h"
+#include <sstream>
+#include "ChessGame.h"
+#include "ChessPuzzles.h"
 #include "EMail.h"
 #include "VObject.h"
 #include "Debug.h"
@@ -564,6 +567,14 @@ void AddEmailMessage(INT32 iMessageOffset, INT32 iMessageLength, INT32 iDate, UI
 	else if (iMessageOffset == CHESS_EMAIL_OFFLINE)
 	{
 		pSubject = "server notice";
+	}
+	else if (iMessageOffset == CHESS_EMAIL_REVIEW)
+	{
+		pSubject = "ze game report";
+	}
+	else if (iMessageOffset == CHESS_EMAIL_CROWN)
+	{
+		pSubject = "regarding ze crown";
 	}
 	else if (iMessageOffset == MAHJONG_EMAIL_SPAM)
 	{
@@ -1745,6 +1756,8 @@ static void HandleMailSpecialMessages(UINT16 usMessageId, Email* pMail)
 		case CHESS_EMAIL_STREAK:
 		case CHESS_EMAIL_LAPSED:
 		case CHESS_EMAIL_OFFLINE:
+		case CHESS_EMAIL_REVIEW:
+		case CHESS_EMAIL_CROWN:
 			HandleChessGruntyMessage(usMessageId, pMail);
 			break;
 
@@ -1971,6 +1984,86 @@ static void HandleChessGruntyMessage(UINT16 usMessageId, const Email* pMail)
 		AddEmailRecordToList("I am not angry. Ze counter is automatic, it does not care about your reasons, and neither does ze board.");
 		blank();
 		AddEmailRecordToList("Ze puzzle is still zere. Zey are always still zere.");
+		blank();
+		AddEmailRecordToList("- Grunty");
+		return;
+	}
+
+	if (usMessageId == CHESS_EMAIL_REVIEW)
+	{
+		// iFirstData packs the day: puzzle index in the low 9 bits, tries left
+		// in the next 3, solved in bit 12
+		int const iPuzzle = pMail->iFirstData & 0x1FF;
+		int const iHearts = (pMail->iFirstData >> 9) & 0x7;
+		bool const fSolved = (pMail->iFirstData & 0x1000) != 0;
+		if (iPuzzle >= NUM_CHESS_PUZZLES) return;
+		ChessPuzzle const& puzzle = CHESS_PUZZLES[iPuzzle];
+
+		AddEmailRecordToList(ST::format("Report for \"{}\" (rating {}). Ze machine ran your game overnight. It has opinions.", puzzle.title, puzzle.rating));
+		blank();
+
+		// replay the line and set it in SAN, which is what a 1999 report would
+		// print: the engine's verdict is the solution itself
+		ChessGame game;
+		if (game.SetFen(puzzle.fen))
+		{
+			ST::string line;
+			int moveNo = game.FullmoveNumber();
+			bool first = true;
+			std::istringstream in(puzzle.moves);
+			std::string uci;
+			while (in >> uci)
+			{
+				ChessGame::Move const m = game.ParseUci(uci.c_str());
+				if (m.IsNull()) break;
+				if (game.SideToMove() == ChessGame::White)
+				{
+					line += ST::format("{}{}. ", first ? "" : " ", moveNo);
+				}
+				else if (first)
+				{
+					line += ST::format("{}... ", moveNo);
+				}
+				line += game.San(m).c_str();
+				line += " ";
+				if (game.SideToMove() == ChessGame::Black) ++moveNo;
+				game.MakeMove(m);
+				first = false;
+			}
+			AddEmailRecordToList(ST::format("Ze line: {}", line));
+			blank();
+		}
+
+		if (fSolved && iHearts >= 5)
+		{
+			AddEmailRecordToList("You found every move wizout wasting a try. Ze machine says accuracy 100%. I checked ze machine. It is right.");
+		}
+		else if (fSolved && iHearts >= 3)
+		{
+			AddEmailRecordToList(ST::format("Solved, wiz {} tries left. Ze machine says you saw it. Ze wasted tries say you saw it second.", iHearts));
+		}
+		else if (fSolved)
+		{
+			AddEmailRecordToList("Solved, eventually. Ze machine counted ze attempts. I told it not to be smug. It is a machine, it cannot help zis.");
+		}
+		else
+		{
+			AddEmailRecordToList("You did not find it. Zis is fine. Ze position is printed above; look at it wiz coffee, not wiz pride.");
+		}
+		blank();
+		AddEmailRecordToList("Tomorrow's puzzle is harder. Zey are sorted zat way on purpose.");
+		blank();
+		AddEmailRecordToList("- AnalysisBot v0.9 (it is me. ze bot is me.)");
+		return;
+	}
+
+	if (usMessageId == CHESS_EMAIL_CROWN)
+	{
+		AddEmailRecordToList("You clicked ze GOLD CROWN banner.");
+		blank();
+		AddEmailRecordToList("Ze membership is coming soon. Zere is no date. Zere is no feature list. Zere is a banner, and now zere is zis e-mail.");
+		blank();
+		AddEmailRecordToList("Do not ask about ze crown again. Ze server logs who asks.");
 		blank();
 		AddEmailRecordToList("- Grunty");
 		return;
@@ -2566,7 +2659,7 @@ static void PreProcessEmail(Email* const m)
 	Record* start = pMessageRecordList;
 	if (start && m->usOffset != IMP_EMAIL_PROFILE_RESULTS &&
 		!(m->usOffset >= MAHJONG_EMAIL_KINGPIN_WIN && m->usOffset <= MAHJONG_EMAIL_SPAM) &&
-		!(m->usOffset >= CHESS_EMAIL_INVITE && m->usOffset <= CHESS_EMAIL_OFFLINE))
+		!(m->usOffset >= CHESS_EMAIL_INVITE && m->usOffset <= CHESS_EMAIL_CROWN))
 	{ // pass the subject line (programmatic bodies have no subject record)
 		start = start->Next;
 	}

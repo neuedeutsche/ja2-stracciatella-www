@@ -27,6 +27,8 @@ struct ChessPersist
 #define CHESS_FLAG_DISCOVERED 0x08
 #define CHESS_FLAG_INVITED    0x10
 #define CHESS_FLAG_DOWN_NOTED 0x20
+#define CHESS_FLAG_SIGNED     0x40
+#define CHESS_FLAG_CROWN     0x80
 ChessPersist ChessGetPersist();
 void ChessSetPersist(const ChessPersist& p);
 

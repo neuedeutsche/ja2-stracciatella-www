@@ -21,6 +21,7 @@
 #include "Font_Control.h"
 #include "Game_Clock.h"
 #include "Game_Event_Hook.h"
+#include "History.h"
 #include "HImage.h"
 #include "IMP_Compile_Character.h"
 #include "Input.h"
@@ -193,6 +194,8 @@ namespace
 	static_assert(CHESS_FLAG_DISCOVERED == ChessDaily::FLAG_DISCOVERED, "flag drift");
 	static_assert(CHESS_FLAG_INVITED    == ChessDaily::FLAG_INVITED,    "flag drift");
 	static_assert(CHESS_FLAG_DOWN_NOTED == ChessDaily::FLAG_DOWN_NOTED, "flag drift");
+	static_assert(CHESS_FLAG_SIGNED     == ChessDaily::FLAG_SIGNED,     "flag drift");
+	static_assert(CHESS_FLAG_CROWN      == ChessDaily::FLAG_CROWN_ASKED, "flag drift");
 
 	SGPVObject* guiChessPieces = nullptr;  // 12 frames, 34x34
 	SGPVObject* guiChessCoach  = nullptr;  // Grunty, 29x33
@@ -208,6 +211,9 @@ namespace
 	MOUSE_REGION gChessSquare[64];
 	MOUSE_REGION gChessHintRegion;
 	MOUSE_REGION gChessNavRegion[5];
+	MOUSE_REGION gChessBannerRegion;
+	MOUSE_REGION gChessSignRegion;
+	MOUSE_REGION gChessLangRegion;
 	MOUSE_REGION gChessPrevDayRegion;
 	MOUSE_REGION gChessNextDayRegion;
 	MOUSE_REGION gChessModalCloseRegion;
@@ -223,16 +229,16 @@ namespace
 	enum ChessStr
 	{
 		CHS_TITLE, CHS_DAY, CHS_RATING, CHS_WHITE_MOVES, CHS_BLACK_MOVES,
-		CHS_SOLVED_BY, CHS_AND_YOU, CHS_STREAK, CHS_BEST, CHS_HINT, CHS_TRIES,
-		CHS_FOOTER, CHS_SEARCH,
+		CHS_HINT, CHS_FOOTER,
 		CHS_NAV_PLAY, CHS_NAV_PUZZLES, CHS_NAV_LEARN, CHS_NAV_WATCH, CHS_NAV_COMMUNITY,
-		CHS_ST_WHITE, CHS_ST_BLACK, CHS_ST_CORRECT, CHS_ST_WRONG, CHS_ST_HINT,
+		CHS_ST_WHITE, CHS_ST_BLACK, CHS_ST_HINT,
 		CHS_ST_ALREADY, CHS_ST_OUT, CHS_ST_DONE, CHS_ST_YOUR_MOVE, CHS_ST_ARCHIVE,
 		CHS_MODAL_PERFECT, CHS_MODAL_SOLVED, CHS_MODAL_FAILED, CHS_MODAL_ARCHIVE,
 		CHS_MODAL_STREAK, CHS_MODAL_BEST,
 		CHS_DOWN_TITLE, CHS_DOWN_1, CHS_DOWN_2, CHS_DOWN_3,
 		CHS_STUB_TITLE, CHS_STUB_PLAY, CHS_STUB_LEARN, CHS_STUB_WATCH,
 		CHS_STUB_GROUPS, CHS_STUB_BACK, CHS_VISITOR,
+		CHS_GB_TITLE, CHS_GB_PROMPT, CHS_GB_SIGN, CHS_GB_YOURS,
 		CHS_COUNT
 	};
 
@@ -240,11 +246,9 @@ namespace
 	{
 		{
 			"DAILY PUZZLE", "DAY", "RATING", "WHITE TO MOVE", "BLACK TO MOVE",
-			"SOLVED BY:", "and you.", "STREAK: {} DAYS", "BEST: {}", "HINT", "TRIES",
-			"best viewed at 800x600 - solution tomorrow", "Search",
+			"HINT", "best viewed at 800x600 - solution tomorrow",
 			"Play", "Puzzles", "Learn", "Watch", "Groups",
-			"white to move.", "black to move.", "correct. he answers...",
-			"no. that is not the move.", "this piece. the rest is yours.",
+			"white to move.", "black to move.", "this piece. the rest is yours.",
 			"solved. come back tomorrow.", "out of tries. the solution is on the board.",
 			"correct. the position is resolved.", "your move again.",
 			"from the archive. this one is finished.",
@@ -261,14 +265,14 @@ namespace
 			"a group needs two people.",
 			"back to ze puzzle",
 			"you are visitor no.",
+			"GUESTBOOK", "sign it. everyone signs it.", "SIGN ZE BOOK",
+			"was here. solved some.",
 		},
 		{
 			"TAGESRAETSEL", "TAG", "WERTUNG", "WEISS ZIEHT", "SCHWARZ ZIEHT",
-			"GELOEST VON:", "und Sie.", "SERIE: {} TAGE", "BESTE: {}", "TIPP", "VERSUCHE",
-			"Beste Ansicht 800x600 - Loesung morgen", "Suche",
+			"TIPP", "Beste Ansicht 800x600 - Loesung morgen",
 			"Spielen", "Raetsel", "Lernen", "Zusehen", "Forum",
-			"Weiss ist am Zug.", "Schwarz ist am Zug.", "richtig. er antwortet...",
-			"nein. das ist nicht der Zug.", "diese Figur. der Rest ist Ihrer.",
+			"Weiss ist am Zug.", "Schwarz ist am Zug.", "diese Figur. der Rest ist Ihrer.",
 			"geloest. kommen Sie morgen wieder.", "keine Versuche mehr. die Loesung steht.",
 			"richtig. die Stellung ist geklaert.", "Sie sind wieder am Zug.",
 			"aus dem Archiv. dieses ist erledigt.",
@@ -285,10 +289,27 @@ namespace
 			"eine Gruppe braucht zwei Leute.",
 			"zurueck zum Raetsel",
 			"Sie sind Besucher Nr.",
+			"GAESTEBUCH", "tragen Sie sich ein. jeder tut es.", "INS BUCH",
+			"war hier. hat einiges geloest.",
 		},
 	};
 
 	bool gfChessGerman = false;
+
+	// The guestbook: cast regulars, and the accidental traffic a typo domain
+	// earns. Entries are user content, so they stay in whatever language
+	// their author typed.
+	struct ChessGuestEntry { const char* handle; const char* line; };
+	const ChessGuestEntry CHESS_GUESTBOOK[] =
+	{
+		{ "@grunty",       "please sign properly. no links. no recipes." },
+		{ "@ivan_d",       "good puzzles. no nonsense." },
+		{ "@e11iot",       "the rook one made me feel things. day 4 i think" },
+		{ "@dorothy_1938", "is this the crochet ring?? the button said NEXT SITE" },
+		{ "@no_refunds",   "nice traffic numbers. ever consider sponsorship? call me" },
+		{ "@chachtourism", "we are the OFFICIAL page of Chach, Slovakia. stop e-mailing us" },
+		{ "@the_house",    "we also run games. ours pay out. mostly to us." },
+	};
 
 	const char* T(ChessStr id) { return CHESS_TEXT[gfChessGerman ? 1 : 0][id]; }
 
@@ -551,11 +572,23 @@ namespace
 	// Roll the daily state over when the campaign has moved on to a new day.
 	// He answers on the strategic clock, not the instant you click - which is
 	// the only honest way for a man with one modem to reply.
-	void ChessMail(int kind, int streak)
+	void ChessMail(int kind, int data)
 	{
 		AddStrategicEvent(EVENT_CHESS_GRUNTY_EMAIL,
 		                  GetWorldTotalMin() + 90 + Random(240),
-		                  (UINT32(kind) << 16) | UINT32(streak & 0xFFFF));
+		                  (UINT32(kind) << 16) | UINT32(data & 0xFFFF));
+	}
+
+	// The game report runs overnight on his one machine, so it arrives next
+	// morning, between eight and ten.
+	void ChessQueueReview(bool solved)
+	{
+		UINT32 const now = GetWorldTotalMin();
+		UINT32 const due = ((now / 1440) + 1) * 1440 + 480 + Random(120);
+		UINT32 const data = UINT32(giChessPuzzle & 0x1FF) |
+		                    (UINT32(gChessDay.hearts & 0x7) << 9) |
+		                    (solved ? 0x1000u : 0u);
+		AddStrategicEvent(EVENT_CHESS_GRUNTY_EMAIL, due, (4u << 16) | data);
 	}
 
 	void ChessRollOverDay()
@@ -635,6 +668,13 @@ namespace
 	void ChessRecordSolved()
 	{
 		ChessDaily::RecordSolved(gChessDay, ChessToday());
+		ChessPlay(CH_SND_CASTLE);
+		ChessQueueReview(true);
+		// a week-long run is worth a line in the campaign record
+		if (gChessDay.streak == 7)
+		{
+			AddHistoryToPlayersLog(HISTORY_CHESS_STREAK_WEEK, 0, GetWorldTotalMin(), SGPSector());
+		}
 		// he notices a run at three, and again every week it survives
 		const int streak = gChessDay.streak;
 		if (streak == 3 || (streak >= 7 && streak % 7 == 0)) ChessMail(1, streak);
@@ -646,6 +686,7 @@ namespace
 	void ChessRecordFailed()
 	{
 		ChessDaily::RecordFailed(gChessDay);
+		ChessQueueReview(false);
 		ChessSetModal(true);
 		ChessPlayOutSolution();
 		gChessState  = CHUI_FAILED;
@@ -838,6 +879,36 @@ namespace
 		ChessRedraw();
 	}
 
+	void ChessBannerCallback(MOUSE_REGION* region, UINT32 reason)
+	{
+		if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
+		if (gfChessModal || giChessStub >= 0) return;
+		// only the crown creative answers, and he answers exactly once
+		if (giChessViewDay % 3 != 1) return;
+		if (gChessDay.flags & ChessDaily::FLAG_CROWN_ASKED) return;
+		gChessDay.flags |= ChessDaily::FLAG_CROWN_ASKED;
+		ChessPlay(CH_SND_CLICK, LOWVOLUME);
+		ChessMail(5, 0);
+	}
+
+	void ChessSignCallback(MOUSE_REGION* region, UINT32 reason)
+	{
+		if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
+		if (giChessStub != 4) return;
+		if (gChessDay.flags & ChessDaily::FLAG_SIGNED) return;
+		gChessDay.flags |= ChessDaily::FLAG_SIGNED;
+		ChessPlay(CH_SND_CLICK);
+		ChessRedraw();
+	}
+
+	void ChessLangCallback(MOUSE_REGION* region, UINT32 reason)
+	{
+		if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
+		gfChessGerman = !gfChessGerman;
+		ChessPlay(CH_SND_CLICK2, LOWVOLUME);
+		ChessRedraw();
+	}
+
 	void ChessPlaceRegions()
 	{
 		MSYS_DefineRegion(&gChessDropRegion,
@@ -903,6 +974,23 @@ namespace
 		gChessModalCloseRegion.Disable();
 		gChessModalArchiveRegion.Disable();
 
+		MSYS_DefineRegion(&gChessBannerRegion,
+		                  UINT16(CH_X(CH_BOARD_X)), UINT16(CH_Y(CH_BANNER_Y)),
+		                  UINT16(CH_X(CH_BOARD_X + CH_BOARD_SIZE)), UINT16(CH_Y(CH_BANNER_Y + CH_BANNER_H)),
+		                  MSYS_PRIORITY_HIGH, CURSOR_WWW, MSYS_NO_CALLBACK,
+		                  ChessBannerCallback);
+		MSYS_DefineRegion(&gChessSignRegion,
+		                  UINT16(CH_X(CH_BOARD_X + 40)), UINT16(CH_Y(CH_BOARD_BOTTOM - 34)),
+		                  UINT16(CH_X(CH_BOARD_X + CH_BOARD_SIZE - 40)), UINT16(CH_Y(CH_BOARD_BOTTOM - 12)),
+		                  MSYS_PRIORITY_HIGH, CURSOR_WWW, MSYS_NO_CALLBACK,
+		                  ChessSignCallback);
+		MSYS_DefineRegion(&gChessLangRegion,
+		                  UINT16(CH_X(CH_BOARD_X + CH_BOARD_SIZE - 36)), UINT16(CH_Y(CH_PAGE_H - 18)),
+		                  UINT16(CH_X(CH_BOARD_X + CH_BOARD_SIZE)), UINT16(CH_Y(CH_PAGE_H - 4)),
+		                  MSYS_PRIORITY_HIGH, CURSOR_WWW, MSYS_NO_CALLBACK,
+		                  ChessLangCallback);
+		gChessLangRegion.SetFastHelpText("English / Deutsch");
+
 		gfChessRegionsUp = true;
 		if (gfChessModal) ChessSetModal(true);
 	}
@@ -926,6 +1014,9 @@ namespace
 		MSYS_RemoveRegion(&gChessModalCloseRegion);
 		MSYS_RemoveRegion(&gChessModalArchiveRegion);
 		for (MOUSE_REGION& r : gChessNavRegion) MSYS_RemoveRegion(&r);
+		MSYS_RemoveRegion(&gChessBannerRegion);
+		MSYS_RemoveRegion(&gChessSignRegion);
+		MSYS_RemoveRegion(&gChessLangRegion);
 		MSYS_RemoveRegion(&gChessPrevDayRegion);
 		MSYS_RemoveRegion(&gChessNextDayRegion);
 		gfChessRegionsUp = false;
@@ -1397,9 +1488,53 @@ namespace
 		PrintCentred(FONT10ARIAL, FONT_GRAY7, cx, top + 44, T(CHS_STUB_BACK));
 	}
 
+	// The guestbook. Sign once; the signature is forever.
+	void ChessRenderGuestbook()
+	{
+		FillRounded(CH_BOARD_X, CH_BOARD_Y, CH_BOARD_SIZE, CH_BOARD_SIZE,
+		            CH_RGB_PANEL, CH_RADIUS, CH_RGB_CHROME);
+		const INT32 cx = CH_BOARD_X + CH_BOARD_SIZE / 2;
+
+		PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, cx, CH_BOARD_Y + 10, T(CHS_GB_TITLE));
+		PrintCentred(FONT10ARIAL, FONT_GRAY4, cx, CH_BOARD_Y + 24, T(CHS_GB_PROMPT));
+
+		const int shown = int(sizeof(CHESS_GUESTBOOK) / sizeof(CHESS_GUESTBOOK[0]));
+		INT32 y = CH_BOARD_Y + 44;
+		for (int i = 0; i < shown; ++i)
+		{
+			FillRect(CH_BOARD_X + 8, y - 2, CH_BOARD_SIZE - 16, 24, CH_RGB_PANEL_SUNK);
+			PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_LTGREEN, CH_BOARD_X + 14, y, CHESS_GUESTBOOK[i].handle);
+			PrintAt(FONT10ARIAL, FONT_GRAY2, CH_BOARD_X + 14, y + 11, CHESS_GUESTBOOK[i].line);
+			y += 26;
+		}
+
+		if (gChessDay.flags & ChessDaily::FLAG_SIGNED)
+		{
+			// your entry, in the site's accent - the one line you control
+			FillRect(CH_BOARD_X + 8, y - 2, CH_BOARD_SIZE - 16, 24, CH_RGB_PANEL_SUNK);
+			const ST::string handle = gChessSelfNick.empty()
+				? ST::string("@commander") : ST::format("@{}", gChessSelfNick);
+			PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, CH_BOARD_X + 14, y, handle);
+			PrintAt(FONT10ARIAL, FONT_GRAY2, CH_BOARD_X + 14, y + 11, T(CHS_GB_YOURS));
+		}
+		else
+		{
+			FillRounded(CH_BOARD_X + 40, CH_BOARD_BOTTOM - 34, CH_BOARD_SIZE - 80, 22,
+			            CH_RGB_CTA, 3, CH_RGB_PANEL);
+			PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, cx, CH_BOARD_BOTTOM - 28,
+			             T(CHS_GB_SIGN));
+		}
+	}
+
 	void ChessRenderFooter()
 	{
 		PrintAt(FONT10ARIAL, FONT_GRAY7, CH_BOARD_X, CH_PAGE_H - 16, T(CHS_FOOTER));
+		// the language link lives down here now: the proprietor is German and
+		// it costs one small footer line
+		const INT32 lx = CH_BOARD_X + CH_BOARD_SIZE - 34;
+		PrintAt(FONT10ARIAL, gfChessGerman ? FONT_GRAY7 : FONT_MCOLOR_LTGREEN, lx, CH_PAGE_H - 16, "EN");
+		PrintAt(FONT10ARIAL, FONT_GRAY7, lx + 14, CH_PAGE_H - 16, "|");
+		PrintAt(FONT10ARIAL, gfChessGerman ? FONT_MCOLOR_LTGREEN : FONT_GRAY7, lx + 20, CH_PAGE_H - 16, "DE");
 	}
 }
 
@@ -1495,7 +1630,13 @@ void RenderChess()
 {
 	FillRect(0, 0, LAPTOP_SCREEN_WIDTH, CH_PAGE_H, CH_RGB_CHROME);
 	ChessRenderNav();
-	if (giChessStub >= 0)
+	if (giChessStub == 4)
+	{
+		ChessRenderGuestbook();
+		ChessRenderBanner();
+		ChessRenderFooter();
+	}
+	else if (giChessStub >= 0)
 	{
 		ChessRenderStub();
 		ChessRenderBanner();

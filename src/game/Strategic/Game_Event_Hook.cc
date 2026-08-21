@@ -327,6 +327,8 @@ BOOLEAN ExecuteStrategicEvent( STRATEGICEVENT *pEvent )
 			UINT16 const usMessage = usKind == 1 ? CHESS_EMAIL_STREAK
 			                       : usKind == 2 ? CHESS_EMAIL_LAPSED
 			                       : usKind == 3 ? CHESS_EMAIL_OFFLINE
+			                       : usKind == 4 ? CHESS_EMAIL_REVIEW
+			                       : usKind == 5 ? CHESS_EMAIL_CROWN
 			                                     : CHESS_EMAIL_INVITE;
 			// the invitation is what puts the bookmark in the browser
 			if (usMessage == CHESS_EMAIL_INVITE) SetBookMark(CHESS_BOOKMARK);

@@ -19,6 +19,8 @@ namespace ChessDaily
 	constexpr std::uint8_t FLAG_DISCOVERED = 0x08;  // the player has been here
 	constexpr std::uint8_t FLAG_INVITED    = 0x10;  // the invitation has gone out
 	constexpr std::uint8_t FLAG_DOWN_NOTED = 0x20;  // the outage mail has gone out
+	constexpr std::uint8_t FLAG_SIGNED     = 0x40;  // the guestbook is signed
+	constexpr std::uint8_t FLAG_CROWN_ASKED = 0x80; // clicked the crown banner once
 
 	// Eight bytes, matching the laptop save blob exactly.
 	struct State

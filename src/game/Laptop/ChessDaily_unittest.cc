@@ -37,7 +37,8 @@ TEST(ChessDaily, RollOverResetsTheDayButNotThePlayer)
 	s.hearts = 1;
 	s.flags  = ChessDaily::FLAG_SOLVED | ChessDaily::FLAG_HINT_USED |
 	           ChessDaily::FLAG_DISCOVERED | ChessDaily::FLAG_INVITED |
-	           ChessDaily::FLAG_DOWN_NOTED;
+	           ChessDaily::FLAG_DOWN_NOTED | ChessDaily::FLAG_SIGNED |
+	           ChessDaily::FLAG_CROWN_ASKED;
 
 	EXPECT_FALSE(ChessDaily::RollOverDay(s, 8));  // same day is a no-op
 	EXPECT_EQ(1, s.hearts);
@@ -52,6 +53,10 @@ TEST(ChessDaily, RollOverResetsTheDayButNotThePlayer)
 	EXPECT_TRUE(s.flags & ChessDaily::FLAG_INVITED);
 	EXPECT_TRUE(s.flags & ChessDaily::FLAG_DOWN_NOTED)
 		<< "an outage spans days, so its notice must not re-send every morning";
+	EXPECT_TRUE(s.flags & ChessDaily::FLAG_SIGNED)
+		<< "a guestbook signature is forever";
+	EXPECT_TRUE(s.flags & ChessDaily::FLAG_CROWN_ASKED)
+		<< "he only explains the crown once";
 }
 
 TEST(ChessDaily, StreakCountsConsecutiveDaysOnly)

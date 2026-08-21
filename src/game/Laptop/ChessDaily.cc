@@ -18,7 +18,8 @@ namespace ChessDaily
 		state.day    = stamp;
 		state.hearts = MAX_HEARTS;
 		// FLAG_DISCOVERED and FLAG_INVITED describe the player, not the day
-		state.flags &= std::uint8_t(FLAG_DISCOVERED | FLAG_INVITED | FLAG_DOWN_NOTED);
+		state.flags &= std::uint8_t(FLAG_DISCOVERED | FLAG_INVITED | FLAG_DOWN_NOTED |
+		                            FLAG_SIGNED | FLAG_CROWN_ASKED);
 		return true;
 	}
 
