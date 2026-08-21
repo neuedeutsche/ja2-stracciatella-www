@@ -128,8 +128,8 @@ PIECES = {
     "rook": [
         ("rect", 18.75, 12.5, 81.25, 31.25, 0),
         ("rect", 25, 28.125, 75, 40.625, 0),
-        ("poly", [(31.25, 40.625), (68.75, 40.625), (71.875, 75), (28.125, 75)]),
-        ("rect", 18.75, 71.875, 81.25, 90.625, 0),
+        ("poly", [(28.125, 40.625), (71.875, 40.625), (75, 75), (25, 75)]),
+        ("rect", 15.625, 68.75, 84.375, 90.625, 0),
     ],
     # Constructed, not organic: the body is an elongated octagon - straight
     # segments only - with a ball on top and the slot cut into the upper
@@ -140,33 +140,45 @@ PIECES = {
         ("rect", 19, 78, 81, 94, 5),
     ],
     "queen": [
+        # the whole crown is squeezed 10% toward the centreline - a few
+        # pixels skinnier at cell size without touching the proportions
         # Four copies of one sharp triangle - wide base, apex high - set side
         # by side with their bases overlapping, the outer pair leaning
         # outward. Balls round the apexes, a footer wider than the fan below.
         # the sides run diagonally inward: the crown is widest at the outer
         # balls and slightly narrower where it meets the footer
-        ("poly", [(28, 82), (56, 82), (37, 14)]),
-        ("poly", [(44, 82), (72, 82), (63, 14)]),
-        ("poly", [(26, 84), (48, 78), (12, 32)]),
-        ("poly", [(52, 78), (74, 84), (88, 32)]),
-        ("circle", 37, 14, 8),
-        ("circle", 63, 14, 8),
-        ("circle", 12, 32, 8),
-        ("circle", 88, 32, 8),
-        ("rect", 12, 78, 88, 95, 8),
+        # each spike is truncated: a short flat edge under the ball keeps the
+        # tip broad instead of converging to a point
+        # tips biased outward: the outer edge carries the breadth while the
+        # valley-facing edge keeps its original steep slope, so the notches
+        # between spikes stay crisp
+        # the outer slits lean: both walls of each valley step inward at the
+        # base, so the notches converge toward the centre instead of falling
+        # straight down
+        ("poly", [(36, 82), (55.4, 82), (41.5625, 15.625), (33.125, 15.625)]),
+        ("poly", [(44.6, 82), (64, 82), (66.875, 15.625), (58.4375, 15.625)]),
+        ("poly", [(28.4, 84), (52, 78), (17.78, 30.9), (9.86, 35.3)]),
+        ("poly", [(48, 78), (71.6, 84), (90.14, 35.3), (82.22, 30.9)]),
+        ("circle", 34, 14, 11),
+        ("circle", 66, 14, 11),
+        # nudged onto the same subpixel phase as the inner pair, so all four
+        # balls rasterise to the same diameter at cell size
+        ("circle", 13.4, 31.65, 11),
+        ("circle", 86.6, 31.65, 11),
+        ("rect", 15.8, 78, 84.2, 95, 8),
     ],
     # An even cross over a crown: straight column up the middle, two bows
     # arching outward to the sides. Built solid, then the teardrop hollows
     # between column and bows are cut out.
     "king": [
-        ("rect", 43.75, 3, 56.25, 36, 0),
-        ("rect", 37.5, 9.375, 62.5, 18.75, 0),
+        ("rect", 43.5187, 3, 56.4813, 36, 0),
+        ("rect", 37.0375, 9.375, 62.9625, 18.75, 0),
         # widest through the lobes, tapering as it falls so it sits back from
         # the base instead of thickening into it
         ("poly", [(46, 30), (38, 24), (28, 20), (17, 26), (10, 38), (11, 54),
                   (18, 68), (30, 78), (70, 78), (82, 68), (89, 54), (90, 38),
                   (83, 26), (72, 20), (62, 24), (54, 30)]),
-        ("rect", 20, 78, 80, 95, 8),
+        ("rect", 18.89, 78, 81.11, 95, 8),
     ],
     # The knight is composed, not traced: a neck trapezoid, a head dome, a
     # muzzle bar and an ear - then one big circle carved out at the throat,
@@ -190,8 +202,10 @@ PIECES = {
 # Cut back out of the silhouette after the union.
 CUTOUTS = {
     "rook": [
-        ("rect", 34.375, 9.375, 43.75, 28.125, 0),
-        ("rect", 56.25, 9.375, 65.625, 28.125, 0),
+        # each dip a pixel narrower and a pixel shallower, centres unchanged
+        # spaced a pixel further apart so the middle merlon keeps its bulk
+        ("rect", 32.8125, 9.375, 39.0625, 25, 0),
+        ("rect", 60.9375, 9.375, 67.1875, 25, 0),
     ],
     # the teardrop hollows between the column and each bow, tails pointing
     # up toward the base of the cross
@@ -202,10 +216,10 @@ CUTOUTS = {
         # inner edges dead vertical at x38/x62, circles exactly tangent to
         # them: the spine between the hollows stays parallel-sided instead of
         # flaring where the circles curve away
-        ("circle", 31, 44, 7),
-        ("poly", [(26, 43), (38, 46), (38, 66)]),
-        ("circle", 69, 44, 7),
-        ("poly", [(62, 46), (74, 43), (62, 66)]),
+        ("circle", 30.297, 44, 7),
+        ("poly", [(25.112, 43), (37.556, 46), (37.556, 66)]),
+        ("circle", 69.703, 44, 7),
+        ("poly", [(62.444, 46), (74.888, 43), (62.444, 66)]),
     ],
     "bishop": [
         # the slot: cut from above the egg straight down into it
