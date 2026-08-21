@@ -12,6 +12,7 @@
 #include "Input.h"
 #include "JA2_Splash.h"
 #include "JAScreens.h"
+#include <cstdlib>
 #include "MainMenuScreen.h"
 #include "MessageBoxScreen.h"
 #include "Music_Control.h"
@@ -273,6 +274,18 @@ static void MenuButtonCallback(GUI_BUTTON *btn, UINT32 reason)
 
 static void HandleMainMenuInput(void)
 {
+	// Dev shortcut: JA2_DEV_CHESS=1 boots straight through the menu into the
+	// last-saved game, and from there into the laptop and onto chach.com.
+	// This leg is the same as Alt+clicking LOAD.
+	static BOOLEAN fDevChessDone = FALSE;
+	if (!fDevChessDone && getenv("JA2_DEV_CHESS") && AreThereAnySavedGameFiles())
+	{
+		fDevChessDone      = TRUE;
+		gbHandledMainMenu  = LOAD_GAME;
+		gfLoadGameUponEntry = TRUE;
+		return;
+	}
+
 	InputAtom InputEvent;
 	while (DequeueSpecificEvent(&InputEvent, KEYBOARD_EVENTS))
 	{

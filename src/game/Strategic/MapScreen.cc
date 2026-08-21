@@ -1,3 +1,4 @@
+#include <cstdlib>
 #include "MapScreen.h"
 #include "Animated_ProgressBar.h"
 #include "Campaign.h"
@@ -1379,6 +1380,14 @@ static void MapViewRegionMovementCallback(MOUSE_REGION* pRegion, UINT32 iReason)
 
 ScreenID MapScreenHandle(void)
 {
+	// Dev shortcut leg two: arrive on the map, leave for the laptop at once
+	static BOOLEAN fDevChessJumped = FALSE;
+	if (!fDevChessJumped && getenv("JA2_DEV_CHESS"))
+	{
+		fDevChessJumped = TRUE;
+		RequestTriggerExitFromMapscreen(MAP_EXIT_TO_LAPTOP);
+	}
+
 	UINT32 uiNewScreen;
 	INT32 iCounter = 0;
 	static const SGPSector startSector(gamepolicy(start_sector));

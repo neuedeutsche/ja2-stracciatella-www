@@ -15,6 +15,7 @@
 #include "SysUtil.h"
 #include "Cursors.h"
 #include "Event_Pump.h"
+#include <cstdlib>
 #include "Laptop.h"
 #include "AIM.h"
 #include "AIMMembers.h"
@@ -577,6 +578,13 @@ static void EnterLaptop(void)
 						std::max(uiStageAt[uiNext], uiNow + 720), 0x40000000 | uiNext);
 			}
 		}
+	}
+
+	// Dev shortcut leg three: the laptop opens on the chess site
+	if (getenv("JA2_DEV_CHESS"))
+	{
+		guiCurrentWWWMode    = LAPTOP_MODE_CHESS;
+		guiCurrentLaptopMode = LAPTOP_MODE_CHESS;
 	}
 
 	DrawDeskTopBackground();

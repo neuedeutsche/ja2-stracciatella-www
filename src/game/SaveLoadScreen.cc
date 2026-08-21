@@ -4,6 +4,7 @@
 #include "HImage.h"
 #include "Timer_Control.h"
 #include "Types.h"
+#include <cstdlib>
 #include "SaveLoadScreen.h"
 #include "Video.h"
 #include "Font_Control.h"
@@ -378,7 +379,14 @@ static void EnterSaveLoadScreen()
 	if (gfLoadGameUponEntry)
 	{
 		// Make sure the save is valid
-		INT8 const last_slot = gGameSettings.bLastSavedGameSlot;
+		INT8 last_slot = gGameSettings.bLastSavedGameSlot;
+		// the dev shortcut takes the newest save when no last slot is recorded
+		if (getenv("JA2_DEV_CHESS") &&
+		    (last_slot == -1 || gSavedGamesList.begin() + last_slot >= gSavedGamesList.end()) &&
+		    !gSavedGamesList.empty())
+		{
+			last_slot = 0;
+		}
 		if (last_slot != -1 && gSavedGamesList.begin() + last_slot < gSavedGamesList.end())
 		{
 			gbSelectedSaveLocation = last_slot;
