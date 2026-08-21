@@ -62,7 +62,7 @@
 #define CH_NAV_W        70
 #define CH_SQ           34
 #define CH_BOARD_X      74
-#define CH_BOARD_Y      24
+#define CH_BOARD_Y      40
 #define CH_BOARD_SIZE   (8 * CH_SQ)
 #define CH_BOARD_BOTTOM (CH_BOARD_Y + CH_BOARD_SIZE)
 #define CH_PANEL_X      352
@@ -113,8 +113,8 @@
 #define CH_BANNER_Y     (CH_PAGE_H - 20 - CH_BANNER_H)
 #define CH_COUNTER_Y    (CH_BANNER_Y - 13)
 // player rows for the live views, above and below the board
-#define CH_ROW_TOP_Y    3
-#define CH_ROW_BOT_Y    (CH_BOARD_BOTTOM + 5)
+#define CH_ROW_TOP_Y    4
+#define CH_ROW_BOT_Y    (CH_BOARD_BOTTOM + 3)
 
 #define CH_REPLY_DELAY  650  // ms before the scripted reply lands
 
@@ -316,7 +316,7 @@ namespace
 			"was here. solved some.",
 			"LESSON {} OF 3", "LIVE - ze house plays itself",
 			"game over. ze next one starts alone.",
-			"GRUNTY - 1850", "your move.", "he is thinking. he does zis.",
+			"GRUNTY", "your move.", "he is thinking. he does zis.",
 			"you beat ze proprietor.", "ze proprietor wins. again.",
 			"a draw. nobody is happy.", "NEW GAME", "NEXT LESSON",
 		},
@@ -345,7 +345,7 @@ namespace
 			"war hier. hat einiges geloest.",
 			"LEKTION {} VON 3", "LIVE - das Haus spielt gegen sich",
 			"Partie vorbei. die naechste beginnt allein.",
-			"GRUNTY - 1850", "Sie sind am Zug.", "er denkt. das macht er so.",
+			"GRUNTY", "Sie sind am Zug.", "er denkt. das macht er so.",
 			"Sie haben den Betreiber geschlagen.", "der Betreiber gewinnt. wieder.",
 			"Remis. niemand ist gluecklich.", "NEUE PARTIE", "NAECHSTE LEKTION",
 		},
@@ -451,52 +451,16 @@ namespace
 
 	UINT32 ChessNow() { return GetJA2Clock(); }
 
-	// Bake a face at half size into a 16bpp surface, once, at load time. The
-	// engine's half blitter wants an 8bpp source, so this decodes the ETRLE
-	// data itself - the mahjong page does the same to read faces - takes every
-	// second pixel through the object's palette, and stores the result ready
-	// for a plain 1:1 blit each frame.
-	SGPVSurface* ChessBakeFaceHalf(SGPVObject* face)
+	// Bake a face into a 16bpp surface once, at load, for a plain 1:1 blit
+	// per frame. (The engine's half blitter wants 8bpp sources - that was the
+	// Watch crash - so the rows simply use the face at its natural size.)
+	SGPVSurface* ChessBakeFace(SGPVObject* face)
 	{
 		if (!face) return nullptr;
 		const ETRLEObject& e = face->SubregionProperties(0);
-		const INT32 w = e.usWidth, h = e.usHeight;
-
-		// unpack the 8bpp pixels
-		std::vector<UINT8> pixels(size_t(w) * h, 0);
-		const UINT8* in = face->PixData(e);
-		for (INT32 y = 0; y < h; ++y)
-		{
-			INT32 x = 0;
-			while (*in != 0)
-			{
-				const UINT8 code = *in++;
-				const UINT8 run  = code & 0x7F;
-				if (code & 0x80) x += run;
-				else for (UINT8 k = 0; k < run && x < w; ++k) pixels[size_t(y) * w + x++] = *in++;
-			}
-			++in;  // row terminator
-		}
-
-		const UINT16* pal = face->Palette16();
-		if (!pal) return nullptr;
-
-		const INT32 hw = w / 2, hh = h / 2;
-		SGPVSurface* surf = AddVideoSurface(UINT16(hw), UINT16(hh), PIXEL_DEPTH);
+		SGPVSurface* surf = AddVideoSurface(e.usWidth, e.usHeight, PIXEL_DEPTH);
 		surf->Fill(Get16BPPColor(CH_RGB_CHROME));
-		{
-			SGPVSurface::Lock lock(surf);
-			UINT16* out = lock.Buffer<UINT16>();
-			const UINT32 pitch = lock.Pitch() / 2;
-			for (INT32 y = 0; y < hh; ++y)
-			{
-				for (INT32 x = 0; x < hw; ++x)
-				{
-					const UINT8 p = pixels[size_t(y) * 2 * w + size_t(x) * 2];
-					if (p) out[y * pitch + x] = pal[p];
-				}
-			}
-		}
+		BltVideoObject(surf, face, 0, 0, 0);
 		return surf;
 	}
 
@@ -513,7 +477,7 @@ namespace
 			try
 			{
 				SGPVObject* face = Load33Portrait(GetProfile(CHESS_SEATS[gWatchSeat[i]].pid));
-				gWatchFaceHalf[i] = ChessBakeFaceHalf(face);
+				gWatchFaceHalf[i] = ChessBakeFace(face);
 				DeleteVideoObject(face);
 			}
 			catch (...)
@@ -1577,6 +1541,9 @@ namespace
 			BltVideoObject(FRAME_BUFFER, guiChessCoach, 0, CH_X(faceX), CH_Y(CH_COACH_Y));
 		}
 		PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, faceX + 34, CH_COACH_Y + 4, T(CHS_PLAY_OPP));
+		PrintAt(FONT10ARIAL, FONT_GRAY4,
+		        faceX + 40 + StringPixLength(T(CHS_PLAY_OPP), FONT10ARIALBOLD),
+		        CH_COACH_Y + 4, "(1850)");
 
 		const UINT8 colour = giPlaySaid == CHS_PLAY_WIN  ? FONT_MCOLOR_LTGREEN
 		                   : giPlaySaid == CHS_PLAY_LOSS ? FONT_MCOLOR_LTRED
@@ -1774,9 +1741,12 @@ namespace
 		}
 		// A hit counter nobody has ever believed. Derived from the campaign
 		// clock rather than stored, so it climbs without costing save bytes.
-		const int hits = 148299 + giChessViewDay * 17 + gChessDay.bestStreak * 3;
-		PrintCentred(FONT10ARIAL, FONT_GRAY7, CH_BOARD_X + CH_BOARD_SIZE / 2,
-		             CH_COUNTER_Y, ST::format("{} {}", T(CHS_VISITOR), hits));
+		if (giChessStub != 0 && giChessStub != 3)
+		{
+			const int hits = 148299 + giChessViewDay * 17 + gChessDay.bestStreak * 3;
+			PrintCentred(FONT10ARIAL, FONT_GRAY7, CH_BOARD_X + CH_BOARD_SIZE / 2,
+			             CH_COUNTER_Y, ST::format("{} {}", T(CHS_VISITOR), hits));
+		}
 	}
 
 	// Every other nav entry leads here, which is the honest state of them.
@@ -1803,31 +1773,45 @@ namespace
 
 	// One player row: half-size avatar, handle, rating - above or below the
 	// board, as the live site lays a match out.
-	void ChessRenderPlayerRow(SGPVSurface* face, const ST::string& name, INT32 y)
+	void ChessRenderPlayerRow(SGPVSurface* face, const ST::string& handle,
+	                          const ST::string& rating, INT32 y)
 	{
+		INT32 nameX = CH_BOARD_X;
 		if (face)
 		{
 			BltVideoSurface(FRAME_BUFFER, face, CH_X(CH_BOARD_X), CH_Y(y), NULL);
+			nameX += 37;
 		}
-		PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, CH_BOARD_X + 20, y + 4, name);
+		const INT32 textY = y + 11;
+		PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, nameX, textY, handle);
+		if (!rating.empty())
+		{
+			PrintAt(FONT10ARIAL, FONT_GRAY4,
+			        nameX + StringPixLength(handle, FONT10ARIALBOLD) + 6, textY, rating);
+		}
 	}
 
 	// The last stretch of a move list, numbered SAN pairs, newest at the foot.
 	void ChessRenderMoveList(const std::vector<ST::string>& san, INT32 y0, INT32 y1)
 	{
 		const int pairs = int(san.size() + 1) / 2;
-		const int fit   = (y1 - y0) / 12;
+		const int fit   = (y1 - y0) / 13;
 		const int first = pairs > fit ? pairs - fit : 0;
 		INT32 y = y0;
 		for (int pn = first; pn < pairs; ++pn)
 		{
+			// zebra rows: every second move-pair sits on a sunk band
+			if (pn % 2 == 0)
+			{
+				FillRect(CH_PANEL_X + 6, y - 2, CH_PANEL_W - 12, 13, CH_RGB_PANEL_SUNK);
+			}
 			PrintAt(FONT10ARIAL, FONT_GRAY7, CH_PANEL_X + 10, y, ST::format("{}.", pn + 1));
 			PrintAt(FONT10ARIAL, FONT_GRAY2, CH_PANEL_X + 32, y, san[pn * 2]);
 			if (pn * 2 + 1 < int(san.size()))
 			{
 				PrintAt(FONT10ARIAL, FONT_GRAY2, CH_PANEL_X + 86, y, san[pn * 2 + 1]);
 			}
-			y += 12;
+			y += 13;
 		}
 	}
 
@@ -1905,10 +1889,10 @@ namespace
 
 		const ChessSeat& white = CHESS_SEATS[gWatchSeat[0]];
 		const ChessSeat& black = CHESS_SEATS[gWatchSeat[1]];
-		ChessRenderPlayerRow(gWatchFaceHalf[1],
-		                     ST::format("{} ({})", black.handle, black.rating), CH_ROW_TOP_Y);
-		ChessRenderPlayerRow(gWatchFaceHalf[0],
-		                     ST::format("{} ({})", white.handle, white.rating), CH_ROW_BOT_Y);
+		ChessRenderPlayerRow(gWatchFaceHalf[1], black.handle,
+		                     ST::format("({})", black.rating), CH_ROW_TOP_Y);
+		ChessRenderPlayerRow(gWatchFaceHalf[0], white.handle,
+		                     ST::format("({})", white.rating), CH_ROW_BOT_Y);
 
 		// the LIVE chip rides the top row's right end
 		if (!giWatchResult)
@@ -2024,7 +2008,7 @@ void EnterChess()
 	catch (...)
 	{
 	}
-	guiChessCoachHalf = ChessBakeFaceHalf(guiChessCoach);
+	guiChessCoachHalf = ChessBakeFace(guiChessCoach);
 
 	// the account block shows your own I.M.P. character as the site avatar
 	if (LaptopSaveInfo.fIMPCompletedFlag)
@@ -2034,7 +2018,7 @@ void EnterChess()
 			MERCPROFILESTRUCT const& imp = GetProfile(
 				static_cast<ProfileID>(PLAYER_GENERATED_CHARACTER_ID + LaptopSaveInfo.iVoiceId));
 			guiChessSelf     = Load33Portrait(imp);
-			guiChessSelfHalf = ChessBakeFaceHalf(guiChessSelf);
+			guiChessSelfHalf = ChessBakeFace(guiChessSelf);
 			gChessSelfNick   = imp.zNickname;
 		}
 		catch (...)
@@ -2106,11 +2090,11 @@ void RenderChess()
 	else if (giChessStub == 0)
 	{
 		ChessRenderBoard();
-		ChessRenderPlayerRow(guiChessCoachHalf, T(CHS_PLAY_OPP), CH_ROW_TOP_Y);
+		ChessRenderPlayerRow(guiChessCoachHalf, T(CHS_PLAY_OPP), "(1850)", CH_ROW_TOP_Y);
 		ChessRenderPlayerRow(guiChessSelfHalf,
 		                     gChessSelfNick.empty() ? ST::string("@you")
 		                                            : ST::format("@{}", gChessSelfNick),
-		                     CH_ROW_BOT_Y);
+		                     ST::string(), CH_ROW_BOT_Y);
 		ChessRenderBanner();
 		ChessRenderPlayPanel();
 		ChessRenderFooter();
