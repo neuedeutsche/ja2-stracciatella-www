@@ -133,7 +133,7 @@
 #define CH_RGB_DOT_DARK    FROMRGB( 98, 127,  70)
 // Warm greys: the neutral values read green next to the board, so red leads
 // and blue trails in every one of these.
-#define CH_RGB_CHROME      FROMRGB( 46,  42,  38)
+#define CH_RGB_CHROME      FROMRGB( 58,  53,  47)
 #define CH_RGB_PANEL       FROMRGB( 36,  33,  30)
 #define CH_RGB_PANEL_UP    FROMRGB( 60,  55,  50)
 // Sections are separated by a shift in ground tone rather than by rules, and
@@ -251,6 +251,23 @@ namespace
 
 	// which campaign day is on screen; past days are archive, view only
 	int giChessViewDay = 1;
+
+	// One move animating at a time: the game state has already made the move,
+	// so the piece is suppressed on its destination square and drawn gliding
+	// between the two centres instead.
+	struct ChessAnim
+	{
+		bool             active = false;
+		const ChessGame* game   = nullptr;
+		UINT8            from   = ChessGame::NO_SQUARE;
+		UINT8            to     = ChessGame::NO_SQUARE;
+		UINT16           frame  = 0;
+		UINT32           start  = 0;
+		UINT32           dur    = 180;
+	};
+	ChessAnim gChessAnim;
+	// a drag lands where the pointer put it; sliding it afterwards reads wrong
+	bool gfChessDropMove = false;
 
 	MOUSE_REGION gChessSquare[64];
 	MOUSE_REGION gChessHintRegion;
@@ -772,6 +789,20 @@ namespace
 		fPausedReDrawScreenFlag = TRUE;
 	}
 
+	// Call just after MakeMove: the landed piece slides from its old square.
+	void ChessAnimateMove(const ChessGame& game, const ChessGame::Move& m, UINT32 dur)
+	{
+		if (gfChessDropMove) return;
+		gChessAnim.active = true;
+		gChessAnim.game   = &game;
+		gChessAnim.from   = m.from;
+		gChessAnim.to     = m.to;
+		gChessAnim.frame  = UINT16((game.PieceAt(m.to) - 1) +
+		                           (game.ColorAt(m.to) == ChessGame::Black ? 6 : 0));
+		gChessAnim.start  = ChessNow();
+		gChessAnim.dur    = dur;
+	}
+
 	// The card's regions sit above the board, so they are only live while it is
 	// up - otherwise they would swallow clicks on the squares underneath.
 	void ChessSetModal(bool up)
@@ -837,6 +868,7 @@ namespace
 			gubChessLastFrom = want.from;
 			gubChessLastTo   = want.to;
 			gChessGame.MakeMove(want);
+			ChessAnimateMove(gChessGame, want, 160);
 			ChessPlay(ChessMoveSound(want, gChessGame.IsInCheck(gChessGame.SideToMove()), true));
 			++guiChessPly;
 			gbChessSelected = -1;
@@ -905,6 +937,7 @@ namespace
 		gPlaySan.push_back(gPlayGame.San(m));
 		gubPlayFrom = m.from; gubPlayTo = m.to;
 		gPlayGame.MakeMove(m);
+		ChessAnimateMove(gPlayGame, m, 160);
 		ChessPlay(ChessMoveSound(m, gPlayGame.IsInCheck(gPlayGame.SideToMove()), true));
 		ChessPlayFinish();
 		if (giPlayState != 2)
@@ -1000,11 +1033,15 @@ namespace
 		}
 		else if (giChessStub == 0)
 		{
+			gfChessDropMove = true;
 			ChessPlayTryMove(from, to);
+			gfChessDropMove = false;
 		}
 		else
 		{
+			gfChessDropMove = true;
 			ChessTryMove(from, to);
+			gfChessDropMove = false;
 		}
 		ChessRedraw();
 	}
@@ -1385,6 +1422,21 @@ namespace
 		}
 	}
 
+	void ChessRenderAnimPiece(const ChessGame& game)
+	{
+		if (!gChessAnim.active || gChessAnim.game != &game || !guiChessPieces) return;
+		const UINT32 elapsed = ChessNow() - gChessAnim.start;
+		float t = gChessAnim.dur ? float(elapsed) / float(gChessAnim.dur) : 1.0f;
+		if (t > 1.0f) t = 1.0f;
+		t = 1.0f - (1.0f - t) * (1.0f - t);  // ease out
+		INT32 fx, fy, tx, ty;
+		SquareToScreen(gChessAnim.from, fx, fy);
+		SquareToScreen(gChessAnim.to, tx, ty);
+		BltVideoObject(FRAME_BUFFER, guiChessPieces,
+		               UINT16(gChessAnim.frame + (gfChessModal ? 12 : 0)),
+		               CH_X(fx + INT32((tx - fx) * t)), CH_Y(fy + INT32((ty - fy) * t)));
+	}
+
 	void ChessRenderBoardCoreLate(const ChessGame& game)
 	{
 		// Coordinates sit inside the corner squares, in the opposite colour.
@@ -1413,6 +1465,7 @@ namespace
 				const UINT8 sq = ScreenToSquare(col, row);
 				if (game.IsEmpty(sq)) continue;
 				if (&game == &ChessActiveGame() && gfChessDragging && sq == gubChessDragFrom) continue;
+				if (gChessAnim.active && gChessAnim.game == &game && sq == gChessAnim.to) continue;
 				const UINT8 type = game.PieceAt(sq);
 				const UINT16 frame = UINT16((type - 1) +
 					(game.ColorAt(sq) == ChessGame::Black ? 6 : 0) +
@@ -1468,6 +1521,7 @@ namespace
 		}
 
 		ChessRenderBoardCoreLate(game);
+		ChessRenderAnimPiece(game);
 
 		// the lifted piece, centred on the pointer. Mouse coords are already
 		// screen space, so these do not go through CH_X/CH_Y.
@@ -1773,8 +1827,19 @@ namespace
 
 	// One player row: half-size avatar, handle, rating - above or below the
 	// board, as the live site lays a match out.
+	// A tiny disc for the capture tallies - a plus-shape reads round at 4px.
+	void ChessDrawDot(INT32 x, INT32 y, UINT32 rgb)
+	{
+		FillRect(x + 1, y,     2, 4, rgb);
+		FillRect(x,     y + 1, 4, 2, rgb);
+	}
+
+	// One player row: avatar, handle with grey rating, the pieces they have
+	// taken as coloured discs beneath the name, and a clock on the right edge.
 	void ChessRenderPlayerRow(SGPVSurface* face, const ST::string& handle,
-	                          const ST::string& rating, INT32 y)
+	                          const ST::string& rating, INT32 y,
+	                          const ChessGame* game, ChessGame::Color side,
+	                          int plies, bool clockActive)
 	{
 		INT32 nameX = CH_BOARD_X;
 		if (face)
@@ -1782,12 +1847,52 @@ namespace
 			BltVideoSurface(FRAME_BUFFER, face, CH_X(CH_BOARD_X), CH_Y(y), NULL);
 			nameX += 37;
 		}
-		const INT32 textY = y + 11;
-		PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, nameX, textY, handle);
+		PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, nameX, y + 3, handle);
 		if (!rating.empty())
 		{
 			PrintAt(FONT10ARIAL, FONT_GRAY4,
-			        nameX + StringPixLength(handle, FONT10ARIALBOLD) + 6, textY, rating);
+			        nameX + StringPixLength(handle, FONT10ARIALBOLD) + 6, y + 3, rating);
+		}
+
+		if (game)
+		{
+			// what this side has captured: the opponent's starting material
+			// minus what is still on the board
+			const ChessGame::Color prey = ChessGame::Color(side ^ 1);
+			int onBoard[7] = {};
+			for (int sq = 0; sq < 128; ++sq)
+			{
+				if (sq & 0x88) continue;
+				if (game->IsEmpty(UINT8(sq))) continue;
+				if (game->ColorAt(UINT8(sq)) != prey) continue;
+				++onBoard[game->PieceAt(UINT8(sq))];
+			}
+			static const int START[7] = { 0, 8, 2, 2, 2, 1, 1 };
+			const UINT32 disc = prey == ChessGame::White ? FROMRGB(245, 245, 243)
+			                                             : FROMRGB(30, 28, 26);
+			INT32 dx = nameX;
+			for (int type = ChessGame::Pawn; type <= ChessGame::Queen; ++type)
+			{
+				for (int k = onBoard[type]; k < START[type]; ++k)
+				{
+					ChessDrawDot(dx, y + 18, disc);
+					dx += 6;
+				}
+			}
+
+			// the clock: ten minutes each, bleeding a few seconds per move -
+			// nobody has ever believed a hit counter either
+			const int mine = side == ChessGame::White ? (plies + 1) / 2 : plies / 2;
+			int secs = 600 - mine * 8;
+			if (secs < 4) secs = 4;
+			const ST::string time = ST::format("{}:{02d}", secs / 60, secs % 60);
+			const INT32 boxW = 40;
+			const INT32 boxX = CH_BOARD_X + CH_BOARD_SIZE - boxW;
+			FillRounded(boxX, y + 7, boxW, 18,
+			            clockActive ? CH_RGB_LIGHT : CH_RGB_PANEL_SUNK, 3, CH_RGB_CHROME);
+			PrintCentred(FONT10ARIAL,
+			             clockActive ? FONT_NEARBLACK : FONT_GRAY4,
+			             boxX + boxW / 2, y + 11, time);
 		}
 	}
 
@@ -1886,22 +1991,28 @@ namespace
 	{
 		ChessRenderBoardCore(gWatchGame, gubWatchFrom, gubWatchTo, -1);
 		ChessRenderBoardCoreLate(gWatchGame);
+		ChessRenderAnimPiece(gWatchGame);
 
 		const ChessSeat& white = CHESS_SEATS[gWatchSeat[0]];
 		const ChessSeat& black = CHESS_SEATS[gWatchSeat[1]];
+		const int wPlies = int(gWatchSan.size());
+		const bool wTurn = gWatchGame.SideToMove() == ChessGame::White && !giWatchResult;
+		const bool bTurn = gWatchGame.SideToMove() == ChessGame::Black && !giWatchResult;
 		ChessRenderPlayerRow(gWatchFaceHalf[1], black.handle,
-		                     ST::format("({})", black.rating), CH_ROW_TOP_Y);
+		                     ST::format("({})", black.rating), CH_ROW_TOP_Y,
+		                     &gWatchGame, ChessGame::Black, wPlies, bTurn);
 		ChessRenderPlayerRow(gWatchFaceHalf[0], white.handle,
-		                     ST::format("({})", white.rating), CH_ROW_BOT_Y);
+		                     ST::format("({})", white.rating), CH_ROW_BOT_Y,
+		                     &gWatchGame, ChessGame::White, wPlies, wTurn);
 
 		// the LIVE chip rides the top row's right end
 		if (!giWatchResult)
 		{
-			FillRounded(CH_BOARD_X + CH_BOARD_SIZE - 40, CH_ROW_TOP_Y + 4, 8, 8,
+			FillRounded(CH_BOARD_X + CH_BOARD_SIZE - 84, CH_ROW_TOP_Y + 11, 8, 8,
 			            FROMRGB(196, 36, 36), 2, CH_RGB_CHROME);
 		}
 		PrintAt(FONT10ARIAL, giWatchResult ? FONT_GRAY4 : FONT_MCOLOR_WHITE,
-		        CH_BOARD_X + CH_BOARD_SIZE - 28, CH_ROW_TOP_Y + 3,
+		        CH_BOARD_X + CH_BOARD_SIZE - 72, CH_ROW_TOP_Y + 10,
 		        giWatchResult ? "END" : "LIVE");
 	}
 
@@ -2090,11 +2201,14 @@ void RenderChess()
 	else if (giChessStub == 0)
 	{
 		ChessRenderBoard();
-		ChessRenderPlayerRow(guiChessCoachHalf, T(CHS_PLAY_OPP), "(1850)", CH_ROW_TOP_Y);
+		const int pPlies = int(gPlaySan.size());
+		ChessRenderPlayerRow(guiChessCoachHalf, T(CHS_PLAY_OPP), "(1850)", CH_ROW_TOP_Y,
+		                     &gPlayGame, ChessGame::Black, pPlies, giPlayState == 1);
 		ChessRenderPlayerRow(guiChessSelfHalf,
 		                     gChessSelfNick.empty() ? ST::string("@you")
 		                                            : ST::format("@{}", gChessSelfNick),
-		                     ST::string(), CH_ROW_BOT_Y);
+		                     ST::string(), CH_ROW_BOT_Y,
+		                     &gPlayGame, ChessGame::White, pPlies, giPlayState == 0);
 		ChessRenderBanner();
 		ChessRenderPlayPanel();
 		ChessRenderFooter();
@@ -2123,6 +2237,13 @@ void RenderChess()
 
 void HandleChess()
 {
+	// a piece in flight repaints every frame until it lands
+	if (gChessAnim.active)
+	{
+		if (ChessNow() - gChessAnim.start >= gChessAnim.dur) gChessAnim.active = false;
+		ChessRedraw();
+	}
+
 	// his move in the live game lands on his own clock
 	if (giChessStub == 0 && giPlayState == 1 && ChessNow() >= guiPlayDue)
 	{
@@ -2132,6 +2253,7 @@ void HandleChess()
 			gPlaySan.push_back(gPlayGame.San(m));
 			gubPlayFrom = m.from; gubPlayTo = m.to;
 			gPlayGame.MakeMove(m);
+			ChessAnimateMove(gPlayGame, m, 200);
 			ChessPlay(ChessMoveSound(m, gPlayGame.IsInCheck(gPlayGame.SideToMove()), false));
 		}
 		giPlayState = 0;
@@ -2156,8 +2278,10 @@ void HandleChess()
 				gWatchSan.push_back(gWatchGame.San(m));
 				gubWatchFrom = m.from; gubWatchTo = m.to;
 				gWatchGame.MakeMove(m);
-				ChessPlay(ChessMoveSound(m, gWatchGame.IsInCheck(gWatchGame.SideToMove()), false),
-				          LOWVOLUME);
+				ChessAnimateMove(gWatchGame, m, 220);
+				// the exhibition speaks at full board volume: move, capture,
+				// check - the same cues as your own games
+				ChessPlay(ChessMoveSound(m, gWatchGame.IsInCheck(gWatchGame.SideToMove()), false));
 			}
 			if (m.IsNull() || gWatchGame.GetResult() != ChessGame::Result::Ongoing)
 			{
@@ -2187,6 +2311,7 @@ void HandleChess()
 			gubChessLastFrom = reply.from;
 			gubChessLastTo   = reply.to;
 			gChessGame.MakeMove(reply);
+			ChessAnimateMove(gChessGame, reply, 200);
 			ChessPlay(ChessMoveSound(reply, gChessGame.IsInCheck(gChessGame.SideToMove()), false));
 			++guiChessPly;
 		}
