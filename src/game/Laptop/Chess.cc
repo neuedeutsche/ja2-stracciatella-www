@@ -285,6 +285,10 @@ namespace
 	int    giPlayMinutes = 10;  // the chosen control; 0 is daily chess
 	int    giPlayControl = 10;  // the control the running game was started at
 	UINT32 guiPlayDailyDay = 0; // campaign day of your last daily move
+	int    giPlayEndReason = 0;      // 0 on the board, 1 by resignation
+	bool   gfPlayModal = false;      // the finished-game card
+	UINT32 guiResignArmUntil = 0;    // the flag asks twice
+	int    giPlayRematchSeat = -1;   // a rematch keeps the chair
 	struct PlayControl { int mins; const char* name; const char* time; };
 	const PlayControl CH_PLAY_TIMES[4] =
 	{
@@ -391,6 +395,9 @@ namespace
 	MOUSE_REGION gChessWatchTabRegion[2];  // MOVES | CHAT
 	MOUSE_REGION gChessListWheelRegion;    // wheel scroll over the lists
 	MOUSE_REGION gChessTimeRegion[4];      // the lobby's time controls
+	MOUSE_REGION gChessResignRegion;       // the little flag by the controls
+	MOUSE_REGION gChessPostRegion[3];      // new / lobby / rematch, game over
+	MOUSE_REGION gChessPModalCloseRegion;  // its X
 	MOUSE_REGION gChessPrevDayRegion;
 	MOUSE_REGION gChessNextDayRegion;
 	MOUSE_REGION gChessModalCloseRegion;
@@ -1441,12 +1448,27 @@ namespace
 			default:                            giPlaySaid = CHS_PLAY_DRAW; break;
 		}
 		giPlayState = 2;
+		giPlayEndReason = 0;
 		if (giPlaySeat != -1)
 		{
 			ChessPlayChatSay(ST::string(), "GAME OVER");
 			ChessPlayChatSay(ChessOpponent().handle,
 			                 giPlaySaid == CHS_PLAY_LOSS ? "gg." : "gg. rematch?");
+			gfPlayModal = true;
 		}
+		ChessSyncPageRegions();
+	}
+
+	void ChessPlayResign()
+	{
+		if (giPlayState != 0 && giPlayState != 1 && giPlayState != 5) return;
+		giPlaySaid = CHS_PLAY_LOSS;
+		giPlayState = 2;
+		giPlayEndReason = 1;
+		ChessPlayChatSay(ST::string(), "GAME OVER - you resigned");
+		if (giPlaySeat != -1) ChessPlayChatSay(ChessOpponent().handle, "gg.");
+		gfPlayModal = true;
+		ChessPlay(CH_SND_CLICK2, LOWVOLUME);
 		ChessSyncPageRegions();
 	}
 
@@ -1496,6 +1518,8 @@ namespace
 
 	void ChessPlayReset()
 	{
+		gfPlayModal = false;
+		guiResignArmUntil = 0;
 		gPlayGame.SetStartPosition();
 		gPlaySan.clear();
 		gPlayChat.clear();
@@ -1770,6 +1794,58 @@ namespace
 		ChessMail(5, 0);
 	}
 
+	void ChessPlayResign();
+	void ChessPlayToLobby();
+	void ChessPlayNewGame();
+
+	void ChessResignCallback(MOUSE_REGION* region, UINT32 reason)
+	{
+		if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
+		if (giChessStub != 0) return;
+		if (giPlayState != 0 && giPlayState != 1 && giPlayState != 5) return;
+		if (ChessNow() < guiResignArmUntil)
+		{
+			guiResignArmUntil = 0;
+			ChessPlayResign();
+			ChessRedraw();
+			return;
+		}
+		// the flag asks twice: arm it, and it stays lit a moment
+		guiResignArmUntil = ChessNow() + 2500;
+		ChessPlay(CH_SND_CLICK2, LOWVOLUME);
+		ChessRedraw();
+	}
+
+	void ChessPostCallback(MOUSE_REGION* region, UINT32 reason)
+	{
+		if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
+		if (giChessStub != 0 || giPlayState != 2 || !gfPlayModal) return;
+		const int what = int(MSYS_GetRegionUserData(region, 0));
+		gfPlayModal = false;
+		if (what == 1)
+		{
+			ChessPlayToLobby();
+		}
+		else
+		{
+			if (what == 2 && giPlaySeat != -1) giPlayRematchSeat = giPlaySeat;
+			giPlayMinutes = giPlayControl;
+			ChessPlayNewGame();
+		}
+		ChessPlay(CH_SND_CLICK);
+		ChessRedraw();
+	}
+
+	void ChessPModalCloseCallback(MOUSE_REGION* region, UINT32 reason)
+	{
+		if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
+		if (!gfPlayModal) return;
+		gfPlayModal = false;
+		ChessSyncPageRegions();
+		ChessPlay(CH_SND_CLICK2, LOWVOLUME);
+		ChessRedraw();
+	}
+
 	void ChessTimeCallback(MOUSE_REGION* region, UINT32 reason)
 	{
 		if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
@@ -1920,6 +1996,11 @@ namespace
 		{
 			if (giChessStub == 0 && giPlayState == 4) r.Enable(); else r.Disable();
 		}
+		if (giChessStub == 0 && playOngoing) gChessResignRegion.Enable();
+		else gChessResignRegion.Disable();
+		const bool card = giChessStub == 0 && giPlayState == 2 && gfPlayModal;
+		for (MOUSE_REGION& r : gChessPostRegion) { if (card) r.Enable(); else r.Disable(); }
+		if (card) gChessPModalCloseRegion.Enable(); else gChessPModalCloseRegion.Disable();
 		// the same strip is either the controls or the button, never both
 		if (giChessStub == 0 && playOngoing) gChessHintRegion.Disable();
 		else gChessHintRegion.Enable();
@@ -2033,6 +2114,38 @@ namespace
 		                  MSYS_PRIORITY_HIGH, CURSOR_WWW, MSYS_NO_CALLBACK,
 		                  ChessGbPageCallback);
 		MSYS_SetRegionUserData(&gChessGbNextRegion, 0, 1);
+		// the resign flag, left of the scrubber in the footer band
+		MSYS_DefineRegion(&gChessResignRegion,
+		                  UINT16(CH_X(CH_PANEL_X + 8)), UINT16(CH_Y(CH_FOOT_Y + 9)),
+		                  UINT16(CH_X(CH_PANEL_X + 28)), UINT16(CH_Y(CH_FOOT_Y + 29)),
+		                  MSYS_PRIORITY_HIGH, CURSOR_WWW, MSYS_NO_CALLBACK,
+		                  ChessResignCallback);
+		// the finished-game card's three actions and its X
+		for (int i = 0; i < 3; ++i)
+		{
+			const INT32 mx2 = CH_MODAL_X, my2 = CH_BOARD_Y + (CH_BOARD_SIZE - 148) / 2;
+			UINT16 x0, y0, x1, y1;
+			if (i == 0) { x0 = UINT16(mx2 + 12); y0 = UINT16(my2 + 92); x1 = UINT16(mx2 + 192); y1 = UINT16(my2 + 114); }
+			else
+			{
+				x0 = UINT16(mx2 + 12 + (i - 1) * 94); y0 = UINT16(my2 + 120);
+				x1 = UINT16(x0 + 86); y1 = UINT16(my2 + 140);
+			}
+			MSYS_DefineRegion(&gChessPostRegion[i],
+			                  UINT16(CH_X(x0)), UINT16(CH_Y(y0)),
+			                  UINT16(CH_X(x1)), UINT16(CH_Y(y1)),
+			                  MSYS_PRIORITY_HIGHEST, CURSOR_WWW, MSYS_NO_CALLBACK,
+			                  ChessPostCallback);
+			MSYS_SetRegionUserData(&gChessPostRegion[i], 0, i);
+		}
+		{
+			const INT32 mx2 = CH_MODAL_X, my2 = CH_BOARD_Y + (CH_BOARD_SIZE - 148) / 2;
+			MSYS_DefineRegion(&gChessPModalCloseRegion,
+			                  UINT16(CH_X(mx2 + 182)), UINT16(CH_Y(my2 + 2)),
+			                  UINT16(CH_X(mx2 + 202)), UINT16(CH_Y(my2 + 22)),
+			                  MSYS_PRIORITY_HIGHEST, CURSOR_WWW, MSYS_NO_CALLBACK,
+			                  ChessPModalCloseCallback);
+		}
 		for (int i = 0; i < 4; ++i)
 		{
 			const INT32 bx2 = CH_PANEL_X + 8;
@@ -2061,7 +2174,7 @@ namespace
 		}
 		for (int i = 0; i < 4; ++i)
 		{
-			const INT32 hx = CH_PANEL_X + CH_PANEL_W / 2 - 53 + i * 28;
+			const INT32 hx = CH_PANEL_X + CH_PANEL_W / 2 - 41 + i * 28;
 			MSYS_DefineRegion(&gChessHistRegion[i],
 			                  UINT16(CH_X(hx)), UINT16(CH_Y(CH_FOOT_Y + 9)),
 			                  UINT16(CH_X(hx + 22)), UINT16(CH_Y(CH_FOOT_Y + 29)),
@@ -2113,6 +2226,9 @@ namespace
 		for (MOUSE_REGION& r : gChessWatchTabRegion) MSYS_RemoveRegion(&r);
 		MSYS_RemoveRegion(&gChessListWheelRegion);
 		for (MOUSE_REGION& r : gChessTimeRegion) MSYS_RemoveRegion(&r);
+		MSYS_RemoveRegion(&gChessResignRegion);
+		for (MOUSE_REGION& r : gChessPostRegion) MSYS_RemoveRegion(&r);
+		MSYS_RemoveRegion(&gChessPModalCloseRegion);
 		MSYS_RemoveRegion(&gChessSignRegion);
 		MSYS_RemoveRegion(&gChessPrevDayRegion);
 		MSYS_RemoveRegion(&gChessNextDayRegion);
@@ -2418,8 +2534,10 @@ namespace
 	void ChessDrawCTAButton(INT32 x, INT32 y, INT32 w, INT32 h, UINT32 bg);
 	INT32 ChessRenderSectionPanel(UINT16 icon, ChessStr title);
 	void ChessDrawPagerButton(INT32 x, INT32 y, INT32 s, bool lit);
+	void ChessDrawDot(INT32 x, INT32 y, UINT32 rgb);
 	void ChessRenderPanelTabs(int active);
-	void ChessRenderChatPanel(const std::vector<WatchChatLine>& log);
+	void ChessRenderChatPanel(const std::vector<WatchChatLine>& log,
+	                          INT32 inY = CH_FOOT_Y - 16);
 	INT32 ChessDrawTitleBadge(INT32 x, INT32 y, const char* title, UINT32 bg);
 	void ChessDrawGreyButton(INT32 x, INT32 y, INT32 w, INT32 h, UINT32 bg, bool live);
 
@@ -2435,7 +2553,7 @@ namespace
 		const int cur = (view < 0 || view > last) ? last : view;
 		for (int i = 0; i < 4; ++i)
 		{
-			const INT32 bx = cx - 53 + i * 28;
+			const INT32 bx = cx - 41 + i * 28;
 			const bool en = (i < 2) ? cur > 0 : cur < last;
 			ChessDrawGreyButton(bx, y - 1, 22, 20, CH_RGB_PANEL_SUNK, en);
 			const UINT32 col = en ? FROMRGB(190, 185, 178) : FROMRGB(96, 90, 83);
@@ -2516,7 +2634,23 @@ namespace
 		}
 		else if (giPlayState == 3)
 		{
-			PrintCentred(FONT10ARIAL, FONT_GRAY4, cx, 48, T(CHS_PLAY_SEEK));
+			// a ring of dots, one bright and running - the 1999 spinner
+			const INT32 scy = (CH_INSET + 24 + CH_FOOT_Y) / 2;  // centred in the panel body
+			static const INT32 ring[8][2] =
+			{
+				{ 0, -12 }, { 8, -8 }, { 12, 0 }, { 8, 8 },
+				{ 0, 12 }, { -8, 8 }, { -12, 0 }, { -8, -8 },
+			};
+			const int phase = int((ChessNow() / 120) % 8);
+			for (int i = 0; i < 8; ++i)
+			{
+				const int back = (phase - i + 8) % 8;
+				const UINT32 col = back == 0 ? FROMRGB(200, 195, 188)
+				                 : back == 1 ? FROMRGB(140, 134, 127)
+				                 : back == 2 ? FROMRGB(96, 90, 83)
+				                             : FROMRGB(58, 53, 47);
+				ChessDrawDot(cx + ring[i][0] - 3, scy + ring[i][1] - 3, col);
+			}
 		}
 		else
 		{
@@ -2538,6 +2672,22 @@ namespace
 		if (giPlayState == 0 || giPlayState == 1 || giPlayState == 5)
 		{
 			ChessRenderScrubber(gPlayHist, giPlayView);
+			// the little flag; armed, it turns red and asks you to mean it
+			const INT32 rx = CH_PANEL_X + 8, ry = CH_FOOT_Y + 9;
+			const bool armed = ChessNow() < guiResignArmUntil;
+			if (armed)
+			{
+				FillRounded(rx, ry, 20, 20, FROMRGB(167, 45, 45), 3, CH_RGB_PANEL_SUNK);
+				PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, rx + 10, ry + 5, "!");
+			}
+			else
+			{
+				ChessDrawGreyButton(rx, ry, 20, 20, CH_RGB_PANEL_SUNK, true);
+				const UINT32 fc = FROMRGB(190, 185, 178);
+				FillRect(rx + 6, ry + 4, 2, 12, fc);
+				FillRect(rx + 8, ry + 4, 7, 3, fc);
+				FillRect(rx + 8, ry + 7, 5, 2, fc);
+			}
 		}
 		else if (giPlayState == 3)
 		{
@@ -2554,6 +2704,61 @@ namespace
 			PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, cx,
 			             CH_HINT_Y + (CH_HINT_H - GetFontHeight(FONT10ARIALBOLD)) / 2,
 			             giPlayState == 4 ? ST::string("START GAME") : ST::string(T(CHS_PLAY_NEW)));
+		}
+	}
+
+	// The finished-game card: verdict, how, a word from the coach, and the
+	// three ways forward - the live site's own layout.
+	void ChessRenderPlayModal()
+	{
+		if (!gfPlayModal || giPlayState != 2) return;
+		FRAME_BUFFER->ShadowRect(CH_X(CH_BOARD_X), CH_Y(CH_BOARD_Y),
+		                         CH_X(CH_BOARD_X + CH_BOARD_SIZE) - 1,
+		                         CH_Y(CH_BOARD_Y + CH_BOARD_SIZE) - 1);
+		const INT32 mx = CH_MODAL_X;
+		const INT32 my = CH_BOARD_Y + (CH_BOARD_SIZE - 148) / 2;
+		const INT32 mw = CH_MODAL_W, mh = 148;
+		FillRoundedOnly(mx - 1, my - 1, mw + 2, mh + 2, CH_RGB_PANEL_UP, 6);
+		FillRoundedOnly(mx, my, mw, mh, CH_RGB_PANEL, 5);
+		PrintAt(FONT10ARIALBOLD, FONT_GRAY4, mx + mw - 16, my + 6, "X");
+
+		const bool won  = giPlaySaid == CHS_PLAY_WIN;
+		const bool draw = giPlaySaid == CHS_PLAY_DRAW;
+		PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, mx + mw / 2, my + 10,
+		             won ? "YOU WON!" : draw ? "A DRAW" : "YOU LOST");
+		PrintCentred(FONT10ARIAL, FONT_GRAY4, mx + mw / 2, my + 24,
+		             giPlayEndReason == 1 ? "by resignation"
+		                                  : draw ? "nobody is happy"
+		                                         : "by checkmate");
+
+		// the coach has a word either way
+		const char* line = won  ? "you beat one of ze regulars. zey will remember."
+		                 : draw ? "half a point. half a feeling."
+		                 : giPlayEndReason == 1 ? "a resigned game is still a lesson."
+		                                        : "zey are ruthless. i told you.";
+		INT32 faceW = 26;
+		if (guiChessCoach)
+		{
+			faceW = guiChessCoach->SubregionProperties(0).usWidth;
+			BltVideoObject(FRAME_BUFFER, guiChessCoach, 0, CH_X(mx + 10), CH_Y(my + 42));
+		}
+		const INT32 bx2 = mx + 10 + faceW + 4;
+		const INT32 bw2 = mx + mw - 10 - bx2;
+		FillRounded(bx2, my + 42, bw2, 40, CH_RGB_BUBBLE, 3, CH_RGB_PANEL);
+		DisplayWrappedString(UINT16(CH_X(bx2 + 5)), UINT16(CH_Y(my + 47)),
+		                     UINT16(bw2 - 10), 1, FONT10ARIAL, FONT_MCOLOR_BLACK,
+		                     line, FONT_MCOLOR_WHITE, LEFT_JUSTIFIED);
+
+		ChessDrawCTAButton(mx + 12, my + 92, mw - 24, 22, CH_RGB_PANEL);
+		PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, mx + mw / 2, my + 98,
+		             giPlayControl == 0 ? ST::string("NEW DAILY")
+		                                : ST::format("NEW {} MIN", giPlayControl));
+		for (int i = 0; i < 2; ++i)
+		{
+			const INT32 hx2 = mx + 12 + i * 94;
+			ChessDrawGreyButton(hx2, my + 120, 86, 20, CH_RGB_PANEL, true);
+			PrintCentred(FONT10ARIALBOLD, FONT_GRAY2, hx2 + 43, my + 125,
+			             i == 0 ? "LOBBY" : "REMATCH");
 		}
 	}
 
@@ -2735,7 +2940,7 @@ namespace
 		// card, one hairline border, each ad in its target site's colours.
 		// Pages without player rows give the banner the extra height.
 		const bool tall = giChessStub != 0 && giChessStub != 3;
-		const INT32 bh = tall ? 48 : 30;
+		const INT32 bh = tall ? 48 : 36;
 		const INT32 bx = CH_BOARD_X, bw = CH_BOARD_SIZE;
 		const INT32 by = CH_PAGE_H - CH_INSET - bh;
 		const INT32 cx = bx + bw / 2;
@@ -2743,8 +2948,8 @@ namespace
 		// once. A fresh creative on every page view, each in its owner's colours.
 		const int slot = ChessAdSlot();
 		FillRect(bx, by, bw, bh, FROMRGB(0, 0, 0));
-		const INT32 l1 = by + (tall ? 10 : 5);
-		const INT32 l2 = by + (tall ? 20 : 15);
+		const INT32 l1 = by + (tall ? 10 : 8);
+		const INT32 l2 = by + (tall ? 20 : 18);
 		const INT32 l3 = by + 30;
 		switch (slot)
 		{
@@ -2759,14 +2964,14 @@ namespace
 				}
 				FillRect(bx + 1, by + 1, bw - 2, bh - 2, FROMRGB(214, 213, 206));
 				FillRect(bx + 1, by + 1, 96, bh - 2, FROMRGB(178, 24, 24));
-				PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, bx + 49, by + (tall ? 12 : 5), "BOBBY");
-				PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, bx + 49, by + (tall ? 24 : 15), "RAY'S");
-				PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_BLACK, bx + 108, by + (tall ? 11 : 5), "GUNS AND MORE");
-				PrintAt(FONT10ARIAL, FONT_GRAY6, bx + 108, by + (tall ? 21 : 15), "always cheap. always stocked.");
+				PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, bx + 49, by + (tall ? 12 : 8), "BOBBY");
+				PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, bx + 49, by + (tall ? 24 : 18), "RAY'S");
+				PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_BLACK, bx + 108, by + (tall ? 11 : 8), "GUNS AND MORE");
+				PrintAt(FONT10ARIAL, FONT_GRAY6, bx + 108, by + (tall ? 21 : 18), "always cheap. always stocked.");
 				if (tall) PrintAt(FONT10ARIAL, FONT_GRAY6, bx + 108, by + 31, "always legal*   *mostly");
-				FillRounded(bx + bw - 44, by + (tall ? 14 : 4), 36, 18, FROMRGB(24, 24, 24), 3,
+				FillRounded(bx + bw - 44, by + (tall ? 14 : 7), 36, 18, FROMRGB(24, 24, 24), 3,
 				            FROMRGB(214, 213, 206));
-				PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, bx + bw - 26, by + (tall ? 19 : 9), "SALE");
+				PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, bx + bw - 26, by + (tall ? 19 : 12), "SALE");
 				break;
 			}
 			case 1:  // the house ad: gold hairlines, a little crown, dark velvet
@@ -2776,7 +2981,7 @@ namespace
 				FillRect(bx + 8, by + 3, bw - 16, 1, gold);
 				FillRect(bx + 8, by + bh - 4, bw - 16, 1, gold);
 				// two crowns flank the copy, each set close to its edge
-				const INT32 ky = by + (tall ? 15 : 8);
+				const INT32 ky = by + (tall ? 15 : 11);
 				for (const INT32 kx : { bx + 16, bx + bw - 36 })
 				{
 					for (int t = 0; t < 3; ++t)
@@ -2788,15 +2993,15 @@ namespace
 					}
 					FillRect(kx, ky + 8, 20, 3, gold);
 				}
-				PrintCentred(FONT10ARIALBOLD, FONT_YELLOW, cx, by + (tall ? 10 : 5), "CHACH.COM GOLD CROWN");
-				PrintCentred(FONT10ARIAL, FONT_MCOLOR_WHITE, cx, by + (tall ? 20 : 16),
+				PrintCentred(FONT10ARIALBOLD, FONT_YELLOW, cx, by + (tall ? 10 : 8), "CHACH.COM GOLD CROWN");
+				PrintCentred(FONT10ARIAL, FONT_MCOLOR_WHITE, cx, by + (tall ? 20 : 19),
 				             tall ? "MEMBERSHIP - COMING SOON" : "COMING SOON. do not ask.");
 				if (tall) PrintCentred(FONT10ARIAL, FONT_GRAY6, cx, by + 30, "do not ask ze proprietor");
 				break;
 			}
 			case 2:  // the Parlour, the reference creative
 				FillRect(bx + 1, by + 1, bw - 2, bh - 2, FROMRGB(94, 26, 26));
-				PrintCentred(FONT10ARIALBOLD, FONT_YELLOW, cx, by + (tall ? 6 : 4), "SAN MONA MAHJONG PARLOUR");
+				PrintCentred(FONT10ARIALBOLD, FONT_YELLOW, cx, by + (tall ? 6 : 7), "SAN MONA MAHJONG PARLOUR");
 				if (tall)
 				{
 					PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_LTRED, cx, by + 20, "GAMES ARE FAIR BECAUSE");
@@ -2809,7 +3014,7 @@ namespace
 				}
 				else
 				{
-					PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_LTRED, cx, by + 16,
+					PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_LTRED, cx, by + 19,
 					             "GAMES ARE FAIR BECAUSE MR. KLAUS SAYS SO");
 				}
 				break;
@@ -2836,15 +3041,15 @@ namespace
 			case 4:  // I.M.P.: navy, and the test sheet with its little ticks
 			{
 				FillRect(bx + 1, by + 1, bw - 2, bh - 2, FROMRGB(26, 34, 48));
-				PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, bx + 12, by + (tall ? 10 : 5), "I.M.P.");
-				PrintAt(FONT10ARIAL, FONT_GRAY2, bx + 12, by + (tall ? 20 : 15), "KNOW THYSELF");
+				PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, bx + 12, by + (tall ? 10 : 8), "I.M.P.");
+				PrintAt(FONT10ARIAL, FONT_GRAY2, bx + 12, by + (tall ? 20 : 18), "KNOW THYSELF");
 				if (tall) PrintAt(FONT10ARIAL, FONT_GRAY6, bx + 12, by + 30, "$3000. worth every session.");
 				// the profile sheet
 				const INT32 px = bx + bw - 92, pw = 82;
 				FillRect(px, by + 4, pw, bh - 8, FROMRGB(228, 226, 216));
-				for (int i = 0; i < (tall ? 3 : 2); ++i)
+				for (int i = 0; i < (tall ? 3 : 5); ++i)
 				{
-					const INT32 ly = by + 9 + i * (tall ? 11 : 7);
+					const INT32 ly = by + 9 + i * (tall ? 11 : 10);
 					if (i == 1)
 					{
 						// the ticked answer is a plain solid square
@@ -2862,12 +3067,12 @@ namespace
 			case 5:  // M.E.R.C.: a photocopied flyer, hand-underlined
 			{
 				FillRect(bx + 1, by + 1, bw - 2, bh - 2, FROMRGB(224, 224, 224));
-				PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_BLACK, bx + 12, by + (tall ? 9 : 4), "M.E.R.C.");
+				PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_BLACK, bx + 12, by + (tall ? 9 : 7), "M.E.R.C.");
 				// the underline misses, twice - it is that kind of operation
-				FillRect(bx + 12, by + (tall ? 19 : 15), 58, 2, FROMRGB(178, 24, 24));
-				FillRect(bx + 16, by + (tall ? 22 : 18), 58, 1, FROMRGB(178, 24, 24));
-				PrintAt(FONT10ARIAL, FONT_MCOLOR_BLACK, bx + 92, by + (tall ? 9 : 4), "affordable manpower.");
-				PrintAt(FONT10ARIAL, FONT_MCOLOR_BLACK, bx + 92, by + (tall ? 20 : 15), "flexible standards.");
+				FillRect(bx + 12, by + (tall ? 19 : 18), 58, 2, FROMRGB(178, 24, 24));
+				FillRect(bx + 16, by + (tall ? 22 : 21), 58, 1, FROMRGB(178, 24, 24));
+				PrintAt(FONT10ARIAL, FONT_MCOLOR_BLACK, bx + 92, by + (tall ? 9 : 7), "affordable manpower.");
+				PrintAt(FONT10ARIAL, FONT_MCOLOR_BLACK, bx + 92, by + (tall ? 20 : 18), "flexible standards.");
 				if (tall) PrintAt(FONT10ARIALBOLD, FONT_RED, bx + 92, by + 31, "NO REFUNDS. ask for Marty.");
 				break;
 			}
@@ -2891,12 +3096,12 @@ namespace
 					FillRect(fxp + 2, fy - 1, 4, 4, petal);
 					FillRect(fxp - 1, fy, 3, 3, FROMRGB(226, 186, 60));
 				}
-				PrintCentred(FONT10ARIALBOLD, FONT_DKGREEN, cx, by + (tall ? 8 : 4), "UNITED FLORAL SERVICE");
+				PrintCentred(FONT10ARIALBOLD, FONT_DKGREEN, cx, by + (tall ? 8 : 7), "UNITED FLORAL SERVICE");
 				for (INT32 dxp = cx - 66; dxp < cx + 66; dxp += 8)
 				{
-					FillRect(dxp, by + (tall ? 22 : 16), 4, 1, FROMRGB(96, 138, 82));
+					FillRect(dxp, by + (tall ? 22 : 19), 4, 1, FROMRGB(96, 138, 82));
 				}
-				PrintCentred(FONT10ARIAL, FONT_GRAY6, cx, by + (tall ? 27 : 19),
+				PrintCentred(FONT10ARIAL, FONT_GRAY6, cx, by + (tall ? 27 : 22),
 				             tall ? "flowers delivered anywhere on ze planet. yes, even there."
 				                  : "delivered anywhere. even there.");
 				break;
@@ -2921,8 +3126,8 @@ namespace
 					FillRect(tx2, iy + 3, 6, 1, FROMRGB(140, 140, 144));
 					FillRect(tx2, iy + ih - 4, 6, 1, FROMRGB(140, 140, 144));
 				}
-				PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, cx, by + (tall ? 9 : 5), "McGILLICUTTY'S MORTUARY");
-				PrintCentred(FONT10ARIAL, FONT_GRAY6, cx, by + (tall ? 21 : 16),
+				PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, cx, by + (tall ? 9 : 8), "McGILLICUTTY'S MORTUARY");
+				PrintCentred(FONT10ARIAL, FONT_GRAY6, cx, by + (tall ? 21 : 19),
 				             "for when ze flowers were not enough");
 				if (tall) PrintCentred(FONT10ARIAL, FONT_GRAY7, cx, by + 33, "discreet. experienced. open late.");
 				break;
@@ -2938,9 +3143,9 @@ namespace
 					break;
 				}
 				FillRect(bx + 1, by + 1, bw - 2, bh - 2, FROMRGB(30, 38, 34));
-				PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, cx, by + (tall ? 8 : 4),
+				PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, cx, by + (tall ? 8 : 7),
 				             "MALLEUS, INCUS & STAPES");
-				PrintCentred(FONT10ARIAL, FONT_GRAY2, cx, by + (tall ? 21 : 16),
+				PrintCentred(FONT10ARIAL, FONT_GRAY2, cx, by + (tall ? 21 : 19),
 				             "insurance for ze working merc");
 				if (tall) PrintCentred(FONT10ARIAL, FONT_GRAY6, cx, by + 33,
 				                       "premiums reflect ze profession");
@@ -3357,11 +3562,10 @@ namespace
 
 	// The chat surface both sidebars share: the log stacks up from the
 	// always-focused input line, newest at the bottom.
-	void ChessRenderChatPanel(const std::vector<WatchChatLine>& log)
+	void ChessRenderChatPanel(const std::vector<WatchChatLine>& log, INT32 inY)
 	{
 		const INT32 lx = CH_PANEL_X + 8;
 		const INT32 lw = CH_PANEL_W - 16;
-		const INT32 inY = CH_FOOT_Y - 16;
 		if (giChatScroll > int(log.size()) - 3)
 		{
 			giChatScroll = int(log.size()) - 3;
@@ -4008,7 +4212,7 @@ void RenderChess()
 	{
 		ChessRenderBoard();
 		const int pPlies = int(gPlaySan.size());
-		if (giPlayState == 3 || giPlayState == 4 || giPlaySeat < 0)
+		if (giPlayState == 3 || giPlayState == 4 || giPlaySeat == -1)
 		{
 			// no opponent yet: the reference's grey tile with a dark bust,
 			// labelled Opponent; the seek line takes over while one runs
@@ -4020,9 +4224,7 @@ void RenderChess()
 			FillRounded(CH_BOARD_X + 7, CH_ROW_TOP_Y + 18, 20, 14, bust, 6,
 			            FROMRGB(74, 69, 63));
 			PrintAt(FONT10ARIALBOLD, FONT_GRAY4, CH_BOARD_X + CH_SQ + 2,
-			        CH_ROW_TOP_Y + 3,
-			        giPlayState == 3 ? ST::string(T(CHS_PLAY_SEEK))
-			                         : ST::string("Opponent"));
+			        CH_ROW_TOP_Y + 3, "Opponent");
 			// the clock chip already shows the control you picked
 			const INT32 boxW = 40;
 			const INT32 boxX = CH_BOARD_X + CH_BOARD_SIZE - boxW;
@@ -4050,6 +4252,7 @@ void RenderChess()
 		                     giPlayControl >= 5 ? giPlayControl : 1);
 		ChessRenderBanner();
 		ChessRenderPlayPanel();
+		ChessRenderPlayModal();
 	}
 	else if (giChessStub >= 0)
 	{
@@ -4075,6 +4278,18 @@ void RenderChess()
 
 void HandleChess()
 {
+	// the seek spinner turns on its own clock
+	if (giChessStub == 0 && giPlayState == 3)
+	{
+		static int sSpinPhase = -1;
+		const int phase = int((ChessNow() / 120) % 8);
+		if (phase != sSpinPhase)
+		{
+			sSpinPhase = phase;
+			ChessRedraw();
+		}
+	}
+
 	// the coach is mid-sentence: repaint until the line is out
 	if (giChessStub < 0 && ChessCoachStillTyping())
 	{
@@ -4111,7 +4326,9 @@ void HandleChess()
 	// matchmaking: the seek resolves into a random regular
 	if (giChessStub == 0 && giPlayState == 3 && ChessNow() >= guiPlaySeekDue)
 	{
-		giPlaySeat = giPlayControl == 0 ? -2 : int(Random(6));
+		giPlaySeat = giPlayRematchSeat != -1 ? giPlayRematchSeat
+		           : giPlayControl == 0     ? -2 : int(Random(6));
+		giPlayRematchSeat = -1;
 		try
 		{
 			const ChessSeat& opp = ChessOpponent();
