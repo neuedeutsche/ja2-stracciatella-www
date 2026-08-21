@@ -451,15 +451,52 @@ namespace
 
 	UINT32 ChessNow() { return GetJA2Clock(); }
 
-	// Bake a face into a 16bpp surface so BltVideoSurfaceHalf can shrink it to
-	// row size - the mahjong chat's mini-avatar trick.
-	SGPVSurface* ChessBakeFace(SGPVObject* face)
+	// Bake a face at half size into a 16bpp surface, once, at load time. The
+	// engine's half blitter wants an 8bpp source, so this decodes the ETRLE
+	// data itself - the mahjong page does the same to read faces - takes every
+	// second pixel through the object's palette, and stores the result ready
+	// for a plain 1:1 blit each frame.
+	SGPVSurface* ChessBakeFaceHalf(SGPVObject* face)
 	{
 		if (!face) return nullptr;
 		const ETRLEObject& e = face->SubregionProperties(0);
-		SGPVSurface* surf = AddVideoSurface(e.usWidth, e.usHeight, PIXEL_DEPTH);
+		const INT32 w = e.usWidth, h = e.usHeight;
+
+		// unpack the 8bpp pixels
+		std::vector<UINT8> pixels(size_t(w) * h, 0);
+		const UINT8* in = face->PixData(e);
+		for (INT32 y = 0; y < h; ++y)
+		{
+			INT32 x = 0;
+			while (*in != 0)
+			{
+				const UINT8 code = *in++;
+				const UINT8 run  = code & 0x7F;
+				if (code & 0x80) x += run;
+				else for (UINT8 k = 0; k < run && x < w; ++k) pixels[size_t(y) * w + x++] = *in++;
+			}
+			++in;  // row terminator
+		}
+
+		const UINT16* pal = face->Palette16();
+		if (!pal) return nullptr;
+
+		const INT32 hw = w / 2, hh = h / 2;
+		SGPVSurface* surf = AddVideoSurface(UINT16(hw), UINT16(hh), PIXEL_DEPTH);
 		surf->Fill(Get16BPPColor(CH_RGB_CHROME));
-		BltVideoObject(surf, face, 0, 0, 0);
+		{
+			SGPVSurface::Lock lock(surf);
+			UINT16* out = lock.Buffer<UINT16>();
+			const UINT32 pitch = lock.Pitch() / 2;
+			for (INT32 y = 0; y < hh; ++y)
+			{
+				for (INT32 x = 0; x < hw; ++x)
+				{
+					const UINT8 p = pixels[size_t(y) * 2 * w + size_t(x) * 2];
+					if (p) out[y * pitch + x] = pal[p];
+				}
+			}
+		}
 		return surf;
 	}
 
@@ -476,7 +513,7 @@ namespace
 			try
 			{
 				SGPVObject* face = Load33Portrait(GetProfile(CHESS_SEATS[gWatchSeat[i]].pid));
-				gWatchFaceHalf[i] = ChessBakeFace(face);
+				gWatchFaceHalf[i] = ChessBakeFaceHalf(face);
 				DeleteVideoObject(face);
 			}
 			catch (...)
@@ -1770,7 +1807,7 @@ namespace
 	{
 		if (face)
 		{
-			BltVideoSurfaceHalf(FRAME_BUFFER, face, CH_X(CH_BOARD_X), CH_Y(y), NULL);
+			BltVideoSurface(FRAME_BUFFER, face, CH_X(CH_BOARD_X), CH_Y(y), NULL);
 		}
 		PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, CH_BOARD_X + 20, y + 4, name);
 	}
@@ -1987,7 +2024,7 @@ void EnterChess()
 	catch (...)
 	{
 	}
-	guiChessCoachHalf = ChessBakeFace(guiChessCoach);
+	guiChessCoachHalf = ChessBakeFaceHalf(guiChessCoach);
 
 	// the account block shows your own I.M.P. character as the site avatar
 	if (LaptopSaveInfo.fIMPCompletedFlag)
@@ -1997,7 +2034,7 @@ void EnterChess()
 			MERCPROFILESTRUCT const& imp = GetProfile(
 				static_cast<ProfileID>(PLAYER_GENERATED_CHARACTER_ID + LaptopSaveInfo.iVoiceId));
 			guiChessSelf     = Load33Portrait(imp);
-			guiChessSelfHalf = ChessBakeFace(guiChessSelf);
+			guiChessSelfHalf = ChessBakeFaceHalf(guiChessSelf);
 			gChessSelfNick   = imp.zNickname;
 		}
 		catch (...)
