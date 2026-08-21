@@ -11,6 +11,11 @@ who cannot spell the name he wanted and will not discuss it.
 
 > best viewed at 800x600 — solution tomorrow
 
+<p align="center">
+  <img src="../screenshots/chach.png" width="720"
+       alt="The Chach.com daily puzzle, open in the laptop browser">
+</p>
+
 ## Finding it
 
 You do nothing. On the fourth evening of the campaign Grunty mails you,

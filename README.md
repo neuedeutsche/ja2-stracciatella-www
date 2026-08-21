@@ -5,8 +5,10 @@
 Built on [JA2 Stracciatella](https://github.com/ja2-stracciatella/ja2-stracciatella).
 
 <p align="center">
-  <img src="docs/screenshots/lobby.png" width="720"
-       alt="A fan-made website running in Jagged Alliance 2's in-game laptop browser">
+  <img src="docs/screenshots/lobby.png" width="420"
+       alt="A gambling site running in Jagged Alliance 2's in-game laptop browser">
+  <img src="docs/screenshots/chach.png" width="420"
+       alt="A chess site running in Jagged Alliance 2's in-game laptop browser">
 </p>
 
 ## The angle

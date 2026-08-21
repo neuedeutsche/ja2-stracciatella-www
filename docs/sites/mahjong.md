@@ -10,6 +10,11 @@ campaign money.
 
 > est. 1999 — a Kingpin establishment. Games are fair because Mr. Klaus says so.
 
+<p align="center">
+  <img src="../screenshots/lobby.png" width="720"
+       alt="The San Mona Mahjong Parlour home page, open in the laptop browser">
+</p>
+
 ## Finding it
 
 The parlour is not in your bookmarks when the campaign starts. It advertises
