@@ -16,6 +16,9 @@ Run from anywhere:  python3 generate_chess_assets.py
 Add --preview to also drop a zoomed contact sheet in /tmp for eyeballing.
 """
 
+import os
+import re
+
 import struct
 import sys
 from pathlib import Path
@@ -126,10 +129,10 @@ PIECES = {
     # coverage rounds left and right edges differently and reads as a lopsided
     # piece. Sub-pixel corner radii dropped for the same reason.
     "rook": [
-        ("rect", 18.75, 12.5, 81.25, 31.25, 0),
+        ("rect", 18.75, 12.5, 81.25, 37.5, 0),
         ("rect", 25, 28.125, 75, 40.625, 0),
-        ("poly", [(28.125, 40.625), (71.875, 40.625), (75, 75), (25, 75)]),
-        ("rect", 15.625, 68.75, 84.375, 90.625, 0),
+        ("poly", [(28.125, 40.625), (71.875, 40.625), (75.5, 80), (24.5, 80)]),
+        ("rect", 15.625, 72, 84.375, 95, 8),
     ],
     # Constructed, not organic: the body is an elongated octagon - straight
     # segments only - with a ball on top and the slot cut into the upper
@@ -137,7 +140,7 @@ PIECES = {
     "bishop": [
         ("poly", [(38, 22), (62, 22), (75, 41), (75, 61), (62, 85),
                   (38, 85), (25, 61), (25, 41)]),
-        ("rect", 19, 78, 81, 94, 5),
+        ("rect", 19, 78, 81, 95, 8),
     ],
     "queen": [
         # the whole crown is squeezed 10% toward the centreline - a few
@@ -175,9 +178,10 @@ PIECES = {
         ("rect", 37.0375, 9.375, 62.9625, 18.75, 0),
         # widest through the lobes, tapering as it falls so it sits back from
         # the base instead of thickening into it
-        ("poly", [(46, 30), (38, 24), (28, 20), (17, 26), (10, 38), (11, 54),
-                  (18, 68), (30, 78), (70, 78), (82, 68), (89, 54), (90, 38),
-                  (83, 26), (72, 20), (62, 24), (54, 30)]),
+        ("poly", [(45.852, 30), (37.556, 24), (27.186, 20), (15.779, 26),
+                  (8.52, 38), (9.557, 54), (16.816, 68), (29.26, 78),
+                  (70.74, 78), (83.184, 68), (90.443, 54), (91.48, 38),
+                  (84.221, 26), (72.814, 20), (62.444, 24), (54.148, 30)]),
         ("rect", 18.89, 78, 81.11, 95, 8),
     ],
     # The knight is composed, not traced: a neck trapezoid, a head dome, a
@@ -189,7 +193,7 @@ PIECES = {
         # in, chest falling to the base. The composed variants kept falling
         # apart; this one holds.
         ("poly", [
-            (76, 88), (74, 48), (68, 22), (58, 6), (50, 16), (42, 12),
+            (76, 88), (74, 48), (68, 22), (58, 6), (50, 19), (42, 9),
             (24, 34), (10, 50), (14, 60), (32, 58), (38, 70), (36, 88),
         ]),
         # the belly: a semicircle low in front, bulging past the chest line.
@@ -216,10 +220,10 @@ CUTOUTS = {
         # inner edges dead vertical at x38/x62, circles exactly tangent to
         # them: the spine between the hollows stays parallel-sided instead of
         # flaring where the circles curve away
-        ("circle", 30.297, 44, 7),
-        ("poly", [(25.112, 43), (37.556, 46), (37.556, 66)]),
-        ("circle", 69.703, 44, 7),
-        ("poly", [(62.444, 46), (74.888, 43), (62.444, 66)]),
+        ("circle", 34.56, 47.6, 5.42),
+        ("poly", [(29.8, 49.9), (40, 46.5), (40, 63.45)]),
+        ("circle", 65.44, 47.6, 5.42),
+        ("poly", [(60, 46.5), (70.2, 49.9), (60, 63.45)]),
     ],
     "bishop": [
         # the slot: cut from above the egg straight down into it
@@ -237,7 +241,7 @@ CUTOUTS = {
 OVERLAYS = {
     "bishop": [("circle", 50, 16, 10)],
     # the same foot bar the queen stands on
-    "knight": [("rect", 12, 76, 88, 95, 8)],
+    "knight": [("rect", 18, 76, 82, 95, 8)],
 }
 
 # Bilaterally symmetric pieces are mirrored mechanically: the left half is
@@ -274,6 +278,100 @@ def _draw_primitives(d, prims, scale, offset, fill):
             raise ValueError(f"unknown primitive {kind!r}")
 
 
+# --- SVG overrides ---------------------------------------------------------
+# Drop an svg/<piece>.svg beside this script and it replaces that piece's
+# primitives entirely. Authoring contract (Figma "Plain SVG" export works):
+#   - any square canvas / viewBox; coordinates are normalised to the 100 box
+#   - filled shapes are the body; overlaps are fine, no union needed
+#   - shapes filled pure red (#FF0000) are cutouts, drawn over the body
+#   - strokes and transforms are NOT read: outline strokes and flatten first
+#   - path commands M L H V C Q Z (absolute or relative) are supported
+SVG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "svg")
+
+
+def _flatten_path(d_attr):
+    """One path's d attribute -> list of point-list subpaths."""
+    tok = re.findall(r"[A-Za-z]|-?\d*\.?\d+(?:[eE][-+]?\d+)?", d_attr)
+    i = 0
+    cur = (0.0, 0.0)
+    subs, pts, cmd = [], [], None
+
+    def num():
+        nonlocal i
+        v = float(tok[i]); i += 1
+        return v
+
+    def bez(p0, ctrl, steps):
+        out = []
+        n = len(ctrl)
+        for k in range(1, steps + 1):
+            t = k / steps
+            ps = [p0] + ctrl
+            while len(ps) > 1:
+                ps = [((1 - t) * a[0] + t * b[0], (1 - t) * a[1] + t * b[1])
+                      for a, b in zip(ps, ps[1:])]
+            out.append(ps[0])
+        return out
+
+    while i < len(tok):
+        if tok[i].isalpha():
+            cmd = tok[i]; i += 1
+            if cmd in "Zz":
+                if len(pts) > 2: subs.append(pts)
+                pts = []
+                continue
+        rel = cmd.islower()
+        c = cmd.upper()
+        ox, oy = cur if rel else (0.0, 0.0)
+        if c == "M":
+            cur = (num() + ox, num() + oy)
+            if len(pts) > 2: subs.append(pts)
+            pts = [cur]
+            cmd = "l" if rel else "L"  # implicit lineto after moveto
+        elif c == "L":
+            cur = (num() + ox, num() + oy); pts.append(cur)
+        elif c == "H":
+            cur = (num() + ox, cur[1]); pts.append(cur)
+        elif c == "V":
+            cur = (cur[0], num() + oy); pts.append(cur)
+        elif c == "C":
+            c1 = (num() + ox, num() + oy); c2 = (num() + ox, num() + oy)
+            end = (num() + ox, num() + oy)
+            pts.extend(bez(cur, [c1, c2, end], 16)); cur = end
+        elif c == "Q":
+            c1 = (num() + ox, num() + oy); end = (num() + ox, num() + oy)
+            pts.extend(bez(cur, [c1, end], 12)); cur = end
+        else:
+            raise ValueError(f"unsupported SVG path command {cmd!r} - "
+                             "outline strokes and flatten before exporting")
+    if len(pts) > 2: subs.append(pts)
+    return subs
+
+
+def _load_svg(path):
+    """-> (body_polys, cut_polys), each in the 0..100 box."""
+    text = open(path).read()
+    m = re.search(r'viewBox="([-\d.]+)[ ,]+([-\d.]+)[ ,]+([-\d.]+)[ ,]+([-\d.]+)"', text)
+    if m:
+        vx, vy, vw, vh = (float(g) for g in m.groups())
+    else:
+        vx = vy = 0.0
+        wm = re.search(r'width="([\d.]+)', text)
+        vw = vh = float(wm.group(1)) if wm else 100.0
+    bodies, cuts = [], []
+    for tag in re.findall(r"<path[^>]*>", text):
+        dm = re.search(r'\bd="([^"]+)"', tag)
+        if not dm: continue
+        fill = ""
+        fm = re.search(r'fill="([^"]+)"', tag) or re.search(r"fill:\s*([^;\"]+)", tag)
+        if fm: fill = fm.group(1).strip().lower()
+        is_cut = fill in ("#ff0000", "#f00", "red", "rgb(255,0,0)")
+        for sub in _flatten_path(dm.group(1)):
+            poly = [((x - vx) * 100.0 / vw, (y - vy) * 100.0 / vh) for x, y in sub]
+            (cuts if is_cut else bodies).append(poly)
+    return bodies, cuts
+
+
 def _silhouette(name, size, margin):
     """Render the piece mask at SUPERSAMPLE and threshold it back down."""
     big = size * SUPERSAMPLE
@@ -282,15 +380,24 @@ def _silhouette(name, size, margin):
 
     mask = Image.new("L", (big, big), 0)
     d = ImageDraw.Draw(mask)
-    _draw_primitives(d, PIECES[name], scale, offset, 255)
-    if name in CUTOUTS:
-        _draw_primitives(d, CUTOUTS[name], scale, offset, 0)
-    if name in OVERLAYS:
-        _draw_primitives(d, OVERLAYS[name], scale, offset, 255)
+    svg = os.path.join(SVG_DIR, name + ".svg")
+    from_svg = os.path.exists(svg)
+    if from_svg:
+        bodies, cuts = _load_svg(svg)
+        for poly in bodies:
+            d.polygon([(offset + x * scale, offset + y * scale) for x, y in poly], fill=255)
+        for poly in cuts:
+            d.polygon([(offset + x * scale, offset + y * scale) for x, y in poly], fill=0)
+    else:
+        _draw_primitives(d, PIECES[name], scale, offset, 255)
+        if name in CUTOUTS:
+            _draw_primitives(d, CUTOUTS[name], scale, offset, 0)
+        if name in OVERLAYS:
+            _draw_primitives(d, OVERLAYS[name], scale, offset, 255)
 
     small = mask.resize((size, size), Image.BOX)
     small = small.point(lambda v: 255 if v >= 128 else 0)
-    if name in MIRRORED:
+    if name in MIRRORED and not from_svg:
         from PIL import ImageOps
         half = small.crop((0, 0, size // 2, size))
         small.paste(ImageOps.mirror(half), (size - size // 2, 0))
