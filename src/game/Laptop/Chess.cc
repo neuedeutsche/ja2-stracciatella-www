@@ -195,15 +195,26 @@ namespace
 	UINT32 guiWatchSeed = 7;
 	int    giWatchResult = 0;   // 0 running, else display-result pause
 	// who is seated at the exhibition: two accounts from the site's regulars
-	struct ChessSeat { ProfileID pid; const char* handle; int rating; };
+	// Each regular plays at their own strength: search depth, blunder rate,
+	// and how often they grab a capture just because it is there. The ratings
+	// are invented, but they rank the same way the parameters do.
+	struct ChessSeat
+	{
+		ProfileID   pid;
+		const char* handle;
+		int         rating;
+		int         depth;
+		int         err;    // percent of moves played at random
+		int         greed;  // percent chance any available capture is taken
+	};
 	static const ChessSeat CHESS_SEATS[6] =
 	{
-		{ IVAN,   "@ivan_d",    2145 },
-		{ BUNS,   "@buns",      1994 },
-		{ SCOPE,  "@scope",     1873 },
-		{ FOX,    "@foxtrot",   1731 },
-		{ IGOR,   "@igor_k",    1677 },
-		{ SPIDER, "@spider",    1512 },
+		{ IVAN,   "@ivan_d",  2145, 3,  4, 25 },
+		{ BUNS,   "@buns",    1994, 3, 10, 40 },
+		{ SCOPE,  "@scope",   1873, 2,  8, 50 },
+		{ FOX,    "@foxtrot", 1731, 2, 16, 65 },
+		{ IGOR,   "@igor_k",  1677, 2, 24, 70 },
+		{ SPIDER, "@spider",  1512, 1, 30, 80 },
 	};
 	int gWatchSeat[2] = { 0, 1 };            // [0] plays White, [1] Black
 	SGPVSurface* gWatchFaceHalf[2] = { nullptr, nullptr };
@@ -481,6 +492,22 @@ namespace
 		return surf;
 	}
 
+	// How the regulars actually play: if something can be taken, it usually
+	// is, whether or not taking it is any good. Greed first, thought second.
+	ChessGame::Move ChessWatchPickMove()
+	{
+		const ChessSeat& seat = CHESS_SEATS[
+			gWatchSeat[gWatchGame.SideToMove() == ChessGame::White ? 0 : 1]];
+		guiWatchSeed = guiWatchSeed * 1103515245u + 12345u;
+		ChessGame::Move captures[ChessGame::MAX_MOVES];
+		const int nCaps = gWatchGame.GenerateLegalCaptures(captures);
+		if (nCaps > 0 && int((guiWatchSeed >> 16) % 100) < seat.greed)
+		{
+			return captures[(guiWatchSeed >> 8) % unsigned(nCaps)];
+		}
+		return gWatchGame.Search(seat.depth, seat.err, guiWatchSeed);
+	}
+
 	// A fresh exhibition: new seats, a clean move list, and the game already a
 	// few moves in the way a live table should be.
 	void ChessWatchNewGame()
@@ -509,7 +536,7 @@ namespace
 		giWatchResult = 0;
 		for (int i = 0; i < 6; ++i)
 		{
-			const ChessGame::Move m = gWatchGame.Search(2, 20, guiWatchSeed);
+			const ChessGame::Move m = ChessWatchPickMove();
 			if (m.IsNull()) break;
 			gWatchSan.push_back(gWatchGame.San(m));
 			gubWatchFrom = m.from; gubWatchTo = m.to;
@@ -868,7 +895,7 @@ namespace
 			gubChessLastFrom = want.from;
 			gubChessLastTo   = want.to;
 			gChessGame.MakeMove(want);
-			ChessAnimateMove(gChessGame, want, 160);
+			ChessAnimateMove(gChessGame, want, 110);
 			ChessPlay(ChessMoveSound(want, gChessGame.IsInCheck(gChessGame.SideToMove()), true));
 			++guiChessPly;
 			gbChessSelected = -1;
@@ -937,7 +964,7 @@ namespace
 		gPlaySan.push_back(gPlayGame.San(m));
 		gubPlayFrom = m.from; gubPlayTo = m.to;
 		gPlayGame.MakeMove(m);
-		ChessAnimateMove(gPlayGame, m, 160);
+		ChessAnimateMove(gPlayGame, m, 110);
 		ChessPlay(ChessMoveSound(m, gPlayGame.IsInCheck(gPlayGame.SideToMove()), true));
 		ChessPlayFinish();
 		if (giPlayState != 2)
@@ -2253,7 +2280,7 @@ void HandleChess()
 			gPlaySan.push_back(gPlayGame.San(m));
 			gubPlayFrom = m.from; gubPlayTo = m.to;
 			gPlayGame.MakeMove(m);
-			ChessAnimateMove(gPlayGame, m, 200);
+			ChessAnimateMove(gPlayGame, m, 140);
 			ChessPlay(ChessMoveSound(m, gPlayGame.IsInCheck(gPlayGame.SideToMove()), false));
 		}
 		giPlayState = 0;
@@ -2272,13 +2299,13 @@ void HandleChess()
 		}
 		else
 		{
-			const ChessGame::Move m = gWatchGame.Search(2, 15, guiWatchSeed);
+			const ChessGame::Move m = ChessWatchPickMove();
 			if (!m.IsNull())
 			{
 				gWatchSan.push_back(gWatchGame.San(m));
 				gubWatchFrom = m.from; gubWatchTo = m.to;
 				gWatchGame.MakeMove(m);
-				ChessAnimateMove(gWatchGame, m, 220);
+				ChessAnimateMove(gWatchGame, m, 150);
 				// the exhibition speaks at full board volume: move, capture,
 				// check - the same cues as your own games
 				ChessPlay(ChessMoveSound(m, gWatchGame.IsInCheck(gWatchGame.SideToMove()), false));
@@ -2311,7 +2338,7 @@ void HandleChess()
 			gubChessLastFrom = reply.from;
 			gubChessLastTo   = reply.to;
 			gChessGame.MakeMove(reply);
-			ChessAnimateMove(gChessGame, reply, 200);
+			ChessAnimateMove(gChessGame, reply, 140);
 			ChessPlay(ChessMoveSound(reply, gChessGame.IsInCheck(gChessGame.SideToMove()), false));
 			++guiChessPly;
 		}
