@@ -1,6 +1,6 @@
 #include "ChessLessons.h"
 
-const ChessLesson CHESS_LESSONS[3] =
+const ChessLesson CHESS_LESSONS[CHESS_LESSON_COUNT] =
 {
 	{ "ZE CENTRE", "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1",
 	  { "e4. ze oldest move und still ze best one.",
@@ -14,4 +14,24 @@ const ChessLesson CHESS_LESSONS[3] =
 	  { "ze king built a house. ze house is a coffin.",
 	    "Re8 is mate. ze pawns do not help - zey block.",
 	    "give your king air before zis happens to you." } },
+	{ "ZE PIN", "4k3/8/2n5/8/B7/8/8/4K3 w - - 0 1",
+	  { "ze knight cannot move. it only looks like a knight.",
+	    "pinned to ze king, a piece is paper.",
+	    "attack it again. it cannot run." } },
+	{ "ZE PASSED PAWN", "8/1p6/8/3P4/8/8/8/k1K5 w - - 0 1",
+	  { "no pawn can stop it. count ze files: none.",
+	    "a passed pawn is a promise. push it.",
+	    "ze rest of ze board is a distraction." } },
+	{ "ZE CASTLE", "rnbq1rk1/pppp1ppp/5n2/2b1p3/2B1P3/5N2/PPPP1PPP/RNBQ1RK1 w - - 6 5",
+	  { "two moves in one. ze only bargain in chess.",
+	    "king to safety, rook to work.",
+	    "do it early. regret is not a defence." } },
+	{ "ZE SKEWER", "8/8/8/4q3/8/4k3/8/4R2K b - - 0 1",
+	  { "like ze pin, but ze big one stands in front.",
+	    "ze king steps aside, politely. zen you take.",
+	    "royalty first: zat is ze skewer." } },
+	{ "ZE OPEN FILE", "5rk1/ppp2ppp/8/8/8/8/PPP2PPP/3R2K1 w - - 0 1",
+	  { "a file wiz no pawns is a road.",
+	    "ze rook is a highway animal. give it asphalt.",
+	    "first to ze open file collects ze seventh rank." } },
 };

@@ -11,6 +11,7 @@ struct ChessLesson
 	const char* lines[3];
 };
 
-extern const ChessLesson CHESS_LESSONS[3];
+constexpr int CHESS_LESSON_COUNT = 8;
+extern const ChessLesson CHESS_LESSONS[CHESS_LESSON_COUNT];
 
 #endif

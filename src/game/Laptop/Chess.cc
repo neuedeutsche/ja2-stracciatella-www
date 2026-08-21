@@ -25,6 +25,7 @@
 #include "History.h"
 #include "HImage.h"
 #include "IMP_Compile_Character.h"
+#include "GameRes.h"
 #include "Input.h"
 
 #include <SDL_keycode.h>
@@ -84,8 +85,8 @@
 #define CH_DATE_Y       28
 #define CH_COACH_Y      78
 #define CH_COACH_TILE   36
-#define CH_FOOT_Y       (CH_PAGE_H - CH_INSET - 34)
-#define CH_HINT_Y       (CH_FOOT_Y + 6)
+#define CH_FOOT_Y       (CH_PAGE_H - CH_INSET - 38)
+#define CH_HINT_Y       (CH_FOOT_Y + 8)
 #define CH_HINT_H       22
 
 // The day stepper's arrows sit at fixed points on the panel edges while the
@@ -167,6 +168,9 @@
 #define CH_RGB_NICK_DIM    FROMRGB( 92,  90,  87)
 // the coach speaks from a white bubble, as on the live site
 #define CH_RGB_BUBBLE      FROMRGB(255, 255, 255)
+// a king in check tints his square red, the analog of the move highlights
+#define CH_RGB_CHK_LIGHT   FROMRGB(235, 125, 106)
+#define CH_RGB_CHK_DARK    FROMRGB(199,  98,  78)
 
 namespace
 {
@@ -238,6 +242,11 @@ namespace
 		{ SPIDER, "@spider",  "",   1512, 1, 30, 80 },
 	};
 
+	// daily chess is played against one man, by letter, one move a day. He
+	// signs the guestbook the same way.
+	static const ChessSeat CHESS_SEAT_ENRICO =
+		{ ENRICO, "@a_free_arulco", "", 1899, 3, 6, 15 };
+
 	// the guestbook looks a signer's title up by their handle
 	const char* ChessTitleForHandle(const ST::string& handle)
 	{
@@ -248,14 +257,51 @@ namespace
 		return nullptr;
 	}
 	int gWatchSeat[2] = { 0, 1 };            // [0] plays White, [1] Black
+	// both live sidebars carry two tabs, like the reference: moves and chat.
+	// Watch is a public room; Play is just the two of you at the table.
+	int giWatchTab = 0;
+	int giPlayTab  = 0;
+	// scroll state, measured from the bottom: 0 follows the live end
+	int giMoveScroll = 0;
+	int giChatScroll = 0;
+	struct WatchChatLine { ST::string who; ST::string text; };
+	std::vector<WatchChatLine> gWatchChat;
+	std::vector<WatchChatLine> gPlayChat;
+	UINT32 guiPlayChatReplyDue = 0;
 	SGPVSurface* gWatchFaceHalf[2] = { nullptr, nullptr };
 	std::vector<ST::string> gWatchSan;       // the exhibition's move list, SAN
 	std::vector<ST::string> gPlaySan;        // yours
+	// the scrubber: every position of the running game, so played moves can
+	// be stepped through; [0] is the start, back() is live
+	std::vector<ChessGame> gWatchHist;
+	std::vector<ChessGame> gPlayHist;
+	int giWatchView = -1;   // -1 live, else an index into the history
+	int giPlayView  = -1;
 	// Play: a live game against the proprietor. You are White; he is not in a
 	// hurry.
 	ChessGame gPlayGame;
-	int    giPlayState   = 3;   // 0 your move, 1 thinking, 2 over, 3 seeking
+	int    giPlayState   = 4;   // 0 your move, 1 thinking, 2 over, 3 seeking,
+	                            // 4 the lobby: pick a time, press start
+	int    giPlayMinutes = 10;  // the chosen control; 0 is daily chess
+	int    giPlayControl = 10;  // the control the running game was started at
+	UINT32 guiPlayDailyDay = 0; // campaign day of your last daily move
+	struct PlayControl { int mins; const char* name; const char* time; };
+	const PlayControl CH_PLAY_TIMES[4] =
+	{
+		{ 1, "BULLET", "1 min" },
+		{ 3, "BLITZ",  "3 min" },
+		{ 10, "RAPID", "10 min" },
+		{ 0, "DAILY",  "1 day" },
+	};
 	int    giPlaySeat    = -1;  // index into CHESS_SEATS once paired
+
+	// -2 seats the letter-writer; -1 is nobody; 0.. indexes the regulars
+	const ChessSeat& ChessOpponent()
+	{
+		if (giPlaySeat == -2) return CHESS_SEAT_ENRICO;
+		return CHESS_SEATS[giPlaySeat < 0 ? 0 : giPlaySeat];
+	}
+
 	UINT32 guiPlaySeekDue = 0;
 	SGPVSurface* gPlayOppFace = nullptr;
 	UINT32 guiPlayDue    = 0;
@@ -290,6 +336,22 @@ namespace
 	SGPVObject* guiChessLogo   = nullptr;  // green pawn, 22 and 14
 	SGPVObject* guiChessAdDragon = nullptr; // the Parlour's medallion, borrowed for its ad
 	SGPVObject* guiChessAdTiles  = nullptr; // and two of its tiles: the ring and the bird
+	// ad impressions: every page load or page change serves the next creative
+	UINT32 guiChessAdImpression = 0;
+	// real art from the advertisers' own pages, baked to banner size
+	SGPVSurface* gAdArtAim     = nullptr;  // the A.I.M. medallion
+	SGPVSurface* gAdArtBobby   = nullptr;  // Bobby Ray's own banner creative
+	SGPVSurface* gAdArtFuneral = nullptr;  // McGillicutty's, likewise
+	SGPVSurface* gAdArtFlower  = nullptr;  // United Floral, likewise
+	SGPVSurface* gAdArtIns     = nullptr;  // Malleus, Incus & Stapes
+
+	// a stride-5 walk through the eight creatives: reads as random, never
+	// repeats back-to-back, and serves all eight before any comes again;
+	// each full cycle starts from a different point
+	int ChessAdSlot()
+	{
+		return int((guiChessAdImpression * 5 + guiChessAdImpression / 9) % 9);
+	}
 	SGPVObject* guiChessSelf   = nullptr;  // the player's I.M.P. portrait
 	SGPVSurface* guiChessSelfHalf  = nullptr;  // 16bpp bakes for half-size rows
 	SGPVSurface* guiChessCoachHalf = nullptr;
@@ -325,6 +387,10 @@ namespace
 	MOUSE_REGION gChessGbNextRegion;
 	MOUSE_REGION gChessGbPostRegion;
 	MOUSE_REGION gChessGbCloseRegion;
+	MOUSE_REGION gChessHistRegion[4];  // |< < > >| under the live move lists
+	MOUSE_REGION gChessWatchTabRegion[2];  // MOVES | CHAT
+	MOUSE_REGION gChessListWheelRegion;    // wheel scroll over the lists
+	MOUSE_REGION gChessTimeRegion[4];      // the lobby's time controls
 	MOUSE_REGION gChessPrevDayRegion;
 	MOUSE_REGION gChessNextDayRegion;
 	MOUSE_REGION gChessModalCloseRegion;
@@ -383,7 +449,7 @@ namespace
 			"GUESTBOOK", "sign it. everyone signs it.", "SIGN ZE BOOK",
 			"was here. solved some.", "write in ze book...",
 			"ze moderation reads everything.",
-			"LESSON {} OF 3", "LIVE - ze house plays itself",
+			"LESSON {} OF 8", "LIVE - ze house plays itself",
 			"game over. ze next one starts alone.",
 			"GRUNTY", "your move.", "he is thinking. he does zis.",
 			"you beat ze proprietor.", "ze proprietor wins. again.",
@@ -414,7 +480,7 @@ namespace
 			"GAESTEBUCH", "tragen Sie sich ein. jeder tut es.", "INS BUCH",
 			"war hier. hat einiges geloest.", "schreiben Sie in ze Buch...",
 			"ze Moderation liest alles.",
-			"LEKTION {} VON 3", "LIVE - das Haus spielt gegen sich",
+			"LEKTION {} VON 8", "LIVE - das Haus spielt gegen sich",
 			"Partie vorbei. die naechste beginnt allein.",
 			"GRUNTY", "Sie sind am Zug.", "er denkt. das macht er so.",
 			"Sie haben den Betreiber geschlagen.", "der Betreiber gewinnt. wieder.",
@@ -506,20 +572,31 @@ namespace
 
 	// The coach reacts to each move. He is a mercenary, not a chess teacher,
 	// so the encouragement is brisk and the corrections are worse.
-	constexpr int CH_COACH_LINES = 4;
+	constexpr int CH_COACH_LINES = 6;
 	const char* const CHESS_COACH_GOOD[2][CH_COACH_LINES] =
 	{
 		{ "Ja! That is it.", "Good. Keep going.", "Correct. Do not stop.",
-		  "Yes. You see it now." },
+		  "Yes. You see it now.", "So. Not hopeless after all.",
+		  "Ja. Ze book agrees with you." },
 		{ "Ja! Das ist es.", "Gut. Weiter so.", "Richtig. Nicht aufhoeren.",
-		  "Ja. Jetzt sehen Sie es." },
+		  "Ja. Jetzt sehen Sie es.", "So. Doch nicht hoffnungslos.",
+		  "Ja. Das Buch stimmt zu." },
 	};
 	const char* const CHESS_COACH_BAD[2][CH_COACH_LINES] =
 	{
 		{ "Nein. Look again.", "That one loses. Think.", "No. Not this piece.",
-		  "You are rushing. Stop." },
+		  "You are rushing. Stop.", "I saw it too. It is wrong.",
+		  "Ze board forgives. I remember." },
 		{ "Nein. Schauen Sie nochmal.", "Der verliert. Denken Sie.",
-		  "Nein. Nicht diese Figur.", "Sie hetzen. Aufhoeren." },
+		  "Nein. Nicht diese Figur.", "Sie hetzen. Aufhoeren.",
+		  "Ich sah es auch. Es ist falsch.",
+		  "Das Brett verzeiht. Ich merke es mir." },
+	};
+	// said once, when the last heart is all that is left
+	const char* const CHESS_COACH_LAST[2] =
+	{
+		"one heart. breathe. zen move.",
+		"ein Herz. atmen. dann ziehen.",
 	};
 
 	// -1 asks for an encouraging line, -2 a corrective one; anything else is a
@@ -531,13 +608,79 @@ namespace
 		giChessSaid = what;
 	}
 
+	UINT32 ChessNow();
+
+	// The bubble types itself: when the line changes, letters appear one by
+	// one on a 24ms clock. The full line is cached so a change restarts it.
+	ST::string gCoachTyping;
+	UINT32 guiCoachTypeStart = 0;
+
+	ST::string ChessCoachTypedLine(const char* full)
+	{
+		if (gCoachTyping != full)
+		{
+			gCoachTyping = full;
+			guiCoachTypeStart = ChessNow();
+		}
+		const size_t vis = size_t((ChessNow() - guiCoachTypeStart) / 24) + 1;
+		if (vis >= gCoachTyping.size()) return gCoachTyping;
+		return ST::string(gCoachTyping.c_str(), vis);
+	}
+
+	bool ChessCoachStillTyping()
+	{
+		return !gCoachTyping.empty() &&
+			ChessNow() - guiCoachTypeStart < UINT32(gCoachTyping.size()) * 24;
+	}
+
+	// Where he claims each puzzle came from. One line per day, deterministic,
+	// in his voice - the sourcing is the flavour, the war is the context.
+	const char* const CHESS_COACH_LORE[] =
+	{
+		"from a book of mates, Leipzig 1887. ze cover is gone.",
+		"Ivan showed me zis one. he calls it easy. he lies.",
+		"found in a Soviet army magazine, 1974. ze rest was propaganda.",
+		"from a newspaper zat no longer exists. like ze country.",
+		"scratched into a barracks table in '85. I kept ze table.",
+		"a monastery bulletin printed zis. ze monks were not messing around.",
+		"clipped from a Metavira paper. do not ask how I got it.",
+		"from Madame Layla's waiting room. best magazine in San Mona.",
+		"a correspondence game I lost in 1991. now it is your problem.",
+		"ze radio read zis position out loud once. I wrote fast.",
+		"traded a can of coffee for zis one. good trade.",
+		"from a Polish pamphlet Bobby sent. ze spelling was worse than mine.",
+		"zis was in my army notebook. ze notebook survived. ze army did not.",
+		"a tourist left ze book on ze bus to Chach. finders keepers.",
+		"printed on ze back of a ration coupon. hard times, good puzzles.",
+		"I do not remember where zis is from. it followed me home.",
+		"zis one had me thinking all night. ze night was long anyway.",
+		"after solving zis I could finally sleep.",
+		"I solved zis in a trench. you have a chair.",
+		"took me three coffees. I do not drink coffee.",
+		"I showed zis to Ivan. he went quiet. zat never happens.",
+		"ze first time I saw zis I resigned. do not resign.",
+		"solved it on ze bus to Chach. missed my stop.",
+		"I keep zis one for bad days.",
+		"I lost a bet on zis position. pay attention.",
+		"my notes say 'easy'. my notes were written by a younger man.",
+	};
+	constexpr int CH_COACH_LORE_COUNT =
+		int(sizeof(CHESS_COACH_LORE) / sizeof(CHESS_COACH_LORE[0]));
+
 	const char* ChessCoachLine()
 	{
 		const int lang = gfChessGerman ? 1 : 0;
-		// away on contract: the site still answers, he does not
-		if (gfChessOffline) return CHESS_TEXT[lang][CHS_DOWN_2];
 		if (giChessSaid == -1) return CHESS_COACH_GOOD[lang][giChessVariant];
 		if (giChessSaid == -2) return CHESS_COACH_BAD[lang][giChessVariant];
+		if (giChessSaid == -3) return CHESS_COACH_LAST[lang];
+		// every day opens on that puzzle's story - provenance or the night it
+		// cost him - fresh and archive alike. The notice bar already covers
+		// the contract, so the bubble stays his own words.
+		if (giChessSaid == CHS_ST_WHITE || giChessSaid == CHS_ST_BLACK ||
+		    giChessSaid == CHS_ST_ARCHIVE || giChessSaid == CHS_ST_ALREADY)
+		{
+			return CHESS_COACH_LORE[(giChessPuzzle * 7 + 3) % CH_COACH_LORE_COUNT];
+		}
 		return CHESS_TEXT[lang][giChessSaid];
 	}
 
@@ -613,6 +756,59 @@ namespace
 		catch (...) { return Load33Portrait(profile); }
 	}
 
+	// Any site's art, baked for a banner: one frame, scaled to a height,
+	// composited on the creative's own ground colour.
+	SGPVSurface* ChessBakeArtObj(SGPVObject* art, UINT16 frame, INT32 dh, INT32 maxW, UINT32 bg)
+	{
+		const ETRLEObject& e = art->SubregionProperties(frame);
+		const INT32 w = e.usWidth, h = e.usHeight;
+		if (w <= 0 || h <= 0) { DeleteVideoObject(art); return nullptr; }
+		std::vector<UINT8> pixels(size_t(w) * h, 0);
+		const UINT8* in = art->PixData(e);
+		for (INT32 y = 0; y < h; ++y)
+		{
+			INT32 x = 0;
+			while (*in != 0)
+			{
+				const UINT8 code = *in++;
+				const UINT8 run  = code & 0x7F;
+				if (code & 0x80) x += run;
+				else for (UINT8 k = 0; k < run && x < w; ++k) pixels[size_t(y) * w + x++] = *in++;
+			}
+			++in;
+		}
+		const UINT16* pal = art->Palette16();
+		if (!pal) { DeleteVideoObject(art); return nullptr; }
+		// scale to the requested height; anything wider than maxW is centre-
+		// cropped rather than shrunk, so every creative fills the same frame
+		const INT32 fullW = std::max<INT32>(1, w * dh / h);
+		const INT32 dw = (maxW > 0 && fullW > maxW) ? maxW : fullW;
+		const INT32 cropX = (fullW - dw) / 2;
+		SGPVSurface* surf = AddVideoSurface(UINT16(dw), UINT16(dh), PIXEL_DEPTH);
+		surf->Fill(Get16BPPColor(bg));
+		{
+			SGPVSurface::Lock lock(surf);
+			UINT16* out = lock.Buffer<UINT16>();
+			const UINT32 pitch = lock.Pitch() / 2;
+			for (INT32 y = 0; y < dh; ++y)
+			{
+				for (INT32 x = 0; x < dw; ++x)
+				{
+					const UINT8 v = pixels[size_t(y * h / dh) * w
+					                       + size_t((x + cropX) * w / fullW)];
+					if (v) out[y * pitch + x] = pal[v];
+				}
+			}
+		}
+		DeleteVideoObject(art);
+		return surf;
+	}
+
+	SGPVSurface* ChessBakeArt(const char* path, UINT16 frame, INT32 dh, INT32 maxW, UINT32 bg)
+	{
+		return ChessBakeArtObj(AddVideoObjectFromFile(path), frame, dh, maxW, bg);
+	}
+
 	SGPVSurface* ChessBakeFace(SGPVObject* face, INT32 size = CH_SQ)
 	{
 		if (!face) return nullptr;
@@ -678,11 +874,89 @@ namespace
 		return gWatchGame.Search(seat.depth, seat.err, guiWatchSeed);
 	}
 
+	// the peanut gallery: watchers pulled from the site's cast
+	const char* const CHESS_CHAT_WHO[] =
+	{
+		"@dorothy_1938", "@no_refunds", "@the_house", "@e11iot", "@biff_m",
+		"@prague_cc", "@chachtourism", "@flo_m", "@a_free_arulco",
+	};
+	const char* const CHESS_CHAT_IDLE[] =
+	{
+		"good game so far", "ze center is a mess", "i could beat both of them",
+		"slow down, i am taking notes", "zzz", "??", "!!",
+		"is this ze crochet stream", "we are STILL not affiliated with this",
+		"my money is on ze angry one", "quiet please. thinking along.",
+		"i am doing cardio while watching", "anyone else hear shelling",
+		"any 1200s here", "hi hi", "wsp", "hello from prague",
+		"does ze winner get paid? asking for me",
+		"left my laundry in san mona. long story",
+		"first time here. last time also.", "who is streaming zis",
+		"my rooster is watching too. he disapproves",
+		"gg already", "add me for unrated. or rated. anything",
+	};
+	const char* const CHESS_CHAT_REPLY[] =
+	{
+		"lol", "true", "agreed", "who asked", "shh. they are thinking.",
+		"finally somebody says it", "ok commander", "no",
+	};
+	const char* const CHESS_CHAT_CAPTURE[] =
+	{
+		"ouch.", "he will miss zat one", "free material??", "there it goes",
+		"house always collects", "i felt that from here",
+	};
+	const char* const CHESS_CHAT_CHECK[] =
+	{
+		"check!", "careful now", "run, king, run",
+	};
+	const char* const CHESS_CHAT_OVER[] =
+	{
+		"gg", "gg wp", "rematch!", "pay up.", "i called it. nobody heard me.",
+	};
+
+	UINT32 guiWatchChatDue  = 0;   // next ambient message
+	UINT32 guiWatchReplyDue = 0;   // a pending reply to something you said
+	std::string gWatchChatInput;
+	constexpr size_t CH_WCHAT_MAX = 60;
+
+	bool ChessWatchChatFocused()
+	{
+		return (giChessStub == 3 && giWatchTab == 1) ||
+		       (giChessStub == 0 && giPlayTab == 1);
+	}
+
+	void ChessWatchChatSay(const ST::string& who, const ST::string& text)
+	{
+		gWatchChat.push_back({ who, text });
+		while (gWatchChat.size() > 24) gWatchChat.erase(gWatchChat.begin());
+	}
+
+	// what a bot says at its own table: not much, and mostly about moving
+	const char* const CHESS_CHAT_OPP[] =
+	{
+		"hm.", "you talk. i play.", "less typing, more moving.",
+		"*nods*", "ze position speaks for itself.", "is zat a threat?",
+		"i am thinking. loudly.", "gg soon.",
+	};
+
+	void ChessPlayChatSay(const ST::string& who, const ST::string& text)
+	{
+		gPlayChat.push_back({ who, text });
+		while (gPlayChat.size() > 24) gPlayChat.erase(gPlayChat.begin());
+	}
+
+	template <size_t N>
+	void ChessWatchChatFrom(const char* const (&pool)[N])
+	{
+		ChessWatchChatSay(CHESS_CHAT_WHO[Random(lengthof(CHESS_CHAT_WHO))],
+		                  pool[Random(N)]);
+	}
+
 	// A fresh exhibition: new seats, a clean move list, and the game already a
 	// few moves in the way a live table should be.
 	void ChessWatchNewGame()
 	{
 		guiWatchSeed = guiWatchSeed * 1103515245u + 12345u;
+		guiWatchSeed ^= GetJA2Clock() ^ (Random(0xFFFF) << 12);
 		gWatchSeat[0] = int((guiWatchSeed >> 16) % 6);
 		gWatchSeat[1] = (gWatchSeat[0] + 1 + int((guiWatchSeed >> 8) % 5)) % 6;
 		for (int i = 0; i < 2; ++i)
@@ -702,8 +976,19 @@ namespace
 
 		gWatchGame.SetStartPosition();
 		gWatchSan.clear();
+		gWatchHist.clear();
+		gWatchHist.push_back(gWatchGame);
+		giWatchView = -1;
 		gubWatchFrom = gubWatchTo = ChessGame::NO_SQUARE;
 		giWatchResult = 0;
+		gWatchChat.clear();
+		ChessWatchChatSay(ST::string(),
+		                  ST::format("OBSERVING: {} ({}) vs {} ({}) - 10 min",
+		                             CHESS_SEATS[gWatchSeat[0]].handle, CHESS_SEATS[gWatchSeat[0]].rating,
+		                             CHESS_SEATS[gWatchSeat[1]].handle, CHESS_SEATS[gWatchSeat[1]].rating));
+		ChessWatchChatSay(CHESS_CHAT_WHO[Random(lengthof(CHESS_CHAT_WHO))], "new game!");
+		ChessWatchChatSay(CHESS_CHAT_WHO[Random(lengthof(CHESS_CHAT_WHO))],
+		                  ST::format("my money is on {}", CHESS_SEATS[gWatchSeat[Random(2)]].handle));
 		for (int i = 0; i < 6; ++i)
 		{
 			const ChessGame::Move m = ChessWatchPickMove();
@@ -711,13 +996,32 @@ namespace
 			gWatchSan.push_back(gWatchGame.San(m));
 			gubWatchFrom = m.from; gubWatchTo = m.to;
 			gWatchGame.MakeMove(m);
+			gWatchHist.push_back(gWatchGame);
 		}
 	}
 
-	ChessGame& ChessActiveGame()          { return giChessStub == 0 ? gPlayGame : gChessGame; }
+	bool ChessPlayReviewing()
+	{
+		return giChessStub == 0 && giPlayView >= 0
+			&& size_t(giPlayView) < gPlayHist.size();
+	}
+
+	ChessGame& ChessActiveGame()
+	{
+		if (ChessPlayReviewing()) return gPlayHist[size_t(giPlayView)];
+		return giChessStub == 0 ? gPlayGame : gChessGame;
+	}
 	ChessGame::Color ChessActiveSolver()  { return giChessStub == 0 ? ChessGame::White : gChessSolver; }
-	UINT8 ChessActiveFrom()               { return giChessStub == 0 ? gubPlayFrom : gubChessLastFrom; }
-	UINT8 ChessActiveTo()                 { return giChessStub == 0 ? gubPlayTo : gubChessLastTo; }
+	UINT8 ChessActiveFrom()
+	{
+		if (ChessPlayReviewing()) return ChessGame::NO_SQUARE;
+		return giChessStub == 0 ? gubPlayFrom : gubChessLastFrom;
+	}
+	UINT8 ChessActiveTo()
+	{
+		if (ChessPlayReviewing()) return ChessGame::NO_SQUARE;
+		return giChessStub == 0 ? gubPlayTo : gubChessLastTo;
+	}
 
 	UINT16 ChessToday() { return static_cast<UINT16>(GetWorldDay()); }
 
@@ -1115,12 +1419,17 @@ namespace
 		{
 			ChessPlay(CH_SND_WRONG);
 			ChessSpendHeart();
-			if (gChessState == CHUI_PUZZLE) ChessCoachSay(-2);
+			if (gChessState == CHUI_PUZZLE)
+			{
+				ChessCoachSay(gChessDay.hearts == 1 ? -3 : -2);
+			}
 		}
 		// an illegal drop is silent, as it is on the live site: the piece just
 		// goes back
 		gbChessSelected = -1;
 	}
+
+	void ChessSyncPageRegions();
 
 	void ChessPlayFinish()
 	{
@@ -1132,6 +1441,13 @@ namespace
 			default:                            giPlaySaid = CHS_PLAY_DRAW; break;
 		}
 		giPlayState = 2;
+		if (giPlaySeat != -1)
+		{
+			ChessPlayChatSay(ST::string(), "GAME OVER");
+			ChessPlayChatSay(ChessOpponent().handle,
+			                 giPlaySaid == CHS_PLAY_LOSS ? "gg." : "gg. rematch?");
+		}
+		ChessSyncPageRegions();
 	}
 
 	// Your move in the live game: any legal move goes, promotion takes the
@@ -1157,36 +1473,69 @@ namespace
 		gPlaySan.push_back(gPlayGame.San(m));
 		gubPlayFrom = m.from; gubPlayTo = m.to;
 		gPlayGame.MakeMove(m);
+		gPlayHist.push_back(gPlayGame);
 		ChessAnimateMove(gPlayGame, m, 110);
 		ChessPlay(ChessMoveSound(m, gPlayGame.IsInCheck(gPlayGame.SideToMove()), true));
 		ChessPlayFinish();
 		if (giPlayState != 2)
 		{
-			giPlayState = 1;
-			giPlaySaid  = CHS_PLAY_THINK;
-			guiPlayDue  = ChessNow() + 700 + Random(1400);
+			if (giPlayControl == 0)
+			{
+				giPlayState = 5;
+				guiPlayDailyDay = GetWorldDay();
+				ChessPlayChatSay(ST::string(), "your move is in. ze reply comes tomorrow.");
+			}
+			else
+			{
+				giPlayState = 1;
+				giPlaySaid  = CHS_PLAY_THINK;
+				guiPlayDue  = ChessNow() + 700 + Random(1400);
+			}
 		}
 	}
 
-	void ChessPlayNewGame()
+	void ChessPlayReset()
 	{
 		gPlayGame.SetStartPosition();
 		gPlaySan.clear();
-		giPlayState = 3;
+		gPlayChat.clear();
+		guiPlayChatReplyDue = 0;
+		gPlayHist.clear();
+		gPlayHist.push_back(gPlayGame);
+		giPlayView = -1;
 		giPlaySeat  = -1;
-		giPlaySaid  = CHS_PLAY_SEEK;
-		guiPlaySeekDue = ChessNow() + 1400 + Random(2000);
 		guiPlayDue  = 0;
 		gubPlayFrom = gubPlayTo = ChessGame::NO_SQUARE;
 		gbChessSelected = -1;
 		if (gPlayOppFace) { DeleteVideoSurface(gPlayOppFace); gPlayOppFace = nullptr; }
 	}
 
+	// back to the lobby: a clean table, a time to choose, a button to press
+	void ChessPlayToLobby()
+	{
+		ChessPlayReset();
+		giPlayState = 4;
+		guiPlaySeekDue = 0;
+		ChessSyncPageRegions();
+	}
+
+	void ChessPlayNewGame()
+	{
+		ChessPlayReset();
+		giPlayControl = giPlayMinutes;
+		giPlayState = 3;
+		giPlaySaid  = CHS_PLAY_SEEK;
+		// the letter is answered fast; the pools take a moment
+		guiPlaySeekDue = ChessNow() + (giPlayControl == 0 ? 600
+		                                                  : 1400 + Random(2000));
+		ChessSyncPageRegions();
+	}
+
 	// Your opponent plays like themselves: their depth, their blunders, their
 	// greed - the same triple the exhibition seats use.
 	ChessGame::Move ChessPlayPickMove()
 	{
-		const ChessSeat& seat = CHESS_SEATS[giPlaySeat < 0 ? 0 : giPlaySeat];
+		const ChessSeat& seat = ChessOpponent();
 		guiPlaySeed = guiPlaySeed * 1103515245u + 12345u;
 		ChessGame::Move captures[ChessGame::MAX_MOVES];
 		const int nCaps = gPlayGame.GenerateLegalCaptures(captures);
@@ -1199,6 +1548,12 @@ namespace
 
 	void ChessSquareCallback(MOUSE_REGION* region, UINT32 reason)
 	{
+		if (ChessPlayReviewing() && (reason & (MSYS_CALLBACK_REASON_POINTER_DWN | MSYS_CALLBACK_REASON_POINTER_UP)))
+		{
+			giPlayView = -1;
+			ChessRedraw();
+			return;
+		}
 		if (!(reason & MSYS_CALLBACK_REASON_POINTER_DWN)) return;
 		if (gfChessModal) return;
 		const bool playMode = giChessStub == 0;
@@ -1289,14 +1644,16 @@ namespace
 		if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
 		if (giChessStub == 0)
 		{
+			if (giPlayState == 4)      ChessPlayNewGame();   // START GAME
+			else if (giPlayState == 2) ChessPlayToLobby();   // NEW GAME
+			else return;                                     // seeking: wait
 			ChessPlay(CH_SND_CLICK);
-			ChessPlayNewGame();
 			ChessRedraw();
 			return;
 		}
 		if (giChessStub == 2)
 		{
-			giChessLesson = (giChessLesson + 1) % 3;
+			giChessLesson = (giChessLesson + 1) % CHESS_LESSON_COUNT;
 			gLearnGame.SetFen(CHESS_LESSONS[giChessLesson].fen);
 			ChessPlay(CH_SND_CLICK);
 			ChessRedraw();
@@ -1318,7 +1675,20 @@ namespace
 	void ChessDayCallback(MOUSE_REGION* region, UINT32 reason)
 	{
 		if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
+		++guiChessAdImpression;  // stepping either archive is a page load too
 		const int step = int(MSYS_GetRegionUserData(region, 0));
+		if (giChessStub == 2)
+		{
+			// same chevrons, different book: lesson to lesson
+			const int wantLesson = giChessLesson + step;
+			if (wantLesson < 0 || wantLesson >= CHESS_LESSON_COUNT) return;
+			giChessLesson = wantLesson;
+			gLearnGame.SetFen(CHESS_LESSONS[giChessLesson].fen);
+			ChessPlay(CH_SND_CLICK, LOWVOLUME);
+			ChessRedraw();
+			return;
+		}
+		if (giChessStub >= 0) return;
 		const int want = giChessViewDay + step;
 		if (want < 1 || want > int(ChessToday())) return;
 		ChessPlay(CH_SND_CLICK, LOWVOLUME);
@@ -1364,14 +1734,17 @@ namespace
 		const int item = int(MSYS_GetRegionUserData(region, 0));
 		// Puzzles is the site; everything else is a page he has not written
 		const int want = (item == 1) ? -1 : item;
-		if (want != giChessStub) ChessPlay(CH_SND_CLICK2, LOWVOLUME);
+		if (want != giChessStub)
+		{
+			ChessPlay(CH_SND_CLICK2, LOWVOLUME);
+			++guiChessAdImpression;
+		}
 		giChessStub = want;
 		gChessHintRegion.SetFastHelpText(want < 0 ? "Costs one attempt" : ST::string());
+		giMoveScroll = 0;
+		giChatScroll = 0;
 		ChessSyncPageRegions();
-		if (want == 0 && giPlaySeat < 0 && guiPlaySeekDue == 0)
-		{
-			ChessPlayNewGame();
-		}
+
 		if (want == 2)
 		{
 			gLearnGame.SetFen(CHESS_LESSONS[giChessLesson].fen);
@@ -1379,7 +1752,7 @@ namespace
 		if (want == 3 && guiWatchNextMove == 0)
 		{
 			ChessWatchNewGame();
-			guiWatchNextMove = ChessNow() + 900;
+			guiWatchNextMove = ChessNow() + 1600 + Random(1800);
 		}
 		ChessRedraw();
 	}
@@ -1390,11 +1763,68 @@ namespace
 		// the guestbook's sidebar ad answers too; the other pages' banner does not
 		if (gfChessModal || (giChessStub >= 0 && giChessStub != 4)) return;
 		// only the crown creative answers, and he answers exactly once
-		if (giChessViewDay % 3 != 1) return;
+		if (ChessAdSlot() != 1) return;
 		if (gChessDay.flags & ChessDaily::FLAG_CROWN_ASKED) return;
 		gChessDay.flags |= ChessDaily::FLAG_CROWN_ASKED;
 		ChessPlay(CH_SND_CLICK, LOWVOLUME);
 		ChessMail(5, 0);
+	}
+
+	void ChessTimeCallback(MOUSE_REGION* region, UINT32 reason)
+	{
+		if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
+		if (giChessStub != 0 || giPlayState != 4) return;
+		giPlayMinutes = CH_PLAY_TIMES[MSYS_GetRegionUserData(region, 0)].mins;
+		ChessPlay(CH_SND_CLICK2, LOWVOLUME);
+		ChessRedraw();
+	}
+
+	void ChessListWheelCallback(MOUSE_REGION* region, UINT32 reason)
+	{
+		if (!(reason & (MSYS_CALLBACK_REASON_WHEEL_UP | MSYS_CALLBACK_REASON_WHEEL_DOWN))) return;
+		const int dir = (reason & MSYS_CALLBACK_REASON_WHEEL_UP) ? 2 : -2;
+		int* scroll = ChessWatchChatFocused() ? &giChatScroll : &giMoveScroll;
+		*scroll += dir;
+		if (*scroll < 0) *scroll = 0;  // the render clamps the far end
+		ChessRedraw();
+	}
+
+	void ChessWatchTabCallback(MOUSE_REGION* region, UINT32 reason)
+	{
+		if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
+		int* tab;
+		if      (giChessStub == 3) tab = &giWatchTab;
+		else if (giChessStub == 0) tab = &giPlayTab;
+		else return;
+		const int want = int(MSYS_GetRegionUserData(region, 0));
+		if (want == *tab) return;
+		*tab = want;
+		ChessPlay(CH_SND_CLICK2, LOWVOLUME);
+		ChessRedraw();
+	}
+
+	void ChessHistCallback(MOUSE_REGION* region, UINT32 reason)
+	{
+		if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
+		int* view;
+		const std::vector<ChessGame>* hist;
+		if      (giChessStub == 0) { view = &giPlayView;  hist = &gPlayHist; }
+		else if (giChessStub == 3) { view = &giWatchView; hist = &gWatchHist; }
+		else return;
+		const int last = int(hist->size()) - 1;
+		if (last < 0) return;
+		int cur = (*view < 0 || *view > last) ? last : *view;
+		switch (int(MSYS_GetRegionUserData(region, 0)))
+		{
+			case 0: cur = 0; break;
+			case 1: if (cur > 0) --cur; break;
+			case 2: if (cur < last) ++cur; break;
+			default: cur = last; break;
+		}
+		*view = cur >= last ? -1 : cur;
+		gbChessSelected = -1;  // a piece in hand has no meaning in the past
+		ChessPlay(CH_SND_CLICK2, LOWVOLUME);
+		ChessRedraw();
 	}
 
 	void ChessGbPageCallback(MOUSE_REGION* region, UINT32 reason)
@@ -1476,6 +1906,23 @@ namespace
 		const bool compose = gb && gfChessGbCompose;
 		if (compose) { gChessGbPostRegion.Enable();  gChessGbCloseRegion.Enable(); }
 		else         { gChessGbPostRegion.Disable(); gChessGbCloseRegion.Disable(); }
+		const bool playOngoing = giPlayState == 0 || giPlayState == 1 ||
+		                         giPlayState == 5;
+		const bool scrub = (giChessStub == 0 && playOngoing) || giChessStub == 3;
+		for (MOUSE_REGION& r : gChessHistRegion) { if (scrub) r.Enable(); else r.Disable(); }
+		for (MOUSE_REGION& r : gChessWatchTabRegion)
+		{
+			if (giChessStub == 3 || giChessStub == 0) r.Enable(); else r.Disable();
+		}
+		if (giChessStub == 0 || giChessStub == 3) gChessListWheelRegion.Enable();
+		else gChessListWheelRegion.Disable();
+		for (MOUSE_REGION& r : gChessTimeRegion)
+		{
+			if (giChessStub == 0 && giPlayState == 4) r.Enable(); else r.Disable();
+		}
+		// the same strip is either the controls or the button, never both
+		if (giChessStub == 0 && playOngoing) gChessHintRegion.Disable();
+		else gChessHintRegion.Enable();
 	}
 
 	void ChessPlaceRegions()
@@ -1586,6 +2033,42 @@ namespace
 		                  MSYS_PRIORITY_HIGH, CURSOR_WWW, MSYS_NO_CALLBACK,
 		                  ChessGbPageCallback);
 		MSYS_SetRegionUserData(&gChessGbNextRegion, 0, 1);
+		for (int i = 0; i < 4; ++i)
+		{
+			const INT32 bx2 = CH_PANEL_X + 8;
+			const INT32 by2 = 60 + i * 30;
+			MSYS_DefineRegion(&gChessTimeRegion[i],
+			                  UINT16(CH_X(bx2)), UINT16(CH_Y(by2)),
+			                  UINT16(CH_X(bx2 + CH_PANEL_W - 16)), UINT16(CH_Y(by2 + 24)),
+			                  MSYS_PRIORITY_HIGH + 1, CURSOR_WWW, MSYS_NO_CALLBACK,
+			                  ChessTimeCallback);
+			MSYS_SetRegionUserData(&gChessTimeRegion[i], 0, i);
+		}
+		MSYS_DefineRegion(&gChessListWheelRegion,
+		                  UINT16(CH_X(CH_PANEL_X + 4)), UINT16(CH_Y(56)),
+		                  UINT16(CH_X(CH_PANEL_X + CH_PANEL_W - 4)), UINT16(CH_Y(CH_FOOT_Y - 2)),
+		                  MSYS_PRIORITY_HIGH, CURSOR_WWW, MSYS_NO_CALLBACK,
+		                  ChessListWheelCallback);
+		for (int i = 0; i < 2; ++i)
+		{
+			const INT32 tx = CH_PANEL_X + i * (CH_PANEL_W / 2);
+			MSYS_DefineRegion(&gChessWatchTabRegion[i],
+			                  UINT16(CH_X(tx)), UINT16(CH_Y(CH_INSET + 24)),
+			                  UINT16(CH_X(tx + CH_PANEL_W / 2)), UINT16(CH_Y(CH_INSET + 42)),
+			                  MSYS_PRIORITY_HIGH, CURSOR_WWW, MSYS_NO_CALLBACK,
+			                  ChessWatchTabCallback);
+			MSYS_SetRegionUserData(&gChessWatchTabRegion[i], 0, i);
+		}
+		for (int i = 0; i < 4; ++i)
+		{
+			const INT32 hx = CH_PANEL_X + CH_PANEL_W / 2 - 53 + i * 28;
+			MSYS_DefineRegion(&gChessHistRegion[i],
+			                  UINT16(CH_X(hx)), UINT16(CH_Y(CH_FOOT_Y + 9)),
+			                  UINT16(CH_X(hx + 22)), UINT16(CH_Y(CH_FOOT_Y + 29)),
+			                  MSYS_PRIORITY_HIGH, CURSOR_WWW, MSYS_NO_CALLBACK,
+			                  ChessHistCallback);
+			MSYS_SetRegionUserData(&gChessHistRegion[i], 0, i);
+		}
 		for (int i = 0; i < CH_GB_PAGES; ++i)
 		{
 			const INT32 nx = pgX0 + 22 + i * 22;
@@ -1626,6 +2109,10 @@ namespace
 		for (MOUSE_REGION& r : gChessGbNumRegion) MSYS_RemoveRegion(&r);
 		MSYS_RemoveRegion(&gChessGbPostRegion);
 		MSYS_RemoveRegion(&gChessGbCloseRegion);
+		for (MOUSE_REGION& r : gChessHistRegion) MSYS_RemoveRegion(&r);
+		for (MOUSE_REGION& r : gChessWatchTabRegion) MSYS_RemoveRegion(&r);
+		MSYS_RemoveRegion(&gChessListWheelRegion);
+		for (MOUSE_REGION& r : gChessTimeRegion) MSYS_RemoveRegion(&r);
 		MSYS_RemoveRegion(&gChessSignRegion);
 		MSYS_RemoveRegion(&gChessPrevDayRegion);
 		MSYS_RemoveRegion(&gChessNextDayRegion);
@@ -1749,6 +2236,12 @@ namespace
 	void ChessRenderBoardCore(const ChessGame& game, UINT8 lastFrom, UINT8 lastTo,
 	                          INT8 selected)
 	{
+		// a king standing in check gets his square tinted red
+		UINT8 checkSq = ChessGame::NO_SQUARE;
+		if (game.IsInCheck(game.SideToMove()))
+		{
+			checkSq = game.KingSquare(game.SideToMove());
+		}
 		for (int row = 0; row < 8; ++row)
 		{
 			for (int col = 0; col < 8; ++col)
@@ -1759,6 +2252,7 @@ namespace
 				                 (selected >= 0 && sq == UINT8(selected));
 				UINT32 rgb = lit ? (light ? CH_RGB_HL_LIGHT : CH_RGB_HL_DARK)
 				                 : (light ? CH_RGB_LIGHT : CH_RGB_DARK);
+				if (sq == checkSq) rgb = light ? CH_RGB_CHK_LIGHT : CH_RGB_CHK_DARK;
 				if (gfChessModal)
 				{
 					rgb = lit ? (light ? CH_RGB_HL_LIGHT_DIM : CH_RGB_HL_DARK_DIM)
@@ -1916,61 +2410,151 @@ namespace
 		                   : FONT_MCOLOR_BLACK;
 		DisplayWrappedString(UINT16(CH_X(bubbleX + 4)), UINT16(CH_Y(y + 5)),
 		                     UINT16(bubbleW - 8), 1, FONT10ARIAL, colour,
-		                     ChessCoachLine(), FONT_MCOLOR_WHITE, LEFT_JUSTIFIED);
+		                     ChessCoachTypedLine(ChessCoachLine()), FONT_MCOLOR_WHITE, LEFT_JUSTIFIED);
 	}
 
-	void ChessRenderMoveList(const std::vector<ST::string>& san, INT32 y0, INT32 y1);
+	void ChessRenderMoveList(const std::vector<ST::string>& san, INT32 y0, INT32 y1,
+	                         int* scroll);
 	void ChessDrawCTAButton(INT32 x, INT32 y, INT32 w, INT32 h, UINT32 bg);
 	INT32 ChessRenderSectionPanel(UINT16 icon, ChessStr title);
 	void ChessDrawPagerButton(INT32 x, INT32 y, INT32 s, bool lit);
+	void ChessRenderPanelTabs(int active);
+	void ChessRenderChatPanel(const std::vector<WatchChatLine>& log);
 	INT32 ChessDrawTitleBadge(INT32 x, INT32 y, const char* title, UINT32 bg);
+	void ChessDrawGreyButton(INT32 x, INT32 y, INT32 w, INT32 h, UINT32 bg, bool live);
 
 	// The right panel while a live game runs: the opponent, the state of
 	// play, and the one button.
+	// chess.com's board controls: |< < > >| in the pager buttons' dress.
+	// Arrows grey out at the live end and at the start of the game.
+	void ChessRenderScrubber(const std::vector<ChessGame>& hist, int view)
+	{
+		const INT32 cx = CH_PANEL_X + CH_PANEL_W / 2;
+		const INT32 y = CH_FOOT_Y + 10;
+		const int last = int(hist.size()) - 1;
+		const int cur = (view < 0 || view > last) ? last : view;
+		for (int i = 0; i < 4; ++i)
+		{
+			const INT32 bx = cx - 53 + i * 28;
+			const bool en = (i < 2) ? cur > 0 : cur < last;
+			ChessDrawGreyButton(bx, y - 1, 22, 20, CH_RGB_PANEL_SUNK, en);
+			const UINT32 col = en ? FROMRGB(190, 185, 178) : FROMRGB(96, 90, 83);
+			switch (i)
+			{
+				case 0:
+					FillRect(bx + 5, y + 4, 2, 9, col);
+					ChessDrawChevron(bx + 14, y + 8, true, col);
+					break;
+				case 1: ChessDrawChevron(bx + 11, y + 8, true, col); break;
+				case 2: ChessDrawChevron(bx + 11, y + 8, false, col); break;
+				default:
+					ChessDrawChevron(bx + 8, y + 8, false, col);
+					FillRect(bx + 15, y + 4, 2, 9, col);
+					break;
+			}
+		}
+	}
+
 	void ChessRenderPlayPanel()
 	{
 		const INT32 cx = ChessRenderSectionPanel(CH_ICON_PLAY, CHS_NAV_PLAY);
-		// the NEW GAME button gets the same sunk footer as the puzzle's hint
-		FillRect(CH_PANEL_X, CH_FOOT_Y, CH_PANEL_W, 34, CH_RGB_PANEL_SUNK);
+		FillRect(CH_PANEL_X, CH_FOOT_Y, CH_PANEL_W, 38, CH_RGB_PANEL_SUNK);
 		RoundCorners(CH_PANEL_X, CH_INSET, CH_PANEL_W, CH_PAGE_H - 2 * CH_INSET,
 		             CH_PANEL_RADIUS, CH_RGB_CHROME);
 
-		// the opponent card follows the pairing; a grey pawn holds the seat
-		const INT32 faceX = CH_PANEL_X + 8;
-		if (giPlaySeat >= 0 && gPlayOppFace)
+		if (giPlayState == 4)
 		{
-			BltVideoSurface(FRAME_BUFFER, gPlayOppFace, CH_X(faceX + 2), CH_Y(CH_COACH_Y + 2), NULL);
-			const ChessSeat& opp = CHESS_SEATS[giPlaySeat];
-			INT32 hx = faceX + CH_SQ + 6;
-			hx += ChessDrawTitleBadge(hx, CH_COACH_Y + 5, opp.title, CH_RGB_PANEL);
-			PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, hx, CH_COACH_Y + 6, opp.handle);
-			PrintAt(FONT10ARIAL, FONT_GRAY4,
-			        hx + 6 + StringPixLength(opp.handle, FONT10ARIALBOLD),
-			        CH_COACH_Y + 6, ST::format("({})", opp.rating));
+			// the lobby: the ladder stacked in rows, each with its badge
+			PrintCentred(FONT10ARIAL, FONT_GRAY4, cx, 46, "TIME CONTROL");
+			for (int i = 0; i < 4; ++i)
+			{
+				const PlayControl& pc = CH_PLAY_TIMES[i];
+				const INT32 bx2 = CH_PANEL_X + 8;
+				const INT32 by2 = 60 + i * 30;
+				const INT32 bw2 = CH_PANEL_W - 16;
+				const bool on = giPlayMinutes == pc.mins;
+				if (on) FillRounded(bx2 - 1, by2 - 1, bw2 + 2, 26, CH_RGB_CTA, 4,
+				                    CH_RGB_PANEL);
+				ChessDrawGreyButton(bx2, by2, bw2, 24, CH_RGB_PANEL, on);
+				// the badge: bullet streak, blitz bolt, rapid watch, daily sun
+				const INT32 ix = bx2 + 8, iy = by2 + 7;
+				switch (i)
+				{
+					case 0:
+						FillRect(ix + 5, iy, 4, 3, FROMRGB(214, 140, 60));
+						FillRect(ix + 2, iy + 3, 4, 3, FROMRGB(214, 140, 60));
+						FillRect(ix, iy + 6, 3, 3, FROMRGB(170, 108, 44));
+						break;
+					case 1:
+						// a proper bolt: head high right, wide jag, tail point
+						FillRect(ix + 5, iy - 1, 4, 3, FROMRGB(240, 210, 70));
+						FillRect(ix + 3, iy + 2, 4, 2, FROMRGB(240, 210, 70));
+						FillRect(ix, iy + 4, 7, 2, FROMRGB(240, 210, 70));
+						FillRect(ix + 2, iy + 6, 3, 2, FROMRGB(214, 180, 52));
+						FillRect(ix, iy + 8, 2, 2, FROMRGB(214, 180, 52));
+						break;
+					case 2:
+						FillRounded(ix, iy + 1, 9, 9, FROMRGB(129, 182, 76), 4,
+						            FROMRGB(66, 61, 56));
+						FillRect(ix + 3, iy - 1, 3, 2, FROMRGB(129, 182, 76));
+						FillRect(ix + 3, iy + 4, 3, 3, FROMRGB(36, 33, 30));
+						break;
+					default:
+						FillRect(ix + 2, iy + 2, 5, 5, FROMRGB(226, 186, 60));
+						FillRect(ix + 4, iy, 1, 2, FROMRGB(226, 186, 60));
+						FillRect(ix + 4, iy + 7, 1, 2, FROMRGB(226, 186, 60));
+						FillRect(ix, iy + 4, 2, 1, FROMRGB(226, 186, 60));
+						FillRect(ix + 7, iy + 4, 2, 1, FROMRGB(226, 186, 60));
+						break;
+				}
+				PrintAt(FONT10ARIALBOLD, on ? FONT_MCOLOR_WHITE : FONT_GRAY4,
+				        bx2 + 24, by2 + 7, pc.name);
+				const ST::string t = pc.time;
+				PrintAt(FONT10ARIAL, on ? FONT_MCOLOR_WHITE : FONT_GRAY6,
+				        bx2 + bw2 - 8 - StringPixLength(t, FONT10ARIAL), by2 + 7, t);
+			}
+		}
+		else if (giPlayState == 3)
+		{
+			PrintCentred(FONT10ARIAL, FONT_GRAY4, cx, 48, T(CHS_PLAY_SEEK));
 		}
 		else
 		{
-			FillRounded(faceX, CH_COACH_Y, CH_SQ, CH_SQ, CH_RGB_PANEL_SUNK, 3, CH_RGB_PANEL);
-			if (guiChessPieces)
+			// a game on the table: the same tab pair as Watch; the chat is
+			// just the two of you
+			ChessRenderPanelTabs(giPlayTab);
+			if (giPlayTab == 0)
 			{
-				BltVideoObject(FRAME_BUFFER, guiChessPieces, 12, CH_X(faceX), CH_Y(CH_COACH_Y));
+				ChessRenderMoveList(gPlaySan, 58, CH_FOOT_Y - 4, &giMoveScroll);
 			}
-			PrintAt(FONT10ARIALBOLD, FONT_GRAY4, faceX + CH_SQ + 6, CH_COACH_Y + 6, T(CHS_PLAY_SEEK));
+			else
+			{
+				ChessRenderChatPanel(gPlayChat);
+			}
 		}
 
-		const UINT8 colour = giPlaySaid == CHS_PLAY_WIN  ? FONT_MCOLOR_LTGREEN
-		                   : giPlaySaid == CHS_PLAY_LOSS ? FONT_MCOLOR_LTRED
-		                                                 : FONT_GRAY2;
-		PrintAt(FONT10ARIAL, colour, CH_PANEL_X + 10, CH_COACH_Y + 44, T(ChessStr(giPlaySaid)));
-
-		ChessRenderMoveList(gPlaySan, CH_COACH_Y + 62, CH_FOOT_Y - 4);
-
-		// the hint button doubles as NEW GAME here; same box, same region
-		ChessDrawCTAButton(CH_PANEL_X + 10, CH_HINT_Y, CH_PANEL_W - 20, CH_HINT_H,
-		                   CH_RGB_PANEL);
-		PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, cx,
-		             CH_HINT_Y + (CH_HINT_H - GetFontHeight(FONT10ARIALBOLD)) / 2,
-		             T(CHS_PLAY_NEW));
+		// the footer is contextual: controls during the game, START GAME in
+		// the lobby, NEW GAME over a finished board, patience while seeking
+		if (giPlayState == 0 || giPlayState == 1 || giPlayState == 5)
+		{
+			ChessRenderScrubber(gPlayHist, giPlayView);
+		}
+		else if (giPlayState == 3)
+		{
+			ChessDrawGreyButton(CH_PANEL_X + 10, CH_HINT_Y, CH_PANEL_W - 20,
+			                    CH_HINT_H, CH_RGB_PANEL_SUNK, false);
+			PrintCentred(FONT10ARIALBOLD, FONT_GRAY6, cx,
+			             CH_HINT_Y + (CH_HINT_H - GetFontHeight(FONT10ARIALBOLD)) / 2,
+			             "SEEKING...");
+		}
+		else
+		{
+			ChessDrawCTAButton(CH_PANEL_X + 10, CH_HINT_Y, CH_PANEL_W - 20, CH_HINT_H,
+			                   CH_RGB_PANEL_SUNK);
+			PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, cx,
+			             CH_HINT_Y + (CH_HINT_H - GetFontHeight(FONT10ARIALBOLD)) / 2,
+			             giPlayState == 4 ? ST::string("START GAME") : ST::string(T(CHS_PLAY_NEW)));
+		}
 	}
 
 	void ChessRenderPanel()
@@ -1983,7 +2567,7 @@ namespace
 		// header band: snug around the title, the stepper and the day's name
 		FillRect(CH_PANEL_X, CH_INSET, CH_PANEL_W, 66, CH_RGB_PANEL_SUNK);
 		// and its mirror at the foot: the hint button sits padded inside
-		FillRect(CH_PANEL_X, CH_FOOT_Y, CH_PANEL_W, 34, CH_RGB_PANEL_SUNK);
+		FillRect(CH_PANEL_X, CH_FOOT_Y, CH_PANEL_W, 38, CH_RGB_PANEL_SUNK);
 		RoundCorners(CH_PANEL_X, CH_INSET, CH_PANEL_W, CH_PAGE_H - 2 * CH_INSET,
 		             CH_PANEL_RADIUS, CH_RGB_CHROME);
 
@@ -1999,8 +2583,8 @@ namespace
 		FillRounded(CH_CHIP_X, CH_DATE_Y, CH_CHIP_W, CH_ARROW_H,
 		            CH_RGB_PANEL_UP, 3, CH_RGB_PANEL_SUNK);
 		// icon and label centred in the chip as one group
-		const INT32 groupW = ChessIconLabelWidth(FONT10ARIAL, day);
-		ChessIconLabel(CH_ICON_CALENDAR, CH_CHIP_X + (CH_CHIP_W - groupW) / 2,
+		// left-anchored: the word DAY holds still while the number grows
+		ChessIconLabel(CH_ICON_CALENDAR, CH_CHIP_X + 8,
 		               CH_DATE_Y + CH_ARROW_H / 2, FONT10ARIAL, FONT_MCOLOR_WHITE, day);
 		// arrows grey out at the ends of the run; centred in their own hit
 		// regions rather than hung off the chip, which changes width
@@ -2048,10 +2632,10 @@ namespace
 
 		// the hint button greys out once it has been spent
 		const bool hintLive = gChessState == CHUI_PUZZLE && !(gChessDay.flags & ChessDaily::FLAG_HINT_USED);
-		FillRounded(CH_PANEL_X + 10, CH_HINT_Y, CH_PANEL_W - 20, CH_HINT_H,
-		            hintLive ? CH_RGB_PANEL_UP : CH_RGB_PANEL_SUNK, 3, CH_RGB_PANEL);
-		PrintCentred(FONT10ARIAL, hintLive ? FONT_MCOLOR_WHITE : FONT_GRAY7,
-		             cx, CH_HINT_Y + (CH_HINT_H - GetFontHeight(FONT10ARIAL)) / 2, T(CHS_HINT));
+		ChessDrawGreyButton(CH_PANEL_X + 10, CH_HINT_Y, CH_PANEL_W - 20, CH_HINT_H,
+		                    CH_RGB_PANEL_SUNK, hintLive);
+		PrintCentred(FONT10ARIALBOLD, hintLive ? FONT_MCOLOR_WHITE : FONT_GRAY7,
+		             cx, CH_HINT_Y + (CH_HINT_H - GetFontHeight(FONT10ARIALBOLD)) / 2, T(CHS_HINT));
 	}
 
 	// The result card, over a scanline-dimmed board. Square corners on purpose:
@@ -2155,61 +2739,213 @@ namespace
 		const INT32 bx = CH_BOARD_X, bw = CH_BOARD_SIZE;
 		const INT32 by = CH_PAGE_H - CH_INSET - bh;
 		const INT32 cx = bx + bw / 2;
-		const int slot = giChessViewDay % 3;
+		// the strip is inventory: every site on ze web has bought it at least
+		// once. A fresh creative on every page view, each in its owner's colours.
+		const int slot = ChessAdSlot();
 		FillRect(bx, by, bw, bh, FROMRGB(0, 0, 0));
-		if (slot == 0)
+		const INT32 l1 = by + (tall ? 10 : 5);
+		const INT32 l2 = by + (tall ? 20 : 15);
+		const INT32 l3 = by + 30;
+		switch (slot)
 		{
-			FillRect(bx + 1, by + 1, bw - 2, bh - 2, FROMRGB(214, 213, 206));
-			PrintCentred(FONT10ARIALBOLD, FONT_RED, cx, by + (tall ? 8 : 4),
-			             "BOBBY RAY'S - GUNS AND MORE");
-			PrintCentred(FONT10ARIAL, FONT_MCOLOR_BLACK, cx, by + (tall ? 22 : 16),
-			             "always cheap. always stocked. always legal*");
-			if (tall) PrintCentred(FONT10ARIAL, FONT_GRAY6, cx, by + 35, "*mostly");
-		}
-		else if (slot == 1)
-		{
-			FillRect(bx + 1, by + 1, bw - 2, bh - 2, FROMRGB(24, 20, 12));
-			PrintCentred(FONT10ARIALBOLD, FONT_YELLOW, cx, by + (tall ? 8 : 4),
-			             "CHACH.COM GOLD CROWN");
-			PrintCentred(FONT10ARIAL, FONT_MCOLOR_WHITE, cx, by + (tall ? 22 : 16),
-			             "MEMBERSHIP - COMING SOON");
-			if (tall) PrintCentred(FONT10ARIAL, FONT_GRAY6, cx, by + 35, "do not ask");
-		}
-		else
-		{
-			FillRect(bx + 1, by + 1, bw - 2, bh - 2, FROMRGB(94, 26, 26));
-			// tall: the copy stacks between the flanking tiles, so the slogan
-			// breaks in two and stays inside the column
-			PrintCentred(FONT10ARIALBOLD, FONT_YELLOW, cx, by + (tall ? 6 : 4),
-			             "SAN MONA MAHJONG PARLOUR");
-			if (tall)
+			case 0:  // Bobby Ray's: his own creative, from his own homepage
 			{
-				PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_LTRED, cx, by + 20,
-				             "GAMES ARE FAIR BECAUSE");
-				PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_LTRED, cx, by + 33,
-				             "MR. KLAUS SAYS SO");
+				if (tall && gAdArtBobby)
+				{
+					BltVideoSurface(FRAME_BUFFER, gAdArtBobby,
+					                CH_X(bx + (bw - gAdArtBobby->Width()) / 2),
+					                CH_Y(by + (bh - gAdArtBobby->Height()) / 2), NULL);
+					break;
+				}
+				FillRect(bx + 1, by + 1, bw - 2, bh - 2, FROMRGB(214, 213, 206));
+				FillRect(bx + 1, by + 1, 96, bh - 2, FROMRGB(178, 24, 24));
+				PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, bx + 49, by + (tall ? 12 : 5), "BOBBY");
+				PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, bx + 49, by + (tall ? 24 : 15), "RAY'S");
+				PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_BLACK, bx + 108, by + (tall ? 11 : 5), "GUNS AND MORE");
+				PrintAt(FONT10ARIAL, FONT_GRAY6, bx + 108, by + (tall ? 21 : 15), "always cheap. always stocked.");
+				if (tall) PrintAt(FONT10ARIAL, FONT_GRAY6, bx + 108, by + 31, "always legal*   *mostly");
+				FillRounded(bx + bw - 44, by + (tall ? 14 : 4), 36, 18, FROMRGB(24, 24, 24), 3,
+				            FROMRGB(214, 213, 206));
+				PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, bx + bw - 26, by + (tall ? 19 : 9), "SALE");
+				break;
 			}
-			else
+			case 1:  // the house ad: gold hairlines, a little crown, dark velvet
 			{
-				PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_LTRED, cx, by + 16,
-				             "GAMES ARE FAIR BECAUSE MR. KLAUS SAYS SO");
+				const UINT32 gold = FROMRGB(212, 175, 55);
+				FillRect(bx + 1, by + 1, bw - 2, bh - 2, FROMRGB(24, 20, 12));
+				FillRect(bx + 8, by + 3, bw - 16, 1, gold);
+				FillRect(bx + 8, by + bh - 4, bw - 16, 1, gold);
+				// two crowns flank the copy, each set close to its edge
+				const INT32 ky = by + (tall ? 15 : 8);
+				for (const INT32 kx : { bx + 16, bx + bw - 36 })
+				{
+					for (int t = 0; t < 3; ++t)
+					{
+						const INT32 sx = kx + t * 7;
+						FillRect(sx + 2, ky, 2, 3, gold);
+						FillRect(sx + 1, ky + 3, 4, 3, gold);
+						FillRect(sx, ky + 6, 6, 2, gold);
+					}
+					FillRect(kx, ky + 8, 20, 3, gold);
+				}
+				PrintCentred(FONT10ARIALBOLD, FONT_YELLOW, cx, by + (tall ? 10 : 5), "CHACH.COM GOLD CROWN");
+				PrintCentred(FONT10ARIAL, FONT_MCOLOR_WHITE, cx, by + (tall ? 20 : 16),
+				             tall ? "MEMBERSHIP - COMING SOON" : "COMING SOON. do not ask.");
+				if (tall) PrintCentred(FONT10ARIAL, FONT_GRAY6, cx, by + 30, "do not ask ze proprietor");
+				break;
 			}
-			if (tall && guiChessAdTiles)
+			case 2:  // the Parlour, the reference creative
+				FillRect(bx + 1, by + 1, bw - 2, bh - 2, FROMRGB(94, 26, 26));
+				PrintCentred(FONT10ARIALBOLD, FONT_YELLOW, cx, by + (tall ? 6 : 4), "SAN MONA MAHJONG PARLOUR");
+				if (tall)
+				{
+					PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_LTRED, cx, by + 20, "GAMES ARE FAIR BECAUSE");
+					PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_LTRED, cx, by + 33, "MR. KLAUS SAYS SO");
+					if (guiChessAdTiles)
+					{
+						BltVideoObject(FRAME_BUFFER, guiChessAdTiles, 9, CH_X(bx + 8), CH_Y(by + 4));
+						BltVideoObject(FRAME_BUFFER, guiChessAdTiles, 18, CH_X(bx + bw - 38), CH_Y(by + 4));
+					}
+				}
+				else
+				{
+					PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_LTRED, cx, by + 16,
+					             "GAMES ARE FAIR BECAUSE MR. KLAUS SAYS SO");
+				}
+				break;
+			case 3:  // A.I.M.: their own masthead carries the brand; the copy
+			         // stands clear of it to the right
 			{
-				// the homepage's pair flanks the copy
-				BltVideoObject(FRAME_BUFFER, guiChessAdTiles, 9,
-				               CH_X(bx + 8), CH_Y(by + 4));
-				BltVideoObject(FRAME_BUFFER, guiChessAdTiles, 18,
-				               CH_X(bx + bw - 38), CH_Y(by + 4));
+				FillRect(bx + 1, by + 1, bw - 2, bh - 2, FROMRGB(46, 34, 26));
+				if (tall && gAdArtAim)
+				{
+					BltVideoSurface(FRAME_BUFFER, gAdArtAim, CH_X(bx + 6),
+					                CH_Y(by + (bh - gAdArtAim->Height()) / 2), NULL);
+					const INT32 tx3 = bx + 6 + gAdArtAim->Width() + 10;
+					PrintAt(FONT10ARIAL, FONT_GRAY2, tx3, by + 12, "ELITE MERCENARIES FOR HIRE");
+					PrintAt(FONT10ARIAL, FONT_GRAY6, tx3, by + 26, "some are even polite.");
+				}
+				else
+				{
+					PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, bx + 12, by + 5, "A.I.M.");
+					PrintAt(FONT10ARIAL, FONT_GRAY2, bx + 58, by + 5, "ELITE MERCENARIES FOR HIRE");
+					PrintAt(FONT10ARIAL, FONT_GRAY6, bx + 58, by + 17, "references available");
+				}
+				break;
 			}
-		}
-		// A hit counter nobody has ever believed. Derived from the campaign
-		// clock rather than stored, so it climbs without costing save bytes.
-		if (tall)
-		{
-			const int hits = 148299 + giChessViewDay * 17 + gChessDay.bestStreak * 3;
-			PrintCentred(FONT10ARIAL, FONT_GRAY7, cx, by - 25,
-			             ST::format("{} {}", T(CHS_VISITOR), hits));
+			case 4:  // I.M.P.: navy, and the test sheet with its little ticks
+			{
+				FillRect(bx + 1, by + 1, bw - 2, bh - 2, FROMRGB(26, 34, 48));
+				PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, bx + 12, by + (tall ? 10 : 5), "I.M.P.");
+				PrintAt(FONT10ARIAL, FONT_GRAY2, bx + 12, by + (tall ? 20 : 15), "KNOW THYSELF");
+				if (tall) PrintAt(FONT10ARIAL, FONT_GRAY6, bx + 12, by + 30, "$3000. worth every session.");
+				// the profile sheet
+				const INT32 px = bx + bw - 92, pw = 82;
+				FillRect(px, by + 4, pw, bh - 8, FROMRGB(228, 226, 216));
+				for (int i = 0; i < (tall ? 3 : 2); ++i)
+				{
+					const INT32 ly = by + 9 + i * (tall ? 11 : 7);
+					if (i == 1)
+					{
+						// the ticked answer is a plain solid square
+						FillRect(px + 6, ly, 6, 6, FROMRGB(40, 40, 44));
+					}
+					else
+					{
+						FillRect(px + 6, ly, 6, 6, FROMRGB(150, 148, 140));
+						FillRect(px + 7, ly + 1, 4, 4, FROMRGB(228, 226, 216));
+					}
+					FillRect(px + 18, ly + 2, pw - 30, 2, FROMRGB(150, 148, 140));
+				}
+				break;
+			}
+			case 5:  // M.E.R.C.: a photocopied flyer, hand-underlined
+			{
+				FillRect(bx + 1, by + 1, bw - 2, bh - 2, FROMRGB(224, 224, 224));
+				PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_BLACK, bx + 12, by + (tall ? 9 : 4), "M.E.R.C.");
+				// the underline misses, twice - it is that kind of operation
+				FillRect(bx + 12, by + (tall ? 19 : 15), 58, 2, FROMRGB(178, 24, 24));
+				FillRect(bx + 16, by + (tall ? 22 : 18), 58, 1, FROMRGB(178, 24, 24));
+				PrintAt(FONT10ARIAL, FONT_MCOLOR_BLACK, bx + 92, by + (tall ? 9 : 4), "affordable manpower.");
+				PrintAt(FONT10ARIAL, FONT_MCOLOR_BLACK, bx + 92, by + (tall ? 20 : 15), "flexible standards.");
+				if (tall) PrintAt(FONT10ARIALBOLD, FONT_RED, bx + 92, by + 31, "NO REFUNDS. ask for Marty.");
+				break;
+			}
+			case 6:  // United Floral: their own creative, else the drawn card
+			{
+				if (tall && gAdArtFlower)
+				{
+					BltVideoSurface(FRAME_BUFFER, gAdArtFlower,
+					                CH_X(bx + (bw - gAdArtFlower->Width()) / 2),
+					                CH_Y(by + (bh - gAdArtFlower->Height()) / 2), NULL);
+					break;
+				}
+				FillRect(bx + 1, by + 1, bw - 2, bh - 2, FROMRGB(240, 242, 232));
+				for (const INT32 fxp : { bx + 18, bx + bw - 18 })
+				{
+					const INT32 fy = by + bh / 2 - 3;
+					const UINT32 petal = FROMRGB(214, 120, 150);
+					FillRect(fxp - 2, fy - 5, 4, 4, petal);
+					FillRect(fxp - 2, fy + 3, 4, 4, petal);
+					FillRect(fxp - 6, fy - 1, 4, 4, petal);
+					FillRect(fxp + 2, fy - 1, 4, 4, petal);
+					FillRect(fxp - 1, fy, 3, 3, FROMRGB(226, 186, 60));
+				}
+				PrintCentred(FONT10ARIALBOLD, FONT_DKGREEN, cx, by + (tall ? 8 : 4), "UNITED FLORAL SERVICE");
+				for (INT32 dxp = cx - 66; dxp < cx + 66; dxp += 8)
+				{
+					FillRect(dxp, by + (tall ? 22 : 16), 4, 1, FROMRGB(96, 138, 82));
+				}
+				PrintCentred(FONT10ARIAL, FONT_GRAY6, cx, by + (tall ? 27 : 19),
+				             tall ? "flowers delivered anywhere on ze planet. yes, even there."
+				                  : "delivered anywhere. even there.");
+				break;
+			}
+			case 7: // McGillicutty's: their own creative, else the drawn card
+			{
+				if (tall && gAdArtFuneral)
+				{
+					BltVideoSurface(FRAME_BUFFER, gAdArtFuneral,
+					                CH_X(bx + (bw - gAdArtFuneral->Width()) / 2),
+					                CH_Y(by + (bh - gAdArtFuneral->Height()) / 2), NULL);
+					break;
+				}
+				FillRect(bx + 1, by + 1, bw - 2, bh - 2, FROMRGB(22, 22, 24));
+				const INT32 ix = bx + 5, iy = by + 4, iw = bw - 10, ih = bh - 8;
+				FillRect(ix, iy, iw, 1, FROMRGB(96, 96, 100));
+				FillRect(ix, iy + ih - 1, iw, 1, FROMRGB(96, 96, 100));
+				FillRect(ix, iy, 1, ih, FROMRGB(96, 96, 100));
+				FillRect(ix + iw - 1, iy, 1, ih, FROMRGB(96, 96, 100));
+				for (const INT32 tx2 : { ix + 3, ix + iw - 9 })
+				{
+					FillRect(tx2, iy + 3, 6, 1, FROMRGB(140, 140, 144));
+					FillRect(tx2, iy + ih - 4, 6, 1, FROMRGB(140, 140, 144));
+				}
+				PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, cx, by + (tall ? 9 : 5), "McGILLICUTTY'S MORTUARY");
+				PrintCentred(FONT10ARIAL, FONT_GRAY6, cx, by + (tall ? 21 : 16),
+				             "for when ze flowers were not enough");
+				if (tall) PrintCentred(FONT10ARIAL, FONT_GRAY7, cx, by + 33, "discreet. experienced. open late.");
+				break;
+			}
+			default: // Malleus, Incus & Stapes: their own creative, else copy
+			{
+				if (tall && gAdArtIns)
+				{
+					FillRect(bx + 1, by + 1, bw - 2, bh - 2, FROMRGB(0, 0, 0));
+					BltVideoSurface(FRAME_BUFFER, gAdArtIns,
+					                CH_X(bx + (bw - gAdArtIns->Width()) / 2),
+					                CH_Y(by + (bh - gAdArtIns->Height()) / 2), NULL);
+					break;
+				}
+				FillRect(bx + 1, by + 1, bw - 2, bh - 2, FROMRGB(30, 38, 34));
+				PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, cx, by + (tall ? 8 : 4),
+				             "MALLEUS, INCUS & STAPES");
+				PrintCentred(FONT10ARIAL, FONT_GRAY2, cx, by + (tall ? 21 : 16),
+				             "insurance for ze working merc");
+				if (tall) PrintCentred(FONT10ARIAL, FONT_GRAY6, cx, by + 33,
+				                       "premiums reflect ze profession");
+				break;
+			}
 		}
 	}
 
@@ -2255,15 +2991,15 @@ namespace
 		FillRounded(x, y, w, h - 2, CH_RGB_CTA, 3, bg);
 		FillRect(x + 2, y + 2, w - 4, band, FROMRGB(150, 199, 88));
 		FillRect(x + 3, y + 1, w - 6, 1, FROMRGB(184, 221, 130));
-		// the gradient steps down through two dithered rows - checkerboarded
-		// pixels of the lighter green over the body, the 1999 blend
-		for (INT32 row = 0; row < 2; ++row)
+		// the gradient steps down through three loud dither rows: full
+		// checker, offset checker, then a sparse tail into the body
+		for (INT32 row = 0; row < 3; ++row)
 		{
 			const INT32 dy = y + 2 + band + row;
-			for (INT32 dx = x + 2 + ((row + 1) & 1); dx < x + w - 2; dx += 2)
+			const INT32 step = row == 2 ? 4 : 2;
+			for (INT32 dx = x + 2 + ((row + 1) & 1); dx < x + w - 2; dx += step)
 			{
-				FillRect(dx, dy, 1, 1, row == 0 ? FROMRGB(150, 199, 88)
-				                                : FROMRGB(140, 191, 82));
+				FillRect(dx, dy, 1, 1, FROMRGB(150, 199, 88));
 			}
 		}
 	}
@@ -2273,17 +3009,84 @@ namespace
 	INT32 ChessDrawTitleBadge(INT32 x, INT32 y, const char* title, UINT32 bg)
 	{
 		if (!title || !*title) return 0;
-		const INT32 w = StringPixLength(title, TINYFONT1) + 4;
-		FillRounded(x, y, w, 9, FROMRGB(167, 45, 45), 2, bg);
-		PrintCentred(TINYFONT1, FONT_MCOLOR_WHITE, x + w / 2, y, title);
+		const INT32 w = StringPixLength(title, TINYFONT1) + 2;
+		FillRounded(x, y, w, 8, FROMRGB(167, 45, 45), 2, bg);
+		PrintCentred(TINYFONT1, FONT_MCOLOR_WHITE, x + w / 2, y - 1, title);
 		return w + 5;
+	}
+
+	// The green CTA's construction in dark grey: foot edge, body, band, top
+	// highlight and the two dithered gradient rows. The pager's palette at
+	// full button size; `live` dims the whole thing for a spent button.
+	void ChessDrawGreyButton(INT32 x, INT32 y, INT32 w, INT32 h, UINT32 bg, bool live)
+	{
+		const INT32 band = (h - 2) / 3;
+		const UINT32 foot = live ? FROMRGB(24, 21, 18) : FROMRGB(24, 22, 20);
+		const UINT32 body = live ? FROMRGB(64, 59, 54) : FROMRGB(42, 39, 36);
+		const UINT32 bnd  = live ? FROMRGB(86, 80, 73) : FROMRGB(50, 46, 42);
+		const UINT32 high = live ? FROMRGB(102, 95, 87) : FROMRGB(56, 52, 48);
+		FillRounded(x, y, w, h, foot, 3, bg);
+		FillRounded(x, y, w, h - 2, body, 3, bg);
+		FillRect(x + 2, y + 2, w - 4, band, bnd);
+		FillRect(x + 3, y + 1, w - 6, 1, high);
+		// the gradient steps down through three loud dither rows: full
+		// checker, then sparser, band colour over the darker body
+		for (INT32 row = 0; row < 3; ++row)
+		{
+			const INT32 dy = y + 2 + band + row;
+			const INT32 step = row == 2 ? 4 : 2;
+			for (INT32 dx = x + 2 + ((row + 1) & 1); dx < x + w - 2; dx += step)
+			{
+				FillRect(dx, dy, 1, 1, bnd);
+			}
+		}
+	}
+
+	// The capture tally: seven-pixel silhouettes of the board's own pieces -
+	// head-and-bell pawn, battlemented rook, leaning knight, egg bishop,
+	// spiked queen - so the row reads like the set it counts.
+	void ChessDrawCaptureGlyph(INT32 x, INT32 y, int type, UINT32 rgb)
+	{
+		switch (type)
+		{
+			case ChessGame::Rook:
+				FillRect(x,     y, 2, 2, rgb);
+				FillRect(x + 4, y, 2, 2, rgb);
+				FillRect(x + 1, y + 2, 4, 3, rgb);
+				FillRect(x,     y + 5, 6, 2, rgb);
+				break;
+			case ChessGame::Knight:
+				FillRect(x + 2, y, 2, 1, rgb);
+				FillRect(x + 1, y + 1, 5, 2, rgb);
+				FillRect(x + 1, y + 3, 3, 2, rgb);
+				FillRect(x,     y + 5, 6, 2, rgb);
+				break;
+			case ChessGame::Bishop:
+				FillRect(x + 2, y, 2, 1, rgb);
+				FillRect(x + 1, y + 1, 4, 4, rgb);
+				FillRect(x,     y + 5, 6, 2, rgb);
+				break;
+			case ChessGame::Queen:
+				FillRect(x,     y, 1, 3, rgb);
+				FillRect(x + 3, y, 1, 3, rgb);
+				FillRect(x + 6, y, 1, 3, rgb);
+				FillRect(x,     y + 3, 7, 2, rgb);
+				FillRect(x + 1, y + 5, 5, 2, rgb);
+				break;
+			default:  // pawn
+				FillRect(x + 2, y, 3, 3, rgb);
+				FillRect(x + 1, y + 4, 5, 1, rgb);
+				FillRect(x,     y + 5, 6, 2, rgb);
+				break;
+		}
 	}
 
 	void ChessRenderPlayerRow(SGPVSurface* face, const ST::string& handle,
 	                          const ST::string& rating, INT32 y,
 	                          const ChessGame* game, ChessGame::Color side,
 	                          int plies, bool clockActive,
-	                          const char* title = nullptr)
+	                          const char* title = nullptr,
+	                          int baseSecs = 600, int bleedPerMove = 8)
 	{
 		INT32 nameX = CH_BOARD_X;
 		if (face)
@@ -2291,14 +3094,15 @@ namespace
 			BltVideoSurface(FRAME_BUFFER, face,
 			                CH_X(CH_BOARD_X + (CH_SQ - CH_ROW_FACE) / 2),
 			                CH_Y(y + (CH_SQ - CH_ROW_FACE) / 2), NULL);
-			nameX += CH_SQ + 8;
+			nameX += CH_SQ + 2;
 		}
-		nameX += ChessDrawTitleBadge(nameX, y + 5, title, CH_RGB_CHROME);
-		PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, nameX, y + 6, handle);
+		const INT32 dotX = nameX;  // captures stay left-aligned under the name
+		nameX += ChessDrawTitleBadge(nameX, y + 3, title, CH_RGB_CHROME);
+		PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, nameX, y + 3, handle);
 		if (!rating.empty())
 		{
 			PrintAt(FONT10ARIAL, FONT_GRAY4,
-			        nameX + StringPixLength(handle, FONT10ARIALBOLD) + 6, y + 6, rating);
+			        nameX + StringPixLength(handle, FONT10ARIALBOLD) + 6, y + 3, rating);
 		}
 
 		if (game)
@@ -2317,45 +3121,79 @@ namespace
 			static const int START[7] = { 0, 8, 2, 2, 2, 1, 1 };
 			const UINT32 disc = prey == ChessGame::White ? FROMRGB(245, 245, 243)
 			                                             : FROMRGB(30, 28, 26);
-			INT32 dx = nameX;
+			INT32 dx = dotX;
 			for (int type = ChessGame::Pawn; type <= ChessGame::Queen; ++type)
 			{
+				// same-type captures huddle into one overlapping cluster;
+				// a breath of air separates the type groups
+				bool any = false;
 				for (int k = onBoard[type]; k < START[type]; ++k)
 				{
-					ChessDrawDot(dx, y + 21, disc);
-					dx += 6;
+					ChessDrawCaptureGlyph(dx, y + 19, type, disc);
+					dx += 4;
+					any = true;
 				}
+				if (any) dx += 3 + 4;
 			}
 
 			// the clock: ten minutes each, bleeding a few seconds per move -
 			// nobody has ever believed a hit counter either
+			if (baseSecs == 0)
+			{
+				// correspondence: the chip names the control instead
+				const INT32 boxW = 40;
+				const INT32 boxX = CH_BOARD_X + CH_BOARD_SIZE - boxW;
+				FillRounded(boxX, y + 2, boxW, 18, CH_RGB_PANEL_SUNK, 3, CH_RGB_CHROME);
+				PrintCentred(FONT10ARIAL, FONT_GRAY4, boxX + boxW / 2, y + 6, "1 day");
+				return;
+			}
 			const int mine = side == ChessGame::White ? (plies + 1) / 2 : plies / 2;
-			int secs = 600 - mine * 8;
+			int secs = baseSecs - mine * bleedPerMove;
 			if (secs < 4) secs = 4;
 			const ST::string time = ST::format("{}:{02d}", secs / 60, secs % 60);
 			const INT32 boxW = 40;
 			const INT32 boxX = CH_BOARD_X + CH_BOARD_SIZE - boxW;
-			FillRounded(boxX, y + 7, boxW, 18,
+			FillRounded(boxX, y + 2, boxW, 18,
 			            clockActive ? CH_RGB_LIGHT : CH_RGB_PANEL_SUNK, 3, CH_RGB_CHROME);
 			PrintCentred(FONT10ARIAL,
 			             clockActive ? FONT_NEARBLACK : FONT_GRAY4,
-			             boxX + boxW / 2, y + 11, time);
+			             boxX + boxW / 2, y + 6, time);
 		}
 	}
 
-	// The last stretch of a move list, numbered SAN pairs, newest at the foot.
-	void ChessRenderMoveList(const std::vector<ST::string>& san, INT32 y0, INT32 y1)
+	// A slim scrollbar: track on the panel's right edge, thumb proportional.
+	void ChessDrawScrollbar(INT32 y0, INT32 y1, int total, int fit, int offBottom)
+	{
+		if (total <= fit) return;
+		const INT32 x = CH_PANEL_X + CH_PANEL_W - 5;
+		FillRect(x, y0, 3, y1 - y0, CH_RGB_PANEL_SUNK);
+		const INT32 trackH = y1 - y0;
+		INT32 thumbH = trackH * fit / total;
+		if (thumbH < 10) thumbH = 10;
+		const int maxOff = total - fit;
+		const INT32 ty = y0 + (trackH - thumbH) * (maxOff - offBottom) / maxOff;
+		FillRect(x, ty, 3, thumbH, FROMRGB(80, 74, 68));
+	}
+
+	// The visible stretch of a move list, numbered SAN pairs, newest at the
+	// foot; the scroll offset counts pairs back from the live end.
+	void ChessRenderMoveList(const std::vector<ST::string>& san, INT32 y0, INT32 y1,
+	                         int* scroll)
 	{
 		const int pairs = int(san.size() + 1) / 2;
-		const int fit   = (y1 - y0) / 13;
-		const int first = pairs > fit ? pairs - fit : 0;
+		const int fit   = (y1 - y0) / 16;
+		const int maxOff = pairs > fit ? pairs - fit : 0;
+		if (*scroll > maxOff) *scroll = maxOff;
+		const int first = maxOff - *scroll;
+		const int last  = first + fit < pairs ? first + fit : pairs;
+		ChessDrawScrollbar(y0, y1, pairs, fit, *scroll);
 		INT32 y = y0;
-		for (int pn = first; pn < pairs; ++pn)
+		for (int pn = first; pn < last; ++pn)
 		{
 			// zebra rows: every second move-pair sits on a sunk band
 			if (pn % 2 == 0)
 			{
-				FillRect(CH_PANEL_X + 6, y - 2, CH_PANEL_W - 12, 13, CH_RGB_PANEL_SUNK);
+				FillRect(CH_PANEL_X + 6, y - 3, CH_PANEL_W - 16, 16, CH_RGB_PANEL_SUNK);
 			}
 			PrintAt(FONT10ARIAL, FONT_GRAY7, CH_PANEL_X + 10, y, ST::format("{}.", pn + 1));
 			PrintAt(FONT10ARIAL, FONT_GRAY2, CH_PANEL_X + 32, y, san[pn * 2]);
@@ -2363,7 +3201,7 @@ namespace
 			{
 				PrintAt(FONT10ARIAL, FONT_GRAY2, CH_PANEL_X + 86, y, san[pn * 2 + 1]);
 			}
-			y += 13;
+			y += 16;
 		}
 	}
 
@@ -2374,13 +3212,13 @@ namespace
 		FillRounded(CH_PANEL_X, CH_INSET, CH_PANEL_W, CH_PAGE_H - 2 * CH_INSET,
 		            CH_RGB_PANEL, CH_PANEL_RADIUS, CH_RGB_CHROME);
 		// the band sits snug around the title alone
-		FillRect(CH_PANEL_X, CH_INSET, CH_PANEL_W, 34, CH_RGB_PANEL_SUNK);
+		FillRect(CH_PANEL_X, CH_INSET, CH_PANEL_W, 24, CH_RGB_PANEL_SUNK);
 		RoundCorners(CH_PANEL_X, CH_INSET, CH_PANEL_W, CH_PAGE_H - 2 * CH_INSET,
 		             CH_PANEL_RADIUS, CH_RGB_CHROME);
 		const INT32 cx = CH_PANEL_X + CH_PANEL_W / 2;
-		const ST::string text = T(title);
+		const ST::string text = ST::string(T(title)).to_upper();
 		const INT32 w = ChessIconLabelWidth(FONT10ARIALBOLD, text);
-		ChessIconLabel(icon, cx - w / 2, 21, FONT10ARIALBOLD, FONT_MCOLOR_WHITE, text);
+		ChessIconLabel(icon, cx - w / 2, 19, FONT10ARIALBOLD, FONT_MCOLOR_WHITE, text);
 		return cx;
 	}
 
@@ -2394,12 +3232,36 @@ namespace
 
 	void ChessRenderLearnPanel()
 	{
-		const INT32 cx = ChessRenderSectionPanel(CH_ICON_LEARN, CHS_NAV_LEARN);
+		// the puzzle header's construction: lockup, stepper chip, title -
+		// the chevrons walk the lessons the way the calendar walks the days
+		FillRounded(CH_PANEL_X, CH_INSET, CH_PANEL_W, CH_PAGE_H - 2 * CH_INSET,
+		            CH_RGB_PANEL, CH_PANEL_RADIUS, CH_RGB_CHROME);
+		FillRect(CH_PANEL_X, CH_INSET, CH_PANEL_W, 66, CH_RGB_PANEL_SUNK);
+		RoundCorners(CH_PANEL_X, CH_INSET, CH_PANEL_W, CH_PAGE_H - 2 * CH_INSET,
+		             CH_PANEL_RADIUS, CH_RGB_CHROME);
+		FillRect(CH_PANEL_X, CH_FOOT_Y, CH_PANEL_W, 38, CH_RGB_PANEL_SUNK);
+		RoundCorners(CH_PANEL_X, CH_INSET, CH_PANEL_W, CH_PAGE_H - 2 * CH_INSET,
+		             CH_PANEL_RADIUS, CH_RGB_CHROME);
+		const INT32 cx = CH_PANEL_X + CH_PANEL_W / 2;
 		const ChessLesson& lesson = CHESS_LESSONS[giChessLesson];
 
-		PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, cx, 48, lesson.title);
-		PrintCentred(FONT10ARIAL, FONT_GRAY4, cx, 62,
-		             ST::format(T(CHS_LEARN_PAGE), giChessLesson + 1));
+		{
+			const ST::string head = ST::string(T(CHS_NAV_LEARN)).to_upper();
+			const INT32 hw = ChessIconLabelWidth(FONT10ARIALBOLD, head);
+			ChessIconLabel(CH_ICON_LEARN, cx - hw / 2, 20, FONT10ARIALBOLD,
+			               FONT_MCOLOR_WHITE, head);
+		}
+		FillRounded(CH_CHIP_X, CH_DATE_Y, CH_CHIP_W, 20, CH_RGB_PANEL_UP, 3,
+		            CH_RGB_PANEL_SUNK);
+		PrintCentred(FONT10ARIAL, FONT_MCOLOR_WHITE, CH_CHIP_X + CH_CHIP_W / 2,
+		             CH_DATE_Y + CH_ARROW_H / 2 - GetFontHeight(FONT10ARIAL) / 2,
+		             ST::format("LESSON {}", giChessLesson + 1));
+		ChessDrawChevron(CH_PREV_X + CH_ARROW_W / 2, CH_DATE_Y + 10, true,
+		                 giChessLesson > 0 ? FROMRGB(148, 142, 136) : FROMRGB(74, 69, 64));
+		ChessDrawChevron(CH_NEXT_X + CH_ARROW_W / 2, CH_DATE_Y + 10, false,
+		                 giChessLesson < CHESS_LESSON_COUNT - 1 ? FROMRGB(148, 142, 136)
+		                                                        : FROMRGB(74, 69, 64));
+		PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, cx, 52, lesson.title);
 
 		// the coach carries the first line; the rest follows as body text
 		const INT32 faceX = CH_PANEL_X + 4;
@@ -2427,9 +3289,13 @@ namespace
 		                     ST::format("{} {}", lesson.lines[1], lesson.lines[2]),
 		                     FONT_MCOLOR_BLACK, LEFT_JUSTIFIED);
 
-		// NEXT LESSON in the CTA green, on the shared button box
+		// NEXT LESSON in the CTA green, padded inside the same sunk footer
+		// band the other sidebars carry
+		FillRect(CH_PANEL_X, CH_FOOT_Y, CH_PANEL_W, 38, CH_RGB_PANEL_SUNK);
+		RoundCorners(CH_PANEL_X, CH_INSET, CH_PANEL_W, CH_PAGE_H - 2 * CH_INSET,
+		             CH_PANEL_RADIUS, CH_RGB_CHROME);
 		ChessDrawCTAButton(CH_PANEL_X + 10, CH_HINT_Y, CH_PANEL_W - 20, CH_HINT_H,
-		                   CH_RGB_PANEL);
+		                   CH_RGB_PANEL_SUNK);
 		PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, cx,
 		             CH_HINT_Y + (CH_HINT_H - GetFontHeight(FONT10ARIALBOLD)) / 2,
 		             T(CHS_LEARN_NEXT));
@@ -2439,9 +3305,13 @@ namespace
 	// in the sidebar.
 	void ChessRenderWatch()
 	{
-		ChessRenderBoardCore(gWatchGame, gubWatchFrom, gubWatchTo, -1);
-		ChessRenderBoardCoreLate(gWatchGame);
-		ChessRenderAnimPiece(gWatchGame);
+		const bool reviewing = giWatchView >= 0 && size_t(giWatchView) < gWatchHist.size();
+		ChessGame& shown = reviewing ? gWatchHist[size_t(giWatchView)] : gWatchGame;
+		ChessRenderBoardCore(shown,
+		                     reviewing ? ChessGame::NO_SQUARE : gubWatchFrom,
+		                     reviewing ? ChessGame::NO_SQUARE : gubWatchTo, -1);
+		ChessRenderBoardCoreLate(shown);
+		ChessRenderAnimPiece(shown);
 
 		const ChessSeat& white = CHESS_SEATS[gWatchSeat[0]];
 		const ChessSeat& black = CHESS_SEATS[gWatchSeat[1]];
@@ -2468,12 +3338,96 @@ namespace
 		        giWatchResult ? "END" : "LIVE");
 	}
 
+	// The tab strip both live sidebars share: one full-width row under the
+	// header, split in two; the resting half continues the sunk tone.
+	void ChessRenderPanelTabs(int active)
+	{
+		const INT32 cx = CH_PANEL_X + CH_PANEL_W / 2;
+		for (int i = 0; i < 2; ++i)
+		{
+			const bool on = active == i;
+			const INT32 tx = CH_PANEL_X + i * (CH_PANEL_W / 2);
+			const INT32 tw = i == 0 ? CH_PANEL_W / 2 : CH_PANEL_W - CH_PANEL_W / 2;
+			if (!on) FillRect(tx, CH_INSET + 24, tw, 18, CH_RGB_PANEL_SUNK);
+			PrintCentred(FONT10ARIAL, on ? FONT_MCOLOR_WHITE : FONT_GRAY6,
+			             tx + CH_PANEL_W / 4, CH_INSET + 29, i == 0 ? "Moves" : "Chat");
+		}
+		(void)cx;
+	}
+
+	// The chat surface both sidebars share: the log stacks up from the
+	// always-focused input line, newest at the bottom.
+	void ChessRenderChatPanel(const std::vector<WatchChatLine>& log)
+	{
+		const INT32 lx = CH_PANEL_X + 8;
+		const INT32 lw = CH_PANEL_W - 16;
+		const INT32 inY = CH_FOOT_Y - 16;
+		if (giChatScroll > int(log.size()) - 3)
+		{
+			giChatScroll = int(log.size()) - 3;
+			if (giChatScroll < 0) giChatScroll = 0;
+		}
+		int shown = 0;
+		INT32 y = inY - 6;
+		for (size_t i = log.size() - size_t(giChatScroll); i-- > 0 && y > 62; )
+		{
+			++shown;
+			const WatchChatLine& line = log[i];
+			const ST::string full = line.who.empty()
+				? line.text : ST::format("{}: {}", line.who, line.text);
+			// word wrap loses a little width per row; pad the estimate
+			const int rows = 1 + (int(StringPixLength(full, TINYFONT1)) * 10 / 9) / lw;
+			y -= rows * 9;
+			if (y <= 58) break;
+			DisplayWrappedString(UINT16(CH_X(lx)), UINT16(CH_Y(y)), UINT16(lw), 1,
+			                     TINYFONT1,
+			                     line.who.empty() ? FONT_GRAY4 : FONT_GRAY2,
+			                     full, FONT_MCOLOR_BLACK, LEFT_JUSTIFIED);
+			if (!line.who.empty())
+			{
+				// the handle re-printed in the accent, same font, same spot
+				PrintAt(TINYFONT1, FONT_MCOLOR_LTGREEN, lx, y,
+				        ST::format("{}:", line.who));
+			}
+			y -= 4;
+		}
+		ChessDrawScrollbar(58, inY - 6, int(log.size()), shown, giChatScroll);
+		// the input line: always focused, the parlour way
+		FillRect(lx - 2, inY - 3, lw + 4, 1, CH_RGB_ROW_SEP);
+		if (gWatchChatInput.empty())
+		{
+			PrintAt(TINYFONT1, FONT_GRAY6, lx, inY, "send a message...");
+		}
+		else
+		{
+			std::string typed = gWatchChatInput;
+			if ((ChessNow() / 400) & 1) typed += "_";
+			while (typed.size() > 1 &&
+			       StringPixLength(ST::string(typed.c_str()), TINYFONT1) > lw)
+			{
+				typed.erase(typed.begin());
+			}
+			PrintAt(TINYFONT1, FONT_GRAY1, lx, inY, ST::string(typed.c_str()));
+		}
+	}
+
 	void ChessRenderWatchPanel()
 	{
 		ChessRenderSectionPanel(CH_ICON_WATCH, CHS_NAV_WATCH);
-		PrintCentred(FONT10ARIAL, FONT_GRAY4, CH_PANEL_X + CH_PANEL_W / 2, 48,
-		             T(giWatchResult ? CHS_WATCH_OVER : CHS_WATCH_LIVE));
-		ChessRenderMoveList(gWatchSan, 66, CH_PAGE_H - CH_INSET - 8);
+		FillRect(CH_PANEL_X, CH_FOOT_Y, CH_PANEL_W, 38, CH_RGB_PANEL_SUNK);
+		RoundCorners(CH_PANEL_X, CH_INSET, CH_PANEL_W, CH_PAGE_H - 2 * CH_INSET,
+		             CH_PANEL_RADIUS, CH_RGB_CHROME);
+
+		ChessRenderPanelTabs(giWatchTab);
+		if (giWatchTab == 0)
+		{
+			ChessRenderMoveList(gWatchSan, 58, CH_FOOT_Y - 4, &giMoveScroll);
+		}
+		else
+		{
+			ChessRenderChatPanel(gWatchChat);
+		}
+		ChessRenderScrubber(gWatchHist, giWatchView);
 	}
 
 	// One guestbook entry: a sunk row with the avatar - the merc portrait if
@@ -2501,14 +3455,17 @@ namespace
 			PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, ax + CH_GB_FACE / 2,
 			             ay + (CH_GB_FACE - GetFontHeight(FONT10ARIALBOLD)) / 2, ini);
 		}
-		INT32 tx = CH_BOARD_X + 52;
+		const INT32 tx = CH_BOARD_X + 52;
 		// the date owns the right edge on every row; the handle only prints
 		// when it fits in the space a long name leaves before it
 		const INT32 dx = CH_BOARD_X + CH_BOARD_SIZE - 12 - StringPixLength(date, TINYFONT1);
 		PrintAt(TINYFONT1, FONT_GRAY6, dx, y + 7, date);
-		tx += ChessDrawTitleBadge(tx, y + 7, ChessTitleForHandle(handle), CH_RGB_PANEL);
-		PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, tx, y + 8, name);
-		const INT32 nameEnd = tx + StringPixLength(name, FONT10ARIALBOLD) + 6;
+		// the badge is part of the username lockup; the message below keeps
+		// the column
+		INT32 nameX = tx;
+		nameX += ChessDrawTitleBadge(nameX, y + 7, ChessTitleForHandle(handle), CH_RGB_PANEL);
+		PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, nameX, y + 8, name);
+		const INT32 nameEnd = nameX + StringPixLength(name, FONT10ARIALBOLD) + 6;
 		if (nameEnd + StringPixLength(handle, FONT10ARIAL) < dx - 8)
 		{
 			PrintAt(FONT10ARIAL, FONT_GRAY4, nameEnd, y + 8, handle);
@@ -2529,6 +3486,14 @@ namespace
 		PrintAt(FONT10ARIAL, FONT_GRAY4,
 		        CH_BOARD_X + 2 + ChessIconLabelWidth(FONT10ARIALBOLD, T(CHS_GB_TITLE)) + 10,
 		        15 - GetFontHeight(FONT10ARIAL) / 2, T(CHS_GB_PROMPT));
+		// the hit counter lives where hit counters lived: in the guestbook,
+		// in the accent green, believable to nobody
+		{
+			const int hits = 148299 + giChessViewDay * 17 + gChessDay.bestStreak * 3;
+			const ST::string count = ST::format("no. {}", hits);
+			PrintAt(TINYFONT1, FONT_MCOLOR_LTGREEN,
+			        CH_BOARD_X + CH_BOARD_SIZE - StringPixLength(count, TINYFONT1), 12, count);
+		}
 
 		FillRounded(CH_BOARD_X, CH_GB_TOP, CH_BOARD_SIZE,
 		            CH_PAGE_H - CH_INSET - CH_GB_TOP,
@@ -2661,11 +3626,16 @@ namespace
 	{
 		const INT32 x = CH_PANEL_X, w = CH_PANEL_W;
 		const INT32 cx = x + w / 2;
-		PrintCentred(FONT10ARIAL, FONT_GRAY7, cx, 10, "- ADVERTISEMENT -");
+		PrintCentred(FONT10ARIAL, FONT_GRAY4, cx, 10, "- ADVERTISEMENT -");
 		// the card runs level with the book beside it
 		const INT32 y = CH_GB_TOP;
 		const INT32 h = CH_PAGE_H - CH_INSET - y;
-		const int slot = giChessViewDay % 3;
+		// the skyscraper serves from the same impression counter as the strip,
+		// so the crown (and its one-click letter) is always where the click
+		// handler thinks it is; without a creative of its own the big two
+		// alternate
+		int slot = ChessAdSlot();
+		if (slot != 1) slot = (slot % 2 != 0) ? 2 : 0;
 		FillRect(x, y, w, h, FROMRGB(0, 0, 0));
 
 		if (slot == 0)
@@ -2742,6 +3712,46 @@ namespace
 // pattern. Returns true when the key was ours.
 bool ChessHandleTypedKey(UINT32 usParam, UINT16 usKeyState)
 {
+	if (ChessWatchChatFocused())
+	{
+		if (usParam == SDLK_RETURN || usParam == SDLK_KP_ENTER)
+		{
+			while (!gWatchChatInput.empty() && gWatchChatInput.back() == ' ')
+				gWatchChatInput.pop_back();
+			if (!gWatchChatInput.empty())
+			{
+				const ST::string me = gChessSelfNick.empty()
+					? ST::string("@you") : ST::format("@{}", gChessSelfNick);
+				if (giChessStub == 0)
+				{
+					ChessPlayChatSay(me, ST::string(gWatchChatInput.c_str()));
+					// he answers eventually. He is mid-game, after all.
+					if (Random(3) != 0) guiPlayChatReplyDue = ChessNow() + 2000 + Random(5000);
+				}
+				else
+				{
+					ChessWatchChatSay(me, ST::string(gWatchChatInput.c_str()));
+					// somebody always has something to say about it
+					if (Random(2) == 0) guiWatchReplyDue = ChessNow() + 1500 + Random(3500);
+				}
+				gWatchChatInput.clear();
+				ChessPlay(CH_SND_CLICK2, LOWVOLUME);
+				ChessRedraw();
+			}
+			return true;
+		}
+		if (usParam == SDLK_BACKSPACE)
+		{
+			if (!gWatchChatInput.empty())
+			{
+				gWatchChatInput.pop_back();
+				ChessRedraw();
+			}
+			return true;
+		}
+		if (usParam >= 32 && usParam < 127) return true;  // arrives as TEXT_INPUT
+		return false;  // shortcuts still work from the chat
+	}
 	if (!gfChessGbCompose) return false;
 	if (usParam == SDLK_ESCAPE)
 	{
@@ -2773,6 +3783,19 @@ bool ChessHandleTypedKey(UINT32 usParam, UINT16 usKeyState)
 // the keyboard actually produced, shift, dead keys and all.
 bool ChessHandleTextInput(const ST::utf32_buffer& codepoints)
 {
+	if (ChessWatchChatFocused())
+	{
+		bool changed = false;
+		for (char32_t cp : codepoints)
+		{
+			if (cp < 32 || cp > 126) continue;
+			if (gWatchChatInput.size() >= CH_WCHAT_MAX) break;
+			gWatchChatInput += char(cp);
+			changed = true;
+		}
+		if (changed) ChessRedraw();
+		return true;
+	}
 	if (!gfChessGbCompose) return false;
 	bool changed = false;
 	for (char32_t cp : codepoints)
@@ -2800,6 +3823,8 @@ void EnterChess()
 	guiChessSelf   = nullptr;
 	giChessStub    = -1;
 	giChessGbPage  = 0;
+	// a fresh visit reseeds the ad server; every page change advances it
+	guiChessAdImpression = ChessToday();
 	gfChessGbCompose = false;
 	gChessGbInput.clear();
 	gChessSelfNick = ST::string();
@@ -2819,6 +3844,15 @@ void EnterChess()
 		guiChessLogo   = AddVideoObjectFromFile("sti/laptop/chesslogo.sti");
 		guiChessAdDragon = AddVideoObjectFromFile("sti/laptop/mahjongdragon.sti");
 		guiChessAdTiles  = AddVideoObjectFromFile("sti/laptop/mahjongtiles.sti");
+		gAdArtAim  = ChessBakeArtObj(AddVideoObjectFromFile(MLG_AIMSYMBOL), 0, 28, 104,
+		                             FROMRGB(46, 34, 26));
+		gAdArtBobby   = ChessBakeArtObj(AddVideoObjectFromFile(MLG_BOBBYRAYAD21), 0, 46, 266,
+		                                FROMRGB(0, 0, 0));
+		gAdArtFuneral = ChessBakeArtObj(AddVideoObjectFromFile(MLG_FUNERALAD9), 0, 46, 266,
+		                                FROMRGB(0, 0, 0));
+		gAdArtFlower  = ChessBakeArt(LAPTOPDIR "/flowerad_16.sti", 0, 46, 266, FROMRGB(0, 0, 0));
+		gAdArtIns     = ChessBakeArtObj(AddVideoObjectFromFile(MLG_INSURANCEAD10), 0, 46, 266,
+		                                FROMRGB(0, 0, 0));
 	}
 	catch (...)
 	{
@@ -2906,12 +3940,11 @@ void EnterChess()
 		if (want >= 0)
 		{
 			giChessStub = want;
-			if (want == 0 && giPlaySeat < 0 && guiPlaySeekDue == 0) ChessPlayNewGame();
 			if (want == 2) gLearnGame.SetFen(CHESS_LESSONS[giChessLesson].fen);
 			if (want == 3 && guiWatchNextMove == 0)
 			{
 				ChessWatchNewGame();
-				guiWatchNextMove = ChessNow() + 900;
+				guiWatchNextMove = ChessNow() + 1600 + Random(1800);
 			}
 			ChessSyncPageRegions();
 		}
@@ -2928,6 +3961,11 @@ void ExitChess()
 	if (guiChessLogo)   { DeleteVideoObject(guiChessLogo);   guiChessLogo   = nullptr; }
 	if (guiChessAdDragon) { DeleteVideoObject(guiChessAdDragon); guiChessAdDragon = nullptr; }
 	if (guiChessAdTiles)  { DeleteVideoObject(guiChessAdTiles);  guiChessAdTiles  = nullptr; }
+	for (SGPVSurface** art : { &gAdArtAim, &gAdArtBobby,
+	                           &gAdArtFuneral, &gAdArtFlower, &gAdArtIns })
+	{
+		if (*art) { DeleteVideoSurface(*art); *art = nullptr; }
+	}
 	if (guiChessSelf)   { DeleteVideoObject(guiChessSelf);   guiChessSelf   = nullptr; }
 	if (guiChessSelfHalf)  { DeleteVideoSurface(guiChessSelfHalf);  guiChessSelfHalf  = nullptr; }
 	if (gPlayOppFace)      { DeleteVideoSurface(gPlayOppFace);      gPlayOppFace      = nullptr; }
@@ -2970,32 +4008,46 @@ void RenderChess()
 	{
 		ChessRenderBoard();
 		const int pPlies = int(gPlaySan.size());
-		if (giPlayState == 3 || giPlaySeat < 0)
+		if (giPlayState == 3 || giPlayState == 4 || giPlaySeat < 0)
 		{
-			// still seeking: a grey pawn stands in where the opponent will be
+			// no opponent yet: the reference's grey tile with a dark bust,
+			// labelled Opponent; the seek line takes over while one runs
 			FillRounded(CH_BOARD_X, CH_ROW_TOP_Y, CH_SQ, CH_SQ,
-			            CH_RGB_PANEL_SUNK, 3, CH_RGB_CHROME);
-			if (guiChessPieces)
-			{
-				BltVideoObject(FRAME_BUFFER, guiChessPieces, 12,
-				               CH_X(CH_BOARD_X), CH_Y(CH_ROW_TOP_Y));
-			}
-			PrintAt(FONT10ARIALBOLD, FONT_GRAY4, CH_BOARD_X + CH_SQ + 8,
-			        CH_ROW_TOP_Y + 6, T(CHS_PLAY_SEEK));
+			            FROMRGB(74, 69, 63), 3, CH_RGB_CHROME);
+			const UINT32 bust = FROMRGB(40, 37, 33);
+			FillRounded(CH_BOARD_X + 13, CH_ROW_TOP_Y + 7, 8, 8, bust, 3,
+			            FROMRGB(74, 69, 63));
+			FillRounded(CH_BOARD_X + 7, CH_ROW_TOP_Y + 18, 20, 14, bust, 6,
+			            FROMRGB(74, 69, 63));
+			PrintAt(FONT10ARIALBOLD, FONT_GRAY4, CH_BOARD_X + CH_SQ + 2,
+			        CH_ROW_TOP_Y + 3,
+			        giPlayState == 3 ? ST::string(T(CHS_PLAY_SEEK))
+			                         : ST::string("Opponent"));
+			// the clock chip already shows the control you picked
+			const INT32 boxW = 40;
+			const INT32 boxX = CH_BOARD_X + CH_BOARD_SIZE - boxW;
+			FillRounded(boxX, CH_ROW_TOP_Y + 2, boxW, 18, CH_RGB_PANEL_SUNK, 3,
+			            CH_RGB_CHROME);
+			PrintCentred(FONT10ARIAL, FONT_GRAY4, boxX + boxW / 2, CH_ROW_TOP_Y + 6,
+			             giPlayMinutes == 0 ? ST::string("1 day")
+			                                : ST::format("{}:00", giPlayMinutes));
 		}
 		else
 		{
-			const ChessSeat& opp = CHESS_SEATS[giPlaySeat];
+			const ChessSeat& opp = ChessOpponent();
 			ChessRenderPlayerRow(gPlayOppFace, opp.handle,
 			                     ST::format("({})", opp.rating), CH_ROW_TOP_Y,
 			                     &gPlayGame, ChessGame::Black, pPlies, giPlayState == 1,
-			                     opp.title);
+			                     opp.title, giPlayControl * 60,
+			                     giPlayControl >= 5 ? giPlayControl : 1);
 		}
 		ChessRenderPlayerRow(guiChessSelfHalf,
 		                     gChessSelfNick.empty() ? ST::string("@you")
 		                                            : ST::format("@{}", gChessSelfNick),
 		                     ST::string(), CH_ROW_BOT_Y,
-		                     &gPlayGame, ChessGame::White, pPlies, giPlayState == 0);
+		                     &gPlayGame, ChessGame::White, pPlies, giPlayState == 0,
+		                     nullptr, giPlayControl * 60,
+		                     giPlayControl >= 5 ? giPlayControl : 1);
 		ChessRenderBanner();
 		ChessRenderPlayPanel();
 	}
@@ -3023,6 +4075,20 @@ void RenderChess()
 
 void HandleChess()
 {
+	// the coach is mid-sentence: repaint until the line is out
+	if (giChessStub < 0 && ChessCoachStillTyping())
+	{
+		ChessRedraw();
+	}
+
+	// the chat caret blinks while the tab is up and something is typed
+	if (ChessWatchChatFocused() && !gWatchChatInput.empty())
+	{
+		static bool sChatCaret = false;
+		const bool caret = (ChessNow() / 400) & 1;
+		if (caret != sChatCaret) { sChatCaret = caret; ChessRedraw(); }
+	}
+
 	// the composer's caret blinks on the strategic clock
 	if (gfChessGbCompose)
 	{
@@ -3045,18 +4111,44 @@ void HandleChess()
 	// matchmaking: the seek resolves into a random regular
 	if (giChessStub == 0 && giPlayState == 3 && ChessNow() >= guiPlaySeekDue)
 	{
-		giPlaySeat = int(Random(6));
+		giPlaySeat = giPlayControl == 0 ? -2 : int(Random(6));
 		try
 		{
-			SGPVObject* face = ChessLoadPortrait(GetProfile(CHESS_SEATS[giPlaySeat].pid));
+			const ChessSeat& opp = ChessOpponent();
+			SGPVObject* face = ChessLoadPortrait(GetProfile(opp.pid));
 			gPlayOppFace = ChessBakeFace(face, CH_ROW_FACE);
 			DeleteVideoObject(face);
+			if (giPlayControl == 0)
+			{
+				ChessPlayChatSay(ST::string(),
+				                 ST::format("DAILY: {} ({}) - one move a day",
+				                            opp.handle, opp.rating));
+				ChessPlayChatSay(opp.handle,
+				                 "a game by letter, friend. take your day.");
+			}
+			else
+			{
+				ChessPlayChatSay(ST::string(),
+				                 ST::format("PLAYING: {} ({}) - {} min",
+				                            opp.handle, opp.rating, giPlayControl));
+				ChessPlayChatSay(opp.handle, "gl.");
+			}
 		}
 		catch (...) {}
 		giPlayState = 0;
 		giPlaySaid  = CHS_PLAY_YOUR;
+		ChessSyncPageRegions();
 		ChessPlay(CH_SND_CLICK2, LOWVOLUME);
 		ChessRedraw();
+	}
+
+	// the letter-writer answers when the campaign day turns
+	if (giChessStub == 0 && giPlayState == 5 && GetWorldDay() > guiPlayDailyDay)
+	{
+		giPlayState = 1;
+		giPlaySaid  = CHS_PLAY_THINK;
+		guiPlayDue  = ChessNow() + 900 + Random(1200);
+		ChessSyncPageRegions();
 	}
 
 	// his move in the live game lands on his own clock
@@ -3068,13 +4160,39 @@ void HandleChess()
 			gPlaySan.push_back(gPlayGame.San(m));
 			gubPlayFrom = m.from; gubPlayTo = m.to;
 			gPlayGame.MakeMove(m);
+			gPlayHist.push_back(gPlayGame);
 			ChessAnimateMove(gPlayGame, m, 140);
 			ChessPlay(ChessMoveSound(m, gPlayGame.IsInCheck(gPlayGame.SideToMove()), false));
 		}
 		giPlayState = 0;
 		giPlaySaid  = CHS_PLAY_YOUR;
 		ChessPlayFinish();
+		ChessSyncPageRegions();
 		ChessRedraw();
+	}
+
+	// the room talks on its own clock, in little bursts
+	if (giChessStub == 3 && ChessNow() >= guiWatchChatDue)
+	{
+		guiWatchChatDue = ChessNow() + 3000 + Random(9000);
+		ChessWatchChatFrom(CHESS_CHAT_IDLE);
+		if (Random(3) == 0) ChessWatchChatFrom(CHESS_CHAT_IDLE);
+		if (giWatchTab == 1) ChessRedraw();
+	}
+	if (giChessStub == 0 && giPlaySeat != -1 && guiPlayChatReplyDue &&
+		ChessNow() >= guiPlayChatReplyDue)
+	{
+		guiPlayChatReplyDue = 0;
+		ChessPlayChatSay(ChessOpponent().handle,
+		                 CHESS_CHAT_OPP[Random(lengthof(CHESS_CHAT_OPP))]);
+		if (giPlayTab == 1) ChessRedraw();
+	}
+
+	if (giChessStub == 3 && guiWatchReplyDue && ChessNow() >= guiWatchReplyDue)
+	{
+		guiWatchReplyDue = 0;
+		ChessWatchChatFrom(CHESS_CHAT_REPLY);
+		if (giWatchTab == 1) ChessRedraw();
 	}
 
 	// the exhibition ticks while it is on screen
@@ -3090,20 +4208,36 @@ void HandleChess()
 			const ChessGame::Move m = ChessWatchPickMove();
 			if (!m.IsNull())
 			{
-				gWatchSan.push_back(gWatchGame.San(m));
+				const ST::string san = gWatchGame.San(m);
+				gWatchSan.push_back(san);
 				gubWatchFrom = m.from; gubWatchTo = m.to;
 				gWatchGame.MakeMove(m);
+				gWatchHist.push_back(gWatchGame);
 				ChessAnimateMove(gWatchGame, m, 150);
 				// the exhibition speaks at full board volume: move, capture,
 				// check - the same cues as your own games
-				ChessPlay(ChessMoveSound(m, gWatchGame.IsInCheck(gWatchGame.SideToMove()), false));
+				const bool check = gWatchGame.IsInCheck(gWatchGame.SideToMove());
+				ChessPlay(ChessMoveSound(m, check, false));
+				// the room reacts to the loud moves, sometimes
+				if (check && Random(2) == 0) ChessWatchChatFrom(CHESS_CHAT_CHECK);
+				else if (std::strchr(san.c_str(), 'x') && Random(3) == 0)
+				{
+					ChessWatchChatFrom(CHESS_CHAT_CAPTURE);
+				}
 			}
 			if (m.IsNull() || gWatchGame.GetResult() != ChessGame::Result::Ongoing)
 			{
 				giWatchResult = 1;
+				ChessWatchChatSay(ST::string(), "GAME OVER");
+				ChessWatchChatFrom(CHESS_CHAT_OVER);
+				ChessWatchChatFrom(CHESS_CHAT_OVER);
 			}
 		}
-		guiWatchNextMove = ChessNow() + (giWatchResult ? 3600 : 1100 + Random(700));
+		// ten-minute chess is played at a ten-minute pace: a few seconds of
+		// thought as a rule, and every so often somebody sinks into a tank
+		guiWatchNextMove = ChessNow() + (giWatchResult ? 3600
+			: Random(10) == 0 ? 8000 + Random(6000)
+			                  : 2200 + Random(3200));
 		ChessRedraw();
 	}
 

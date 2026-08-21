@@ -363,4 +363,47 @@ TEST(ChessLessons, EachDiagramProvesItsClaim)
 	ASSERT_FALSE(mate.IsNull());
 	ASSERT_TRUE(game.MakeMove(mate));
 	EXPECT_EQ(ChessGame::Result::WhiteMates, game.GetResult());
+	// lesson 4: the c6 knight is pinned by the a4 bishop - it has no move
+	ASSERT_TRUE(game.SetFen(CHESS_LESSONS[3].fen));
+	{
+		const std::uint8_t pinned = ChessGame::MakeSquare(2, 5);
+		EXPECT_EQ(ChessGame::Knight, game.PieceAt(pinned));
+		ASSERT_TRUE(game.SetFen("4k3/8/2n5/8/B7/8/8/4K3 b - - 0 1"));
+		Move moves[ChessGame::MAX_MOVES];
+		const int count = game.GenerateLegal(moves);
+		for (int i = 0; i < count; ++i) EXPECT_NE(pinned, moves[i].from);
+	}
+
+	// lesson 5: the d5 pawn is passed - no black pawn ahead on c, d or e
+	ASSERT_TRUE(game.SetFen(CHESS_LESSONS[4].fen));
+	EXPECT_EQ(ChessGame::Pawn, game.PieceAt(ChessGame::MakeSquare(3, 4)));
+	for (int file = 2; file <= 4; ++file)
+	{
+		for (int rank = 5; rank <= 6; ++rank)
+		{
+			EXPECT_TRUE(game.IsEmpty(ChessGame::MakeSquare(file, rank)));
+		}
+	}
+
+	// lesson 6: both sides castled short - kings on g1/g8, rooks on f1/f8
+	ASSERT_TRUE(game.SetFen(CHESS_LESSONS[5].fen));
+	EXPECT_EQ(ChessGame::King, game.PieceAt(ChessGame::MakeSquare(6, 0)));
+	EXPECT_EQ(ChessGame::Rook, game.PieceAt(ChessGame::MakeSquare(5, 0)));
+	EXPECT_EQ(ChessGame::King, game.PieceAt(ChessGame::MakeSquare(6, 7)));
+	EXPECT_EQ(ChessGame::Rook, game.PieceAt(ChessGame::MakeSquare(5, 7)));
+
+	// lesson 7: the rook checks the king with the queen behind on the file
+	ASSERT_TRUE(game.SetFen(CHESS_LESSONS[6].fen));
+	EXPECT_EQ(ChessGame::Black, game.SideToMove());
+	EXPECT_TRUE(game.IsInCheck(ChessGame::Black));
+	EXPECT_EQ(ChessGame::King, game.PieceAt(ChessGame::MakeSquare(4, 2)));
+	EXPECT_EQ(ChessGame::Queen, game.PieceAt(ChessGame::MakeSquare(4, 4)));
+
+	// lesson 8: the d1 rook stands on a file with no pawns at all
+	ASSERT_TRUE(game.SetFen(CHESS_LESSONS[7].fen));
+	EXPECT_EQ(ChessGame::Rook, game.PieceAt(ChessGame::MakeSquare(3, 0)));
+	for (int rank = 1; rank <= 6; ++rank)
+	{
+		EXPECT_NE(ChessGame::Pawn, game.PieceAt(ChessGame::MakeSquare(3, rank)));
+	}
 }
