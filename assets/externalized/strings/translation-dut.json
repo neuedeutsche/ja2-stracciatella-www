@@ -709,7 +709,8 @@
         "United Floral Service",
         "Verzekeringsagenten voor A.I.M. contracten",
         "San Mona Mahjong Parlour",
-        "Chach.com - Grunty's daily chess puzzle"
+        "Chach.com - Grunty's daily chess puzzle",
+        "Mercs & Kisses - where the tough get tender"
     ],
     "gzLateLocalizedString": [
         "De robot kan de sector niet verlaten als niemand de besturing gebruikt.",
@@ -891,6 +892,7 @@
         "Verzekering",
         "San Mahjong",
         "Chach.com",
+        "Mercs&Kisses",
         "Stop"
     ],
     "pBullseyeStrings": [
@@ -1660,7 +1662,8 @@
         "John Kulba",
         "A.I.M.",
         "Elliot",
-        "Grunty"
+        "Grunty",
+        "Speck T. Kline"
     ],
     "pShortAttributeStrings": [
         "Bew",
@@ -1844,7 +1847,8 @@
         "URL niet gevonden.",
         "Bobby Ray's - Recentelijke Zendingen",
         "San Mona Mahjong Parlour",
-        "Chach.com"
+        "Chach.com",
+        "Mercs & Kisses"
     ],
     "pWebTitle": "sir-FER 4.0",
     "pwMineStrings": [

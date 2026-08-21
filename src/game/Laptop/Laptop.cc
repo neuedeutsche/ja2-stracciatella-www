@@ -49,6 +49,7 @@
 #include "Insurance_Comments.h"
 #include "Funeral.h"
 #include "Chess.h"
+#include "Cupid.h"
 #include "Mahjong.h"
 #include "Finances.h"
 #include "Personnel.h"
@@ -588,6 +589,35 @@ static void EnterLaptop(void)
 			}
 		}
 	}
+	// Speck's dating venture advertises later and less often than Kingpin's
+	// parlour - he cannot afford the volume. Same backfill: anything that
+	// "already arrived" lands stamped with its day, the rest is scheduled.
+	{
+		CupidPersist cp = CupidGetPersist();
+		if (!(cp.ubFlags & CUPID_FLAG_SPAM_STAGED))
+		{
+			cp.ubFlags |= CUPID_FLAG_SPAM_STAGED;
+			CupidSetPersist(cp);
+			UINT32 const uiNow = GetWorldTotalMin();
+			// days 6, 9 and 12, mid-morning: he writes at the office
+			static UINT32 const uiCupidStageAt[3] =
+				{ 5 * 1440 + 630, 8 * 1440 + 645, 11 * 1440 + 660 };
+			UINT32 uiNext = 3;
+			for (UINT32 uiStage = 0; uiStage < 3; ++uiStage)
+			{
+				if (uiCupidStageAt[uiStage] > uiNow) { uiNext = uiStage; break; }
+				AddEmailWithSpecialData(CUPID_EMAIL_SPAM, 0, CUPID_SPECK_SENDER,
+							uiCupidStageAt[uiStage],
+							static_cast<INT32>(uiStage), 0);
+				SetBookMark(CUPID_BOOKMARK);
+			}
+			if (uiNext < 3)
+			{
+				AddStrategicEvent(EVENT_CUPID_SPECK_EMAIL,
+						std::max(uiCupidStageAt[uiNext], uiNow + 720), uiNext);
+			}
+		}
+	}
 
 	// Dev shortcut leg three: the laptop opens on the chess site
 	if (getenv("JA2_DEV_CHESS"))
@@ -595,6 +625,14 @@ static void EnterLaptop(void)
 		guiCurrentWWWMode    = LAPTOP_MODE_CHESS;
 		guiCurrentLaptopMode = LAPTOP_MODE_CHESS;
 		// straight onto the page: no bookmark dropdown, no mail box
+		fFirstTimeInLaptop = FALSE;
+		fNewMailFlag       = FALSE;
+	}
+	// ...and leg four, the dating site
+	if (getenv("JA2_DEV_CUPID"))
+	{
+		guiCurrentWWWMode    = LAPTOP_MODE_CUPID;
+		guiCurrentLaptopMode = LAPTOP_MODE_CUPID;
 		fFirstTimeInLaptop = FALSE;
 		fNewMailFlag       = FALSE;
 	}
@@ -779,6 +817,7 @@ static void RenderLaptop(void)
 
 		case LAPTOP_MODE_MAHJONG:                  RenderMahjong();           break;
 		case LAPTOP_MODE_CHESS:                    RenderChess();             break;
+		case LAPTOP_MODE_CUPID:                    RenderCupid();             break;
 
 		case LAPTOP_MODE_FINANCES:                 RenderFinances();          break;
 		case LAPTOP_MODE_PERSONNEL:                RenderPersonnel();         break;
@@ -977,6 +1016,7 @@ do_nothing:
 
 		case LAPTOP_MODE_MAHJONG:                  EnterMahjong();           break;
 		case LAPTOP_MODE_CHESS:                    EnterChess();             break;
+		case LAPTOP_MODE_CUPID:                    EnterCupid();             break;
 
 		case LAPTOP_MODE_FINANCES:                 EnterFinances();          break;
 		case LAPTOP_MODE_PERSONNEL:                EnterPersonnel();         break;
@@ -1029,6 +1069,7 @@ static void HandleLapTopHandles(void)
 
 		case LAPTOP_MODE_MAHJONG:                  HandleMahjong();           break;
 		case LAPTOP_MODE_CHESS:                    HandleChess();             break;
+		case LAPTOP_MODE_CUPID:                    HandleCupid();             break;
 
 		case LAPTOP_MODE_CHAR_PROFILE:             HandleCharProfile();       break;
 
@@ -1360,6 +1401,7 @@ static void ExitLaptopMode(LaptopMode uiMode)
 
 		case LAPTOP_MODE_MAHJONG:                  ExitMahjong();           break;
 		case LAPTOP_MODE_CHESS:                    ExitChess();             break;
+		case LAPTOP_MODE_CUPID:                    ExitCupid();             break;
 
 		case LAPTOP_MODE_FINANCES:                 ExitFinances();          break;
 		case LAPTOP_MODE_PERSONNEL:                ExitPersonnel();         break;
@@ -1907,6 +1949,11 @@ void GoToWebPage(INT32 iPageId)
 		case CHESS_BOOKMARK:
 			guiCurrentWWWMode    = LAPTOP_MODE_CHESS;
 			guiCurrentLaptopMode = LAPTOP_MODE_CHESS;
+			break;
+
+		case CUPID_BOOKMARK:
+			guiCurrentWWWMode    = LAPTOP_MODE_CUPID;
+			guiCurrentLaptopMode = LAPTOP_MODE_CUPID;
 			break;
 
 		case MAHJONG_BOOKMARK:
@@ -2854,6 +2901,8 @@ void HandleKeyBoardShortCutsForLapTop(UINT16 usEvent, UINT32 usParam, UINT16 usK
 
 	// chess site: the guestbook composer eats keys the same way
 	if (guiCurrentLaptopMode == LAPTOP_MODE_CHESS && ChessHandleTypedKey(usParam, usKeyState)) return;
+	// the dating site: arrow keys swipe the deck
+	if (guiCurrentLaptopMode == LAPTOP_MODE_CUPID && CupidHandleTypedKey(usParam, usKeyState)) return;
 
 	switch (usParam)
 	{
@@ -3437,7 +3486,22 @@ void SaveLaptopInfoToSavedGame(HWFILE const f)
 		INJ_U8(  d, 0xC5)
 		INJ_U8(  d, UINT8(strnlen(ch.szLine, sizeof(ch.szLine) - 1)))
 	}
-	INJ_SKIP( d, 61)
+	{
+		// Mercs & Kisses: 37 more bytes. The first eight are the member's
+		// 16 raw I.M.P. quiz answers, which the game used to throw away.
+		CupidPersist const cp = CupidGetPersist();
+		INJ_U8A( d, cp.ubAnswers, lengthof(cp.ubAnswers))
+		INJ_U8(  d, cp.ubFlags)
+		INJ_U8(  d, cp.ubStreak)
+		INJ_U16( d, cp.usLastVisitDay)
+		INJ_U16( d, cp.usViews)
+		INJ_I32( d, cp.iSpent)
+		INJ_U8A( d, cp.ubLiked,  lengthof(cp.ubLiked))
+		INJ_U8A( d, cp.ubPassed, lengthof(cp.ubPassed))
+		INJ_U8(  d, cp.ubLikesLeft)
+		INJ_U16( d, cp.usDeckDay)
+	}
+	INJ_SKIP( d, 24)
 	Assert(d.getConsumed() == lengthof(data));
 
 	f->write(data, sizeof(data));
@@ -3560,7 +3624,29 @@ void LoadLaptopInfoFromSavedGame(HWFILE const f)
 		EXTR_U8(  d, ubChessLineLen)
 		if (ubChessLineMarker != 0xC5) ubChessLineLen = 0;
 	}
-	EXTR_SKIP( d, 61)
+	{
+		// Mercs & Kisses: old saves read zeroes here, and a zero nibble
+		// would count as "picked answer A" - so a sheet that was never
+		// actually taken (neither flag set) is blanked to the sentinel
+		CupidPersist cp;
+		EXTR_U8A( d, cp.ubAnswers, lengthof(cp.ubAnswers))
+		EXTR_U8(  d, cp.ubFlags)
+		EXTR_U8(  d, cp.ubStreak)
+		EXTR_U16( d, cp.usLastVisitDay)
+		EXTR_U16( d, cp.usViews)
+		EXTR_I32( d, cp.iSpent)
+		EXTR_U8A( d, cp.ubLiked,  lengthof(cp.ubLiked))
+		EXTR_U8A( d, cp.ubPassed, lengthof(cp.ubPassed))
+		EXTR_U8(  d, cp.ubLikesLeft)
+		EXTR_U16( d, cp.usDeckDay)
+		if (!(cp.ubFlags & (CUPID_FLAG_PROFILE | CUPID_FLAG_IMP_ANSWERS)))
+		{
+			std::fill(std::begin(cp.ubAnswers), std::end(cp.ubAnswers),
+					UINT8(0xFF));
+		}
+		CupidSetPersist(cp);
+	}
+	EXTR_SKIP( d, 24)
 	Assert(d.getConsumed() == lengthof(data));
 
 	// Handle old saves in M.E.R.C. module

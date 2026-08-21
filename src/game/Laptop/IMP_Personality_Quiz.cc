@@ -1,5 +1,6 @@
 
 #include "CharProfile.h"
+#include "Cupid.h"
 #include "Cursors.h"
 #include "Directories.h"
 #include "Font.h"
@@ -376,6 +377,10 @@ static void BtnIMPPersonalityQuizAnswerConfirmCallback(GUI_BUTTON *, UINT32 reas
 			if (giCurrentPersonalityQuizQuestion > 15)
 			{
 				iCurrentImpPage = IMP_PERSONALITY_FINISH;
+				// Mercs & Kisses banks the raw sheet before the tally
+				// below collapses it to one attitude and one trait -
+				// these 16 answers are unrecoverable afterwards
+				CupidRecordImpAnswers(iQuizAnswerList);
 				CompileQuestionsInStatsAndWhatNot();
 			}
 		}

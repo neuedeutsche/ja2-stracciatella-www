@@ -1382,7 +1382,7 @@ ScreenID MapScreenHandle(void)
 {
 	// Dev shortcut leg two: arrive on the map, leave for the laptop at once
 	static BOOLEAN fDevChessJumped = FALSE;
-	if (!fDevChessJumped && getenv("JA2_DEV_CHESS"))
+	if (!fDevChessJumped && (getenv("JA2_DEV_CHESS") || getenv("JA2_DEV_CUPID")))
 	{
 		fDevChessJumped = TRUE;
 		RequestTriggerExitFromMapscreen(MAP_EXIT_TO_LAPTOP);

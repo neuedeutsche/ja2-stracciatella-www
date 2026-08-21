@@ -709,7 +709,8 @@
         "Цветы по Всему Миру",
         "Страховые агенты по контрактам A.I.M.",
         "San Mona Mahjong Parlour",
-        "Chach.com - Grunty's daily chess puzzle"
+        "Chach.com - Grunty's daily chess puzzle",
+        "Mercs & Kisses - where the tough get tender"
     ],
     "gzLateLocalizedString": [
         "Робот не может покинуть сектор, если им никто не управляет.",
@@ -891,6 +892,7 @@
         "Страховка",
         "San Mahjong",
         "Chach.com",
+        "Mercs&Kisses",
         "Отмена"
     ],
     "pBullseyeStrings": [
@@ -1660,7 +1662,8 @@
         "Джон Калба",
         "А.I.М.",
         "Elliot",
-        "Grunty"
+        "Grunty",
+        "Speck T. Kline"
     ],
     "pShortAttributeStrings": [
         "Прв",
@@ -1844,7 +1847,8 @@
         "URL не найден.",
         "Бобби Рэй - Последние поставки",
         "San Mona Mahjong Parlour",
-        "Chach.com"
+        "Chach.com",
+        "Mercs & Kisses"
     ],
     "pWebTitle": "сир-ФЕР 4.0",
     "pwMineStrings": [

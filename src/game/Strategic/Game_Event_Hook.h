@@ -67,6 +67,7 @@ enum StrategicEventKind
 	EVENT_MERC_SITE_NEW_MERC_AVAILABLE                   = 78,
 	EVENT_MAHJONG_KINGPIN_EMAIL                          = 79,
 	EVENT_CHESS_GRUNTY_EMAIL                             = 80,
+	EVENT_CUPID_SPECK_EMAIL                              = 81,
 
 	NUMBER_OF_EVENT_TYPES
 };

@@ -381,7 +381,7 @@ static void EnterSaveLoadScreen()
 		// Make sure the save is valid
 		INT8 last_slot = gGameSettings.bLastSavedGameSlot;
 		// the dev shortcut takes the newest save when no last slot is recorded
-		if (getenv("JA2_DEV_CHESS") &&
+		if ((getenv("JA2_DEV_CHESS") || getenv("JA2_DEV_CUPID")) &&
 		    (last_slot == -1 || gSavedGamesList.begin() + last_slot >= gSavedGamesList.end()) &&
 		    !gSavedGamesList.empty())
 		{

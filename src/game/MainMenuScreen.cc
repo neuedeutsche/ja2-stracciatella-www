@@ -278,7 +278,7 @@ static void HandleMainMenuInput(void)
 	// last-saved game, and from there into the laptop and onto chach.com.
 	// This leg is the same as Alt+clicking LOAD.
 	static BOOLEAN fDevChessDone = FALSE;
-	if (!fDevChessDone && getenv("JA2_DEV_CHESS") && AreThereAnySavedGameFiles())
+	if (!fDevChessDone && (getenv("JA2_DEV_CHESS") || getenv("JA2_DEV_CUPID")) && AreThereAnySavedGameFiles())
 	{
 		fDevChessDone      = TRUE;
 		gbHandledMainMenu  = LOAD_GAME;

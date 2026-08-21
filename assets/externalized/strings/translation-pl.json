@@ -709,7 +709,8 @@
         "United Floral Service",
         "Brokerzy ubezpieczeniowi",
         "San Mona Mahjong Parlour",
-        "Chach.com - Grunty's daily chess puzzle"
+        "Chach.com - Grunty's daily chess puzzle",
+        "Mercs & Kisses - where the tough get tender"
     ],
     "gzLateLocalizedString": [
         "Robot nie może opuścić sektora bez operatora.",
@@ -891,6 +892,7 @@
         "Ubezpieczenia",
         "San Mahjong",
         "Chach.com",
+        "Mercs&Kisses",
         "Anuluj"
     ],
     "pBullseyeStrings": [
@@ -1660,7 +1662,8 @@
         "John Kulba",
         "A.I.M.",
         "Elliot",
-        "Grunty"
+        "Grunty",
+        "Speck T. Kline"
     ],
     "pShortAttributeStrings": [
         "Zwn",
@@ -1844,7 +1847,8 @@
         "Nie odnaleziono URL.",
         "Bobby Ray's - Ostatnie dostawy",
         "San Mona Mahjong Parlour",
-        "Chach.com"
+        "Chach.com",
+        "Mercs & Kisses"
     ],
     "pWebTitle": "sir-FER 4.0",
     "pwMineStrings": [

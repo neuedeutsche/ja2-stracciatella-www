@@ -31,6 +31,7 @@
 #include "Soldier_Profile.h"
 #include "Laptop.h"
 #include "Mahjong.h"
+#include "Cupid.h"
 #include "Campaign.h"
 #include "Debug.h"
 #include "Observable.h"
@@ -334,6 +335,28 @@ BOOLEAN ExecuteStrategicEvent( STRATEGICEVENT *pEvent )
 			if (usMessage == CHESS_EMAIL_INVITE) SetBookMark(CHESS_BOOKMARK);
 			AddEmailWithSpecialData(usMessage, 0, CHESS_GRUNTY_SENDER,
 						pEvent->uiTimeStamp, iStreak, 0);
+			break;
+		}
+
+		case EVENT_CUPID_SPECK_EMAIL:
+		{
+			// param is the ad-campaign stage; the campaign stops the moment
+			// the member has actually visited the site
+			UINT32 const uiStage = pEvent->uiParam & 0x3;
+			if (uiStage > 0 && (CupidGetPersist().ubFlags & CUPID_FLAG_VISITED))
+			{
+				break;
+			}
+			AddEmailWithSpecialData(CUPID_EMAIL_SPAM, 0, CUPID_SPECK_SENDER,
+						pEvent->uiTimeStamp,
+						static_cast<INT32>(uiStage), 0);
+			SetBookMark(CUPID_BOOKMARK);
+			if (uiStage < 2)
+			{
+				AddStrategicEvent(EVENT_CUPID_SPECK_EMAIL,
+						GetWorldTotalMin() + 3 * 1440 + Random(720),
+						uiStage + 1);
+			}
 			break;
 		}
 

@@ -183,6 +183,11 @@ enum {
 #define CHESS_EMAIL_CROWN   5105 // someone asked about ze crown
 #define CHESS_GRUNTY_SENDER 52   // appended to pSenderNameList
 
+// Mercs & Kisses: Speck writes often, and never briefly
+#define CUPID_EMAIL_SPAM    5200 // the ad campaign; iFirstData is the stage
+#define CUPID_EMAIL_WELCOME 5201 // your profile is LIVE
+#define CUPID_SPECK_SENDER  53   // appended to pSenderNameList
+
 extern BOOLEAN fUnReadMailFlag;
 extern BOOLEAN fNewMailFlag;
 extern BOOLEAN  fOldNewMailFlag;

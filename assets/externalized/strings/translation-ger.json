@@ -709,7 +709,8 @@
         "Fleuropa",
         "Versicherungsmakler für A.I.M.-Verträge",
         "San Mona Mahjong Parlour",
-        "Chach.com - Grunty's daily chess puzzle"
+        "Chach.com - Grunty's daily chess puzzle",
+        "Mercs & Kisses - where the tough get tender"
     ],
     "gzLateLocalizedString": [
         "Der Roboter kann diesen Sektor nicht verlassen, wenn niemand die Fernbedienung benutzt.",
@@ -891,6 +892,7 @@
         "Versicherung",
         "San Mahjong",
         "Chach.com",
+        "Mercs&Kisses",
         "Abbruch"
     ],
     "pBullseyeStrings": [
@@ -1660,7 +1662,8 @@
         "John Kulba",
         "A.I.M.",
         "Elliot",
-        "Grunty"
+        "Grunty",
+        "Speck T. Kline"
     ],
     "pShortAttributeStrings": [
         "Bew",
@@ -1844,7 +1847,8 @@
         "URL nicht gefunden.",
         "Bobby Rays - Letzte Lieferungen",
         "San Mona Mahjong Parlour",
-        "Chach.com"
+        "Chach.com",
+        "Mercs & Kisses"
     ],
     "pWebTitle": "sir-FER 4.0",
     "pwMineStrings": [

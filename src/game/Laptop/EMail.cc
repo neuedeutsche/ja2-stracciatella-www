@@ -576,6 +576,19 @@ void AddEmailMessage(INT32 iMessageOffset, INT32 iMessageLength, INT32 iDate, UI
 	{
 		pSubject = "regarding ze crown";
 	}
+	else if (iMessageOffset == CUPID_EMAIL_SPAM)
+	{
+		switch (pTempEmail->iFirstData)
+		{
+			case 1:  pSubject = "your PERFECT MATCH is waiting (statistically)"; break;
+			case 2:  pSubject = "FINAL NOTICE of new member benefits (not final)"; break;
+			default: pSubject = "Are you LONELY? A business opportunity (romance)"; break;
+		}
+	}
+	else if (iMessageOffset == CUPID_EMAIL_WELCOME)
+	{
+		pSubject = "WELCOME to Mercs & Kisses!!";
+	}
 	else if (iMessageOffset == MAHJONG_EMAIL_SPAM)
 	{
 		switch (pTempEmail->iFirstData)
@@ -1728,6 +1741,7 @@ static void ReDisplayBoxes(void)
 static void HandleIMPCharProfileResultsMessage(void);
 static void HandleMahjongKingpinMessage(UINT16 usMessageId, const Email* pMail);
 static void HandleChessGruntyMessage(UINT16 usMessageId, const Email* pMail);
+static void HandleCupidSpeckMessage(UINT16 usMessageId, const Email* pMail);
 static void ModifyInsuranceEmails(UINT16 usMessageId, Email* pMail, UINT8 ubNumberOfRecords);
 
 
@@ -1759,6 +1773,11 @@ static void HandleMailSpecialMessages(UINT16 usMessageId, Email* pMail)
 		case CHESS_EMAIL_REVIEW:
 		case CHESS_EMAIL_CROWN:
 			HandleChessGruntyMessage(usMessageId, pMail);
+			break;
+
+		case CUPID_EMAIL_SPAM:
+		case CUPID_EMAIL_WELCOME:
+			HandleCupidSpeckMessage(usMessageId, pMail);
 			break;
 
 
@@ -1941,6 +1960,56 @@ ENUM_BITSET(PhysicalBits)
 
 // chach.com is one man's site, so it writes like one man: short, and only when
 // something happened.
+static void HandleCupidSpeckMessage(UINT16 usMessageId, const Email* pMail)
+{
+	if (pMessageRecordList != NULL) return;
+	auto const blank = []() { AddEmailRecordToList(" "); };
+
+	if (usMessageId == CUPID_EMAIL_WELCOME)
+	{
+		AddEmailRecordToList("Your profile is LIVE on Mercs & Kisses, the future of romance and a Speck T. Kline company. I reviewed it personally. Strong material. The responses will pour in - any day now.");
+		blank();
+		AddEmailRecordToList("A word of advice from a man who knows people: log in daily. The algorithm rewards commitment, and frankly, so do I.");
+		blank();
+		AddEmailRecordToList("You won't find any high pressure salesmanship here! But do consider our premium services. They exist. That's all I'll say. For now.");
+		blank();
+		AddEmailRecordToList("Warmly, and I mean that at no extra charge,");
+		AddEmailRecordToList("Speck T. Kline, Founder, Proprietor, Head of Member Relations");
+		return;
+	}
+
+	// the ad campaign, escalating from mail-merge to naked need
+	switch (pMail->iFirstData)
+	{
+		case 1:
+			AddEmailRecordToList("It's me again. Speck. I ran your particulars through the system - don't ask how I got them, the point is the SCIENCE - and it turns out your compatibility numbers are, and I quote my own software, \"promising.\"");
+			blank();
+			AddEmailRecordToList("Somewhere out there is a professional just like you: careful, motivated, heavily armed. Our sixteen-question compatibility instrument - developed independently by me, whatever the Institute's lawyers imply - finds these people. That's all it does. It's incredible.");
+			blank();
+			AddEmailRecordToList("The bookmark is already in your browser. I took the liberty. Businessmen take liberties.");
+			break;
+
+		case 2:
+			AddEmailRecordToList("FINAL NOTICE: your complimentary membership benefits expire soon. (Which benefits? New ones. We're adding them constantly. The point stands.)");
+			blank();
+			AddEmailRecordToList("I'll be honest with you, because honesty is the foundation of romance and also of this correspondence: membership numbers matter to a growing enterprise, and I have personally guaranteed certain parties some growth.");
+			blank();
+			AddEmailRecordToList("Visit the site. Take the questionnaire. Find somebody. Or don't find somebody, but VISIT. - S.T.K.");
+			break;
+
+		default:
+			AddEmailRecordToList("Dear valued professional,");
+			blank();
+			AddEmailRecordToList("You don't know me, except you do - Speck T. Kline, of M.E.R.C. fame - and I am writing to you about the loneliness. Not YOUR loneliness. The general kind. The market kind.");
+			blank();
+			AddEmailRecordToList("Introducing MERCS & KISSES (mercsandkisses.com): the first online introduction service built by mercenaries, for mercenaries, using SCIENCE. Where the tough get tender. Not affiliated with M.E.R.C., a completely separate company that I also founded.");
+			blank();
+			AddEmailRecordToList("Membership is free. Ask about our premium services. Everything you will see is genuine.");
+			break;
+	}
+}
+
+
 static void HandleChessGruntyMessage(UINT16 usMessageId, const Email* pMail)
 {
 	if (pMessageRecordList != NULL) return;

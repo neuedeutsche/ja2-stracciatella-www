@@ -709,7 +709,8 @@
         "Servizio Fioristi Riuniti",
         "Contratti assicurativi per agenti A.I.M.",
         "San Mona Mahjong Parlour",
-        "Chach.com - Grunty's daily chess puzzle"
+        "Chach.com - Grunty's daily chess puzzle",
+        "Mercs & Kisses - where the tough get tender"
     ],
     "gzLateLocalizedString": [
         "Il robot non può lasciare questo settore, se nessuno sta usando il controller.",
@@ -891,6 +892,7 @@
         "Assicurazione",
         "San Mahjong",
         "Chach.com",
+        "Mercs&Kisses",
         "Annulla"
     ],
     "pBullseyeStrings": [
@@ -1660,7 +1662,8 @@
         "John Kulba",
         "A.I.M.",
         "Elliot",
-        "Grunty"
+        "Grunty",
+        "Speck T. Kline"
     ],
     "pShortAttributeStrings": [
         "Abi",
@@ -1844,7 +1847,8 @@
         "URL non ritrovato.",
         "Bobby Ray - Spedizioni recenti",
         "San Mona Mahjong Parlour",
-        "Chach.com"
+        "Chach.com",
+        "Mercs & Kisses"
     ],
     "pWebTitle": "sir-FER 4.0",
     "pwMineStrings": [
