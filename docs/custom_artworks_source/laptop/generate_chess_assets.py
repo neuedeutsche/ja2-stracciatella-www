@@ -142,11 +142,13 @@ PIECES = {
     # arching outward to the sides. Built solid, then the teardrop hollows
     # between column and bows are cut out.
     "king": [
-        ("rect", 46, 2, 54, 36, 1),
-        ("rect", 38, 10, 62, 18, 1),
-        ("poly", [(46, 30), (38, 24), (28, 22), (18, 28), (12, 40), (12, 56),
-                  (18, 72), (28, 80), (72, 80), (82, 72), (88, 56), (88, 40),
-                  (82, 28), (72, 22), (62, 24), (54, 30)]),
+        ("rect", 43.75, 3, 56.25, 36, 0),
+        ("rect", 37.5, 9.375, 62.5, 18.75, 0),
+        # widest through the lobes, tapering as it falls so it sits back from
+        # the base instead of thickening into it
+        ("poly", [(46, 30), (38, 24), (28, 20), (17, 26), (10, 38), (11, 54),
+                  (18, 68), (30, 78), (70, 78), (82, 68), (89, 54), (90, 38),
+                  (83, 26), (72, 20), (62, 24), (54, 30)]),
         ("rect", 20, 78, 80, 95, 8),
     ],
     # The knight keeps the traced outline - it was the one organic shape that
@@ -172,11 +174,11 @@ CUTOUTS = {
     # the teardrop hollows between the column and each bow, tails pointing
     # up toward the base of the cross
     "king": [
-        # round end up by the cross, point tapering down and outward
-        ("circle", 36, 45, 8),
-        ("poly", [(29, 48), (44, 44), (26, 68)]),
-        ("circle", 64, 45, 8),
-        ("poly", [(56, 44), (71, 48), (74, 68)]),
+        # round end up and outward, points converging down toward the centre
+        ("circle", 32, 45, 8),
+        ("poly", [(25, 44), (40, 48), (42, 68)]),
+        ("circle", 68, 45, 8),
+        ("poly", [(60, 48), (75, 44), (58, 68)]),
     ],
     "bishop": [
         # the slot: cut from above the egg straight down into it

@@ -331,6 +331,8 @@ namespace
 	#define CH_SND_CASTLE   SOUNDSDIR "/laptop/chach-castle.mp3"
 	#define CH_SND_PROMOTE  SOUNDSDIR "/laptop/chach-promote.mp3"
 	#define CH_SND_WRONG    SOUNDSDIR "/laptop/chach-incorrect.mp3"
+	#define CH_SND_CLICK    SOUNDSDIR "/very small switch 01 in.wav"
+	#define CH_SND_CLICK2   SOUNDSDIR "/very small switch 02 in.wav"
 
 	void ChessPlay(const char* file, UINT32 volume = MIDVOLUME)
 	{
@@ -771,6 +773,7 @@ namespace
 		if (guiChessPly >= gChessSolution.size()) return;
 
 		gChessDay.flags |= ChessDaily::FLAG_HINT_USED;
+		ChessPlay(CH_SND_CLICK);
 		gfChessHintShown = true;
 		giChessSaid = CHS_ST_HINT;
 		ChessSpendHeart();
@@ -783,6 +786,7 @@ namespace
 		const int step = int(MSYS_GetRegionUserData(region, 0));
 		const int want = giChessViewDay + step;
 		if (want < 1 || want > int(ChessToday())) return;
+		ChessPlay(CH_SND_CLICK, LOWVOLUME);
 		ChessShowDay(want);
 		ChessRedraw();
 	}
@@ -802,6 +806,7 @@ namespace
 	{
 		if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
 		if (!gfChessModal) return;
+		ChessPlay(CH_SND_CLICK, LOWVOLUME);
 		ChessSetModal(false);
 		ChessRedraw();
 	}
@@ -810,6 +815,7 @@ namespace
 	{
 		if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
 		if (!gfChessModal) return;
+		ChessPlay(CH_SND_CLICK, LOWVOLUME);
 		ChessSetModal(false);
 		ChessShowDay(giChessViewDay - 1);
 		ChessRedraw();
@@ -820,7 +826,9 @@ namespace
 		if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
 		const int item = int(MSYS_GetRegionUserData(region, 0));
 		// Puzzles is the site; everything else is a page he has not written
-		giChessStub = (item == 1) ? -1 : item;
+		const int want = (item == 1) ? -1 : item;
+		if (want != giChessStub) ChessPlay(CH_SND_CLICK2, LOWVOLUME);
+		giChessStub = want;
 		ChessRedraw();
 	}
 
@@ -931,6 +939,17 @@ namespace
 		FillRect(x,         y + 2 * s, 7 * s, 2 * s, rgb);
 		FillRect(x + 1 * s, y + 4 * s, 5 * s, 1 * s, rgb);
 		FillRect(x + 2 * s, y + 5 * s, 3 * s, 1 * s, rgb);
+	}
+
+	// A spent heart: grey, and cracked - a zigzag gap splits it in two.
+	void ChessDrawBrokenHeart(INT32 x, INT32 y, UINT32 rgb, UINT32 bg, INT32 s = 1)
+	{
+		ChessDrawHeart(x, y, rgb, s);
+		FillRect(x + 3 * s, y,         1 * s, 2 * s, bg);
+		FillRect(x + 4 * s, y + 2 * s, 1 * s, 1 * s, bg);
+		FillRect(x + 3 * s, y + 3 * s, 1 * s, 1 * s, bg);
+		FillRect(x + 4 * s, y + 4 * s, 1 * s, 1 * s, bg);
+		FillRect(x + 3 * s, y + 5 * s, 1 * s, 1 * s, bg);
 	}
 
 	// A blunt chevron: each row is a short bar stepped out from the point, so
@@ -1198,8 +1217,15 @@ namespace
 		const INT32 heartY = CH_COACH_Y + CH_COACH_TILE + 7;
 		for (int i = 0; i < ChessDaily::MAX_HEARTS; ++i)
 		{
-			ChessDrawHeart(CH_PANEL_X + 10 + i * CH_HEART_PITCH, heartY,
-			               i >= gChessDay.hearts ? CH_RGB_HEART_SPENT : CH_RGB_CTA);
+			if (i >= gChessDay.hearts)
+			{
+				ChessDrawBrokenHeart(CH_PANEL_X + 10 + i * CH_HEART_PITCH, heartY,
+				                     CH_RGB_HEART_SPENT, CH_RGB_PANEL);
+			}
+			else
+			{
+				ChessDrawHeart(CH_PANEL_X + 10 + i * CH_HEART_PITCH, heartY, CH_RGB_CTA);
+			}
 		}
 
 		PrintAt(FONT10ARIAL, FONT_GRAY4, CH_PANEL_X + 10, heartY + 14,
@@ -1291,8 +1317,15 @@ namespace
 		const INT32 heartsW = ChessDaily::MAX_HEARTS * 18 - 4;
 		for (int i = 0; i < ChessDaily::MAX_HEARTS; ++i)
 		{
-			ChessDrawHeart(cx - heartsW / 2 + i * 18, y + 28,
-			               i < gChessDay.hearts ? CH_RGB_CTA : CH_RGB_PANEL_SUNK, 2);
+			if (i < gChessDay.hearts)
+			{
+				ChessDrawHeart(cx - heartsW / 2 + i * 18, y + 28, CH_RGB_CTA, 2);
+			}
+			else
+			{
+				ChessDrawBrokenHeart(cx - heartsW / 2 + i * 18, y + 28,
+				                     CH_RGB_HEART_SPENT, CH_RGB_PANEL, 2);
+			}
 		}
 
 		FillRounded(x + 12, y + 46, w - 24, 22, CH_RGB_CTA, 3, CH_RGB_PANEL);
