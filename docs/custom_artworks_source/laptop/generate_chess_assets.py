@@ -102,11 +102,13 @@ PIECES = {
     # Shorter than the majors on purpose, and hourglass-shaped: head, collar,
     # a bell flaring in a concave curve, and a foot lip jutting past the bell.
     "pawn": [
-        ("circle", 50, 31, 14),
-        ("poly", [(31, 44), (69, 44), (62, 54), (38, 54)]),
-        ("poly", [(43, 54), (57, 54), (59, 62), (64, 71), (75, 80), (79, 88),
-                  (21, 88), (25, 80), (36, 71), (41, 62)]),
-        ("rect", 15, 85, 85, 95, 6),
+        ("circle", 50, 30, 15),
+        # the collar is a flat bar that pokes out plainly left and right of
+        # the head - a rectangle, not a taper
+        ("rect", 28, 43, 72, 55, 2),
+        ("poly", [(41, 49), (59, 49), (61, 57), (67, 67), (77, 78), (80, 88),
+                  (20, 88), (23, 78), (33, 67), (39, 57)]),
+        ("rect", 18, 85, 82, 95, 6),
     ],
     # Every edge on an exact pixel boundary (multiples of 3.125): fractional
     # coverage rounds left and right edges differently and reads as a lopsided
@@ -154,17 +156,19 @@ PIECES = {
                   (83, 26), (72, 20), (62, 24), (54, 30)]),
         ("rect", 20, 78, 80, 95, 8),
     ],
-    # The knight keeps the traced outline - it was the one organic shape that
-    # earned it. Clockwise from the back ear: mane down the right, base, up
-    # the chest, out along the muzzle, back over the face.
+    # The knight is composed, not traced: a neck trapezoid, a head dome, a
+    # muzzle bar and an ear - then one big circle carved out at the throat,
+    # which is the cut that makes it read as a horse.
     "knight": [
+        # One continuous mass, twelve long segments: up the back to the crest,
+        # over the ear, down the brow to a drooping muzzle, jaw tucking back
+        # in, chest falling to the base. The composed variants kept falling
+        # apart; this one holds.
         ("poly", [
-            (52, 5), (60, 19), (70, 29), (76, 43), (73, 53), (79, 64),
-            (80, 76), (25, 76), (28, 64), (26, 52), (18, 48), (10, 49),
-            (6, 42), (9, 34), (18, 29), (27, 23), (33, 13), (38, 5), (44, 15),
+            (76, 88), (74, 48), (68, 22), (58, 6), (50, 16), (42, 12),
+            (24, 34), (10, 50), (14, 60), (32, 58), (38, 70), (36, 88),
         ]),
-        ("poly", [(30, 72), (74, 72), (78, 80), (26, 80)]),
-        ("rect", 19, 77, 81, 93, 5),
+        ("rect", 18.75, 78.125, 81.25, 93.75, 0),
     ],
 }
 
@@ -192,6 +196,10 @@ CUTOUTS = {
         # the slot: cut from above the egg straight down into it
         ("rect", 52, 3, 60, 52, 2),
     ],
+    "knight": [
+        # the throat: one concave bite under the jaw
+
+    ],
 }
 
 # Drawn after the cutouts, so a cut can never slice into them: the bishop's
@@ -207,7 +215,8 @@ MIRRORED = {"pawn", "rook", "queen", "king"}
 
 # Punched in outline colour rather than cut to transparent.
 DOTS = {
-    "knight": [("circle", 27, 30, 5), ("circle", 12, 41, 3)],  # eye, nostril
+    # currently empty: the knight's eye was tried and cut - at 34px it read
+    # as a smudge, and the silhouette carries the horse alone
 }
 
 
