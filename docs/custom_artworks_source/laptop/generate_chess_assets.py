@@ -108,11 +108,14 @@ PIECES = {
                   (21, 88), (25, 80), (36, 71), (41, 62)]),
         ("rect", 15, 85, 85, 95, 6),
     ],
+    # Every edge on an exact pixel boundary (multiples of 3.125): fractional
+    # coverage rounds left and right edges differently and reads as a lopsided
+    # piece. Sub-pixel corner radii dropped for the same reason.
     "rook": [
-        ("rect", 21, 13, 79, 32, 2),
-        ("rect", 26, 30, 74, 41, 2),
-        ("poly", [(32, 41), (68, 41), (71, 74), (29, 74)]),
-        ("rect", 21, 71, 79, 90, 3),
+        ("rect", 18.75, 12.5, 81.25, 31.25, 0),
+        ("rect", 25, 28.125, 75, 40.625, 0),
+        ("poly", [(31.25, 40.625), (68.75, 40.625), (71.875, 75), (28.125, 75)]),
+        ("rect", 18.75, 71.875, 81.25, 90.625, 0),
     ],
     # Constructed, not organic: the body is an elongated octagon - straight
     # segments only - with a ball on top and the slot cut into the upper
@@ -168,17 +171,22 @@ PIECES = {
 # Cut back out of the silhouette after the union.
 CUTOUTS = {
     "rook": [
-        ("rect", 36, 10, 45, 28, 0),
-        ("rect", 55, 10, 64, 28, 0),
+        ("rect", 34.375, 9.375, 43.75, 28.125, 0),
+        ("rect", 56.25, 9.375, 65.625, 28.125, 0),
     ],
     # the teardrop hollows between the column and each bow, tails pointing
     # up toward the base of the cross
     "king": [
-        # round end up and outward, points converging down toward the centre
-        ("circle", 32, 45, 8),
-        ("poly", [(25, 44), (40, 48), (42, 68)]),
-        ("circle", 68, 45, 8),
-        ("poly", [(60, 48), (75, 44), (58, 68)]),
+        # round end up and outward, points converging down toward the centre.
+        # Kept tight: the reference king is chunky, so the hollows stay small
+        # and the walls around them thick.
+        # inner edges dead vertical at x38/x62, circles exactly tangent to
+        # them: the spine between the hollows stays parallel-sided instead of
+        # flaring where the circles curve away
+        ("circle", 31, 44, 7),
+        ("poly", [(26, 43), (38, 46), (38, 66)]),
+        ("circle", 69, 44, 7),
+        ("poly", [(62, 46), (74, 43), (62, 66)]),
     ],
     "bishop": [
         # the slot: cut from above the egg straight down into it
@@ -191,6 +199,11 @@ CUTOUTS = {
 OVERLAYS = {
     "bishop": [("circle", 50, 16, 10)],
 }
+
+# Bilaterally symmetric pieces are mirrored mechanically: the left half is
+# rendered and reflected, so no threshold tie-break can ever differ between
+# the sides. The bishop and knight are asymmetric by design and stay out.
+MIRRORED = {"pawn", "rook", "queen", "king"}
 
 # Punched in outline colour rather than cut to transparent.
 DOTS = {
@@ -235,7 +248,12 @@ def _silhouette(name, size, margin):
         _draw_primitives(d, OVERLAYS[name], scale, offset, 255)
 
     small = mask.resize((size, size), Image.BOX)
-    return small.point(lambda v: 255 if v >= 128 else 0)
+    small = small.point(lambda v: 255 if v >= 128 else 0)
+    if name in MIRRORED:
+        from PIL import ImageOps
+        half = small.crop((0, 0, size // 2, size))
+        small.paste(ImageOps.mirror(half), (size - size // 2, 0))
+    return small
 
 
 def _dot_mask(name, size, margin):
