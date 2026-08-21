@@ -32,6 +32,7 @@ set(JA2_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/Chess.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/ChessDaily.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/ChessGame.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/ChessLessons.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/ChessPuzzles.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/EMail.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/Files.cc

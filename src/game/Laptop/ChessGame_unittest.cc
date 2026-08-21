@@ -1,6 +1,7 @@
 #include "gtest/gtest.h"
 
 #include "ChessGame.h"
+#include "ChessLessons.h"
 #include "ChessPuzzles.h"
 
 #include <sstream>
@@ -335,4 +336,31 @@ TEST(ChessPuzzles, RecordedAnswerSurvivesAShallowSearch)
 	// the corpus, the setup-move convention or the search is wrong.
 	EXPECT_LT(disputed * 100 / checked, 40)
 		<< disputed << " of " << checked << " recorded answers lost to a depth-3 search";
+}
+
+// The lessons must show what their text claims, or the book teaches lies.
+TEST(ChessLessons, EachDiagramProvesItsClaim)
+{
+	ChessGame game;
+
+	// lesson 1: the position after 1.e4, Black to move
+	ASSERT_TRUE(game.SetFen(CHESS_LESSONS[0].fen));
+	EXPECT_EQ(ChessGame::Black, game.SideToMove());
+	EXPECT_EQ(ChessGame::Pawn, game.PieceAt(ChessGame::MakeSquare(4, 3)));
+
+	// lesson 2: the knight forks rook and king - it attacks both squares
+	ASSERT_TRUE(game.SetFen(CHESS_LESSONS[1].fen));
+	const std::uint8_t rookSq = ChessGame::MakeSquare(2, 6);
+	const std::uint8_t kingSq = ChessGame::MakeSquare(4, 6);
+	EXPECT_EQ(ChessGame::Rook, game.PieceAt(rookSq));
+	EXPECT_EQ(ChessGame::King, game.PieceAt(kingSq));
+	EXPECT_TRUE(game.IsSquareAttacked(rookSq, ChessGame::White));
+	EXPECT_TRUE(game.IsSquareAttacked(kingSq, ChessGame::White));
+
+	// lesson 3: Re8 is mate, exactly as the caption says
+	ASSERT_TRUE(game.SetFen(CHESS_LESSONS[2].fen));
+	const ChessGame::Move mate = game.ParseUci("e1e8");
+	ASSERT_FALSE(mate.IsNull());
+	ASSERT_TRUE(game.MakeMove(mate));
+	EXPECT_EQ(ChessGame::Result::WhiteMates, game.GetResult());
 }

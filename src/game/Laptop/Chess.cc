@@ -11,6 +11,7 @@
 
 #include "ChessDaily.h"
 #include "ChessGame.h"
+#include "ChessLessons.h"
 #include "ChessPuzzles.h"
 
 #include "Button_System.h"
@@ -175,8 +176,18 @@ namespace
 	bool   gfChessModal     = false;
 	// the proprietor is on one of your contracts, so the site runs unattended
 	bool   gfChessOffline   = false;
-	// which nav section is showing its unfinished page, or -1 for the puzzle
+	// which nav section is showing, or -1 for the daily puzzle:
+	// 0 Play, 2 Learn, 3 Watch, 4 Guestbook; 1 routes back to the puzzle
 	int    giChessStub      = -1;
+	// Learn: which of the lessons is open
+	int    giChessLesson    = 0;
+	// Watch: the house plays itself while nobody minds the shop
+	ChessGame gWatchGame;
+	UINT32 guiWatchNextMove = 0;
+	UINT8  gubWatchFrom = ChessGame::NO_SQUARE;
+	UINT8  gubWatchTo   = ChessGame::NO_SQUARE;
+	UINT32 guiWatchSeed = 7;
+	int    giWatchResult = 0;   // 0 running, else display-result pause
 	// what the coach is currently saying, kept as an id so the language switch
 	// re-renders it rather than freezing whatever was said last
 	int    giChessSaid      = 0;   // ChessStr, or -1/-2 for a good/bad variant
@@ -197,7 +208,8 @@ namespace
 	static_assert(CHESS_FLAG_SIGNED     == ChessDaily::FLAG_SIGNED,     "flag drift");
 	static_assert(CHESS_FLAG_CROWN      == ChessDaily::FLAG_CROWN_ASKED, "flag drift");
 
-	SGPVObject* guiChessPieces = nullptr;  // 12 frames, 34x34
+	SGPVObject* guiChessPieces = nullptr;      // 24 frames, 34x34 (12 live, 12 dim)
+	SGPVObject* guiChessPiecesSmall = nullptr; // 24 frames, 20x20, for diagrams
 	SGPVObject* guiChessCoach  = nullptr;  // Grunty, 29x33
 	SGPVObject* guiChessIcons  = nullptr;  // 7 nav and panel icons, 14x14
 	SGPVObject* guiChessLogo   = nullptr;  // green pawn, 22 and 14
@@ -213,6 +225,8 @@ namespace
 	MOUSE_REGION gChessNavRegion[5];
 	MOUSE_REGION gChessBannerRegion;
 	MOUSE_REGION gChessSignRegion;
+	MOUSE_REGION gChessLearnPrevRegion;
+	MOUSE_REGION gChessLearnNextRegion;
 	MOUSE_REGION gChessLangRegion;
 	MOUSE_REGION gChessPrevDayRegion;
 	MOUSE_REGION gChessNextDayRegion;
@@ -239,6 +253,7 @@ namespace
 		CHS_STUB_TITLE, CHS_STUB_PLAY, CHS_STUB_LEARN, CHS_STUB_WATCH,
 		CHS_STUB_GROUPS, CHS_STUB_BACK, CHS_VISITOR,
 		CHS_GB_TITLE, CHS_GB_PROMPT, CHS_GB_SIGN, CHS_GB_YOURS,
+		CHS_LEARN_PAGE, CHS_WATCH_LIVE, CHS_WATCH_OVER,
 		CHS_COUNT
 	};
 
@@ -267,6 +282,8 @@ namespace
 			"you are visitor no.",
 			"GUESTBOOK", "sign it. everyone signs it.", "SIGN ZE BOOK",
 			"was here. solved some.",
+			"LESSON {} OF 3", "LIVE - ze house plays itself",
+			"game over. ze next one starts alone.",
 		},
 		{
 			"TAGESRAETSEL", "TAG", "WERTUNG", "WEISS ZIEHT", "SCHWARZ ZIEHT",
@@ -291,6 +308,8 @@ namespace
 			"Sie sind Besucher Nr.",
 			"GAESTEBUCH", "tragen Sie sich ein. jeder tut es.", "INS BUCH",
 			"war hier. hat einiges geloest.",
+			"LEKTION {} VON 3", "LIVE - das Haus spielt gegen sich",
+			"Partie vorbei. die naechste beginnt allein.",
 		},
 	};
 
@@ -434,20 +453,27 @@ namespace
 {
 	// The board is drawn from the solver's side, so a puzzle where Black moves
 	// arrives rotated - same as chess.com.
+	// Which way is up: the puzzle rotates to its solver; every other view -
+	// Play, Watch, Learn - shows White at the bottom.
+	bool ChessWhiteUp()
+	{
+		return giChessStub >= 0 || gChessSolver == ChessGame::White;
+	}
+
 	void SquareToScreen(UINT8 sq, INT32& x, INT32& y)
 	{
 		const int file = ChessGame::FileOf(sq);
 		const int rank = ChessGame::RankOf(sq);
-		const int col  = gChessSolver == ChessGame::White ? file : 7 - file;
-		const int row  = gChessSolver == ChessGame::White ? 7 - rank : rank;
+		const int col  = ChessWhiteUp() ? file : 7 - file;
+		const int row  = ChessWhiteUp() ? 7 - rank : rank;
 		x = CH_BOARD_X + col * CH_SQ;
 		y = CH_BOARD_Y + row * CH_SQ;
 	}
 
 	UINT8 ScreenToSquare(int col, int row)
 	{
-		const int file = gChessSolver == ChessGame::White ? col : 7 - col;
-		const int rank = gChessSolver == ChessGame::White ? 7 - row : row;
+		const int file = ChessWhiteUp() ? col : 7 - col;
+		const int rank = ChessWhiteUp() ? 7 - row : row;
 		return ChessGame::MakeSquare(file, rank);
 	}
 
@@ -876,6 +902,19 @@ namespace
 		const int want = (item == 1) ? -1 : item;
 		if (want != giChessStub) ChessPlay(CH_SND_CLICK2, LOWVOLUME);
 		giChessStub = want;
+		if (want == 3 && giWatchResult == 0 && guiWatchNextMove == 0)
+		{
+			// first visit: the exhibition starts, already a few moves in
+			gWatchGame.SetStartPosition();
+			for (int i = 0; i < 6; ++i)
+			{
+				const ChessGame::Move m = gWatchGame.Search(2, 20, guiWatchSeed);
+				if (m.IsNull()) break;
+				gubWatchFrom = m.from; gubWatchTo = m.to;
+				gWatchGame.MakeMove(m);
+			}
+			guiWatchNextMove = ChessNow() + 900;
+		}
 		ChessRedraw();
 	}
 
@@ -898,6 +937,17 @@ namespace
 		if (gChessDay.flags & ChessDaily::FLAG_SIGNED) return;
 		gChessDay.flags |= ChessDaily::FLAG_SIGNED;
 		ChessPlay(CH_SND_CLICK);
+		ChessRedraw();
+	}
+
+	void ChessLearnPageCallback(MOUSE_REGION* region, UINT32 reason)
+	{
+		if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
+		if (giChessStub != 2) return;
+		const int want = giChessLesson + int(MSYS_GetRegionUserData(region, 0));
+		if (want < 0 || want > 2) return;
+		giChessLesson = want;
+		ChessPlay(CH_SND_CLICK, LOWVOLUME);
 		ChessRedraw();
 	}
 
@@ -984,6 +1034,19 @@ namespace
 		                  UINT16(CH_X(CH_BOARD_X + CH_BOARD_SIZE - 40)), UINT16(CH_Y(CH_BOARD_BOTTOM - 12)),
 		                  MSYS_PRIORITY_HIGH, CURSOR_WWW, MSYS_NO_CALLBACK,
 		                  ChessSignCallback);
+		MSYS_DefineRegion(&gChessLearnPrevRegion,
+		                  UINT16(CH_X(CH_BOARD_X + 2)), UINT16(CH_Y(CH_BOARD_Y + 96)),
+		                  UINT16(CH_X(CH_BOARD_X + 30)), UINT16(CH_Y(CH_BOARD_Y + 148)),
+		                  MSYS_PRIORITY_HIGH, CURSOR_WWW, MSYS_NO_CALLBACK,
+		                  ChessLearnPageCallback);
+		MSYS_SetRegionUserData(&gChessLearnPrevRegion, 0, -1);
+		MSYS_DefineRegion(&gChessLearnNextRegion,
+		                  UINT16(CH_X(CH_BOARD_X + CH_BOARD_SIZE - 30)), UINT16(CH_Y(CH_BOARD_Y + 96)),
+		                  UINT16(CH_X(CH_BOARD_X + CH_BOARD_SIZE - 2)), UINT16(CH_Y(CH_BOARD_Y + 148)),
+		                  MSYS_PRIORITY_HIGH, CURSOR_WWW, MSYS_NO_CALLBACK,
+		                  ChessLearnPageCallback);
+		MSYS_SetRegionUserData(&gChessLearnNextRegion, 0, 1);
+
 		MSYS_DefineRegion(&gChessLangRegion,
 		                  UINT16(CH_X(CH_BOARD_X + CH_BOARD_SIZE - 36)), UINT16(CH_Y(CH_PAGE_H - 18)),
 		                  UINT16(CH_X(CH_BOARD_X + CH_BOARD_SIZE)), UINT16(CH_Y(CH_PAGE_H - 4)),
@@ -1016,6 +1079,8 @@ namespace
 		for (MOUSE_REGION& r : gChessNavRegion) MSYS_RemoveRegion(&r);
 		MSYS_RemoveRegion(&gChessBannerRegion);
 		MSYS_RemoveRegion(&gChessSignRegion);
+		MSYS_RemoveRegion(&gChessLearnPrevRegion);
+		MSYS_RemoveRegion(&gChessLearnNextRegion);
 		MSYS_RemoveRegion(&gChessLangRegion);
 		MSYS_RemoveRegion(&gChessPrevDayRegion);
 		MSYS_RemoveRegion(&gChessNextDayRegion);
@@ -1132,7 +1197,11 @@ namespace
 		}
 	}
 
-	void ChessRenderBoard()
+	// The board core: squares, coordinates and pieces for any game. The
+	// puzzle-only extras (hint square, target dots, the dragged piece) stay in
+	// ChessRenderBoard, which wraps this for the daily page.
+	void ChessRenderBoardCore(const ChessGame& game, UINT8 lastFrom, UINT8 lastTo,
+	                          INT8 selected)
 	{
 		for (int row = 0; row < 8; ++row)
 		{
@@ -1140,8 +1209,8 @@ namespace
 			{
 				const UINT8 sq = ScreenToSquare(col, row);
 				const bool light = IsLightSquare(sq);
-				const bool lit = sq == gubChessLastFrom || sq == gubChessLastTo ||
-				                 (gbChessSelected >= 0 && sq == UINT8(gbChessSelected));
+				const bool lit = sq == lastFrom || sq == lastTo ||
+				                 (selected >= 0 && sq == UINT8(selected));
 				UINT32 rgb = lit ? (light ? CH_RGB_HL_LIGHT : CH_RGB_HL_DARK)
 				                 : (light ? CH_RGB_LIGHT : CH_RGB_DARK);
 				if (gfChessModal)
@@ -1152,6 +1221,49 @@ namespace
 				FillRect(CH_BOARD_X + col * CH_SQ, CH_BOARD_Y + row * CH_SQ, CH_SQ, CH_SQ, rgb);
 			}
 		}
+	}
+
+	void ChessRenderBoardCoreLate(const ChessGame& game)
+	{
+		// Coordinates sit inside the corner squares, in the opposite colour.
+		for (int i = 0; i < 8; ++i)
+		{
+			const UINT8 rankSq = ScreenToSquare(0, i);
+			const UINT8 fileSq = ScreenToSquare(i, 7);
+			const char rankGlyph[2] = { char('1' + ChessGame::RankOf(rankSq)), '\0' };
+			const char fileGlyph[2] = { char('a' + ChessGame::FileOf(fileSq)), '\0' };
+			const UINT8 onLight = gfChessModal ? FONT_GRAY6 : FONT_GRAY7;
+			const UINT8 onDark  = gfChessModal ? FONT_GRAY4 : FONT_MCOLOR_WHITE;
+			PrintAt(FONT10ARIAL, IsLightSquare(rankSq) ? onLight : onDark,
+			        CH_BOARD_X + 3, CH_BOARD_Y + i * CH_SQ + 4, rankGlyph);
+			PrintAt(FONT10ARIAL, IsLightSquare(fileSq) ? onLight : onDark,
+			        CH_BOARD_X + i * CH_SQ + CH_SQ - 8, CH_BOARD_BOTTOM - 11, fileGlyph);
+		}
+
+		RoundCorners(CH_BOARD_X, CH_BOARD_Y, CH_BOARD_SIZE, CH_BOARD_SIZE,
+		             CH_RADIUS, CH_RGB_CHROME);
+
+		if (!guiChessPieces) return;
+		for (int row = 0; row < 8; ++row)
+		{
+			for (int col = 0; col < 8; ++col)
+			{
+				const UINT8 sq = ScreenToSquare(col, row);
+				if (game.IsEmpty(sq)) continue;
+				if (&game == &gChessGame && gfChessDragging && sq == gubChessDragFrom) continue;
+				const UINT8 type = game.PieceAt(sq);
+				const UINT16 frame = UINT16((type - 1) +
+					(game.ColorAt(sq) == ChessGame::Black ? 6 : 0) +
+					(gfChessModal ? 12 : 0));
+				BltVideoObject(FRAME_BUFFER, guiChessPieces, frame,
+				               CH_X(CH_BOARD_X + col * CH_SQ), CH_Y(CH_BOARD_Y + row * CH_SQ));
+			}
+		}
+	}
+
+	void ChessRenderBoard()
+	{
+		ChessRenderBoardCore(gChessGame, gubChessLastFrom, gubChessLastTo, gbChessSelected);
 
 		// the hint marks the piece that has to move, nothing more
 		if (gfChessHintShown && guiChessPly < gChessSolution.size())
@@ -1192,44 +1304,7 @@ namespace
 			}
 		}
 
-		// Coordinates sit inside the corner squares, in the opposite colour.
-		// These go through a char buffer on purpose: ST::format renders a bare
-		// char as its numeric value, which turned the ranks into 49..56.
-		for (int i = 0; i < 8; ++i)
-		{
-			const UINT8 rankSq = ScreenToSquare(0, i);
-			const UINT8 fileSq = ScreenToSquare(i, 7);
-			const char rankGlyph[2] = { char('1' + ChessGame::RankOf(rankSq)), '\0' };
-			const char fileGlyph[2] = { char('a' + ChessGame::FileOf(fileSq)), '\0' };
-			const UINT8 onLight = gfChessModal ? FONT_GRAY6 : FONT_GRAY7;
-			const UINT8 onDark  = gfChessModal ? FONT_GRAY4 : FONT_MCOLOR_WHITE;
-			PrintAt(FONT10ARIAL, IsLightSquare(rankSq) ? onLight : onDark,
-			        CH_BOARD_X + 3, CH_BOARD_Y + i * CH_SQ + 4, rankGlyph);
-			PrintAt(FONT10ARIAL, IsLightSquare(fileSq) ? onLight : onDark,
-			        CH_BOARD_X + i * CH_SQ + CH_SQ - 8, CH_BOARD_BOTTOM - 11, fileGlyph);
-		}
-
-		RoundCorners(CH_BOARD_X, CH_BOARD_Y, CH_BOARD_SIZE, CH_BOARD_SIZE,
-		             CH_RADIUS, CH_RGB_CHROME);
-
-		if (!guiChessPieces) return;
-		for (int row = 0; row < 8; ++row)
-		{
-			for (int col = 0; col < 8; ++col)
-			{
-				const UINT8 sq = ScreenToSquare(col, row);
-				if (gChessGame.IsEmpty(sq)) continue;
-				// the piece in hand rides the cursor instead of its square
-				if (gfChessDragging && sq == gubChessDragFrom) continue;
-				const UINT8 type = gChessGame.PieceAt(sq);
-				// frames 12-23 are the dimmed twins, used while the card is up
-				const UINT16 frame = UINT16((type - 1) +
-					(gChessGame.ColorAt(sq) == ChessGame::Black ? 6 : 0) +
-					(gfChessModal ? 12 : 0));
-				BltVideoObject(FRAME_BUFFER, guiChessPieces, frame,
-				               CH_X(CH_BOARD_X + col * CH_SQ), CH_Y(CH_BOARD_Y + row * CH_SQ));
-			}
-		}
+		ChessRenderBoardCoreLate(gChessGame);
 
 		// the lifted piece, centred on the pointer. Mouse coords are already
 		// screen space, so these do not go through CH_X/CH_Y.
@@ -1488,6 +1563,69 @@ namespace
 		PrintCentred(FONT10ARIAL, FONT_GRAY7, cx, top + 44, T(CHS_STUB_BACK));
 	}
 
+	// A 160px diagram: the small sheet finally earns its place.
+	void ChessRenderMiniBoard(const char* fen, INT32 x, INT32 y)
+	{
+		ChessGame diagram;
+		if (!diagram.SetFen(fen)) return;
+		const INT32 sq = 20;
+		for (int row = 0; row < 8; ++row)
+		{
+			for (int col = 0; col < 8; ++col)
+			{
+				const bool light = ((col + row) & 1) == 0;
+				FillRect(x + col * sq, y + row * sq, sq, sq,
+				         light ? CH_RGB_LIGHT : CH_RGB_DARK);
+				const UINT8 board = ChessGame::MakeSquare(col, 7 - row);
+				if (diagram.IsEmpty(board) || !guiChessPiecesSmall) continue;
+				const UINT8 type = diagram.PieceAt(board);
+				const UINT16 frame = UINT16((type - 1) +
+					(diagram.ColorAt(board) == ChessGame::Black ? 6 : 0));
+				BltVideoObject(FRAME_BUFFER, guiChessPiecesSmall, frame,
+				               CH_X(x + col * sq), CH_Y(y + row * sq));
+			}
+		}
+		RoundCorners(x, y, 8 * sq, 8 * sq, 3, CH_RGB_PANEL);
+	}
+
+	// Grunty's book: one lesson per page, a diagram and three lines.
+	void ChessRenderLearn()
+	{
+		FillRounded(CH_BOARD_X, CH_BOARD_Y, CH_BOARD_SIZE, CH_BOARD_SIZE,
+		            CH_RGB_PANEL, CH_RADIUS, CH_RGB_CHROME);
+		const INT32 cx = CH_BOARD_X + CH_BOARD_SIZE / 2;
+		const ChessLesson& lesson = CHESS_LESSONS[giChessLesson];
+
+		PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, cx, CH_BOARD_Y + 8, lesson.title);
+		PrintCentred(FONT10ARIAL, FONT_GRAY4, cx, CH_BOARD_Y + 22,
+		             ST::format(T(CHS_LEARN_PAGE), giChessLesson + 1));
+
+		ChessRenderMiniBoard(lesson.fen, cx - 80, CH_BOARD_Y + 38);
+
+		for (int i = 0; i < 3; ++i)
+		{
+			PrintCentred(FONT10ARIAL, FONT_GRAY2, cx, CH_BOARD_Y + 206 + i * 13,
+			             lesson.lines[i]);
+		}
+
+		ChessDrawChevron(CH_BOARD_X + 16, CH_BOARD_Y + 118, true,
+		                 giChessLesson > 0 ? FROMRGB(148, 142, 136) : FROMRGB(74, 69, 64));
+		ChessDrawChevron(CH_BOARD_X + CH_BOARD_SIZE - 16, CH_BOARD_Y + 118, false,
+		                 giChessLesson < 2 ? FROMRGB(148, 142, 136) : FROMRGB(74, 69, 64));
+	}
+
+	// The house plays itself while nobody minds the shop - the Parlour's
+	// exhibition-table trick, at the chess board.
+	void ChessRenderWatch()
+	{
+		ChessRenderBoardCore(gWatchGame, gubWatchFrom, gubWatchTo, -1);
+		ChessRenderBoardCoreLate(gWatchGame);
+
+		FillRounded(CH_BOARD_X + 4, CH_BOARD_Y + 4, 10, 10, FROMRGB(196, 36, 36), 3, CH_RGB_LIGHT);
+		PrintAt(FONT10ARIAL, FONT_MCOLOR_WHITE, CH_BOARD_X + 18, CH_BOARD_Y + 4,
+		        T(giWatchResult ? CHS_WATCH_OVER : CHS_WATCH_LIVE));
+	}
+
 	// The guestbook. Sign once; the signature is forever.
 	void ChessRenderGuestbook()
 	{
@@ -1545,6 +1683,7 @@ void EnterChess()
 	gChessDay.flags |= ChessDaily::FLAG_DISCOVERED;
 
 	guiChessPieces = nullptr;
+	guiChessPiecesSmall = nullptr;
 	guiChessCoach  = nullptr;
 	guiChessIcons  = nullptr;
 	guiChessLogo   = nullptr;
@@ -1554,7 +1693,8 @@ void EnterChess()
 	gChessSelfNick = ST::string();
 	try
 	{
-		guiChessPieces = AddVideoObjectFromFile("sti/laptop/chesspieces.sti");
+		guiChessPieces      = AddVideoObjectFromFile("sti/laptop/chesspieces.sti");
+		guiChessPiecesSmall = AddVideoObjectFromFile("sti/laptop/chesspiecessmall.sti");
 	}
 	catch (...)
 	{
@@ -1619,6 +1759,7 @@ void ExitChess()
 {
 	ChessRemoveRegions();
 	if (guiChessPieces) { DeleteVideoObject(guiChessPieces); guiChessPieces = nullptr; }
+	if (guiChessPiecesSmall) { DeleteVideoObject(guiChessPiecesSmall); guiChessPiecesSmall = nullptr; }
 	if (guiChessCoach)  { DeleteVideoObject(guiChessCoach);  guiChessCoach  = nullptr; }
 	if (guiChessIcons)  { DeleteVideoObject(guiChessIcons);  guiChessIcons  = nullptr; }
 	if (guiChessLogo)   { DeleteVideoObject(guiChessLogo);   guiChessLogo   = nullptr; }
@@ -1633,6 +1774,18 @@ void RenderChess()
 	if (giChessStub == 4)
 	{
 		ChessRenderGuestbook();
+		ChessRenderBanner();
+		ChessRenderFooter();
+	}
+	else if (giChessStub == 2)
+	{
+		ChessRenderLearn();
+		ChessRenderBanner();
+		ChessRenderFooter();
+	}
+	else if (giChessStub == 3)
+	{
+		ChessRenderWatch();
 		ChessRenderBanner();
 		ChessRenderFooter();
 	}
@@ -1660,6 +1813,35 @@ void RenderChess()
 
 void HandleChess()
 {
+	// the exhibition ticks while it is on screen
+	if (giChessStub == 3 && ChessNow() >= guiWatchNextMove)
+	{
+		if (giWatchResult)
+		{
+			// the result hangs on screen a moment, then a fresh game starts
+			gWatchGame.SetStartPosition();
+			gubWatchFrom = gubWatchTo = ChessGame::NO_SQUARE;
+			giWatchResult = 0;
+		}
+		else
+		{
+			const ChessGame::Move m = gWatchGame.Search(2, 15, guiWatchSeed);
+			if (!m.IsNull())
+			{
+				gubWatchFrom = m.from; gubWatchTo = m.to;
+				gWatchGame.MakeMove(m);
+				ChessPlay(ChessMoveSound(m, gWatchGame.IsInCheck(gWatchGame.SideToMove()), false),
+				          LOWVOLUME);
+			}
+			if (m.IsNull() || gWatchGame.GetResult() != ChessGame::Result::Ongoing)
+			{
+				giWatchResult = 1;
+			}
+		}
+		guiWatchNextMove = ChessNow() + (giWatchResult ? 3600 : 1100 + Random(700));
+		ChessRedraw();
+	}
+
 	// a piece in hand has to be repainted every frame to keep up with the
 	// pointer, and the drop is resolved here rather than in a region callback
 	if (gfChessDragging)
