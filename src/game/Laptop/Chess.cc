@@ -73,7 +73,7 @@
 #define CH_MODAL_X      (CH_BOARD_X + (CH_BOARD_SIZE - CH_MODAL_W) / 2)
 #define CH_MODAL_Y      (CH_BOARD_Y + (CH_BOARD_SIZE - CH_MODAL_H) / 2)
 
-#define CH_DATE_Y       34
+#define CH_DATE_Y       28
 #define CH_COACH_Y      78
 #define CH_COACH_TILE   36
 #define CH_HINT_Y       (CH_PAGE_H - 34)
@@ -1167,9 +1167,9 @@ namespace
 		             CH_RADIUS, CH_RGB_CHROME);
 
 		const ST::string title = T(CHS_TITLE);
-		const INT32 titleW = ChessIconLabelWidth(FONT10ARIALBOLD, title);
-		ChessIconLabel(CH_ICON_PUZZLEMARK, cx - titleW / 2, 21,
-		               FONT10ARIALBOLD, FONT_MCOLOR_WHITE, title);
+		const INT32 titleW = ChessIconLabelWidth(FONT12ARIAL, title);
+		ChessIconLabel(CH_ICON_PUZZLEMARK, cx - titleW / 2, 20,
+		               FONT12ARIAL, FONT_MCOLOR_WHITE, title);
 
 		// date stepper: < [calendar] DAY n >
 		const ST::string day = ST::format("{} {}", T(CHS_DAY), giChessViewDay);

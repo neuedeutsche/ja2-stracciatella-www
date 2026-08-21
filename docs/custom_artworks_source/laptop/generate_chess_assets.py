@@ -97,13 +97,13 @@ PIECES = {
     # Neo's grammar, read off the set: a short body, a collar ring, a skirt
     # that flares, and every piece standing on the same flat base slab. The
     # mass sits low - these are not tall thin Staunton silhouettes.
-    # the original pawn read best: a big head, a real collar, a stepped foot
+    # head, then a collar bar wider than the head, then the bell: the collar
+    # only reads if it overhangs both the head above and the neck below
     "pawn": [
-        ("circle", 50, 29, 16),
-        ("poly", [(42, 41), (58, 41), (64, 64), (36, 64)]),
-        ("rect", 31, 58, 69, 69, 5),
-        ("poly", [(33, 69), (67, 69), (75, 81), (25, 81)]),
-        ("rect", 19, 79, 81, 94, 5),
+        ("circle", 50, 26, 15),
+        ("poly", [(30, 40), (70, 40), (64, 51), (36, 51)]),
+        ("poly", [(43, 50), (57, 50), (70, 82), (30, 82)]),
+        ("rect", 20, 80, 80, 95, 5),
     ],
     "rook": [
         ("rect", 21, 13, 79, 32, 2),
@@ -111,25 +111,26 @@ PIECES = {
         ("poly", [(32, 41), (68, 41), (71, 74), (29, 74)]),
         ("rect", 21, 71, 79, 90, 3),
     ],
+    # An egg, not a mitre: a fat rounded body with a small knob at the top
+    # and a vertical slot cut down into the upper right.
     "bishop": [
-        ("circle", 50, 9, 6),
-        ("poly", [(43, 12), (57, 12), (69, 44), (31, 44)]),
-        ("circle", 50, 38, 17),
-        ("poly", [(38, 52), (62, 52), (72, 78), (28, 78)]),
-        ("rect", 21, 75, 79, 92, 4),
+        ("circle", 42, 12, 8),
+        ("circle", 52, 28, 19),
+        ("circle", 50, 50, 26),
+        ("poly", [(34, 28), (70, 28), (74, 50), (26, 50)]),
+        ("poly", [(28, 50), (72, 50), (66, 82), (34, 82)]),
+        ("rect", 18, 78, 82, 95, 8),
     ],
-    # The reference is simpler than everything tried before it: triangular
-    # prongs fanning from a common origin, a ball rounding each tip, and one
-    # wide footer overlapping the fan - wider than the fan itself. No collar,
-    # no skirt.
     "queen": [
         # Four copies of one sharp triangle - wide base, apex high - set side
         # by side with their bases overlapping, the outer pair leaning
         # outward. Balls round the apexes, a footer wider than the fan below.
-        ("poly", [(24, 80), (56, 80), (37, 14)]),
-        ("poly", [(44, 80), (76, 80), (63, 14)]),
-        ("poly", [(14, 84), (44, 78), (12, 32)]),
-        ("poly", [(56, 78), (86, 84), (88, 32)]),
+        # the sides run diagonally inward: the crown is widest at the outer
+        # balls and slightly narrower where it meets the footer
+        ("poly", [(28, 82), (56, 82), (37, 14)]),
+        ("poly", [(44, 82), (72, 82), (63, 14)]),
+        ("poly", [(26, 84), (48, 78), (12, 32)]),
+        ("poly", [(52, 78), (74, 84), (88, 32)]),
         ("circle", 37, 14, 8),
         ("circle", 63, 14, 8),
         ("circle", 12, 32, 8),
@@ -141,7 +142,7 @@ PIECES = {
     "king": [
         ("rect", 44, 2, 56, 27, 1),
         ("rect", 33, 9, 67, 20, 1),
-        ("poly", [(31, 27), (69, 27), (72, 62), (28, 62)]),
+        ("poly", [(27, 27), (73, 27), (75, 62), (25, 62)]),
         ("rect", 29, 60, 71, 70, 2),
         ("poly", [(36, 70), (64, 70), (74, 83), (26, 83)]),
         ("rect", 19, 80, 81, 95, 4),
@@ -166,13 +167,15 @@ CUTOUTS = {
         ("rect", 36, 10, 45, 28, 0),
         ("rect", 55, 10, 64, 28, 0),
     ],
-    # the arch through the king's crown
+    # the hollow in the king is two rings, one off to each side, overlapping
+    # so they connect in the centre
     "king": [
-        ("rect", 42, 33, 58, 55, 8),
+        ("circle", 44, 42, 7),
+        ("circle", 56, 42, 7),
     ],
     "bishop": [
-        # the mitre's diagonal slit: short, upper right down to lower left
-        ("poly", [(57, 23), (61, 27), (47, 41), (43, 37)]),
+        # the slot: cut from above the egg straight down into it
+        ("rect", 51, 2, 59, 38, 3),
     ],
 }
 
