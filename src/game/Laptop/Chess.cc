@@ -1187,8 +1187,12 @@ namespace
 
 		const ST::string title = T(CHS_TITLE);
 		const INT32 titleW = ChessIconLabelWidth(FONT12ARIAL, title);
+		// no bold cut of the 12pt face exists, so bold is faked the 1999 way:
+		// the label printed twice, one pixel apart
 		ChessIconLabel(CH_ICON_PUZZLEMARK, cx - titleW / 2, 20,
 		               FONT12ARIAL, FONT_MCOLOR_WHITE, title);
+		PrintAt(FONT12ARIAL, FONT_MCOLOR_WHITE, cx - titleW / 2 + 19,
+		        20 - GetFontHeight(FONT12ARIAL) / 2, title);
 
 		// date stepper: < [calendar] DAY n >
 		const ST::string day = ST::format("{} {}", T(CHS_DAY), giChessViewDay);

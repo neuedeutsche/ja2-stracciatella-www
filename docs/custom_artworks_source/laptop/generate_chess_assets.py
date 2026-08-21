@@ -168,7 +168,10 @@ PIECES = {
             (76, 88), (74, 48), (68, 22), (58, 6), (50, 16), (42, 12),
             (24, 34), (10, 50), (14, 60), (32, 58), (38, 70), (36, 88),
         ]),
-        ("rect", 18.75, 78.125, 81.25, 93.75, 0),
+        # the belly: a semicircle low in front, bulging past the chest line.
+        # Everything is shaved flat at the foot line and the queen's foot bar
+        # is overlaid after the cut.
+        ("circle", 46, 88, 26),
     ],
 }
 
@@ -196,9 +199,10 @@ CUTOUTS = {
         # the slot: cut from above the egg straight down into it
         ("rect", 52, 3, 60, 52, 2),
     ],
+    # the floor: body and belly are shaved flat at the foot's top line; the
+    # foot itself is an overlay, so it survives this cut
     "knight": [
-        # the throat: one concave bite under the jaw
-
+        ("rect", 0, 76, 100, 112, 0),
     ],
 }
 
@@ -206,6 +210,8 @@ CUTOUTS = {
 # knob rides over the slot rather than being notched by it.
 OVERLAYS = {
     "bishop": [("circle", 50, 16, 10)],
+    # the same foot bar the queen stands on
+    "knight": [("rect", 12, 76, 88, 95, 8)],
 }
 
 # Bilaterally symmetric pieces are mirrored mechanically: the left half is
