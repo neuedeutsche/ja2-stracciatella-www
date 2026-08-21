@@ -123,17 +123,18 @@ PIECES = {
     # wide footer overlapping the fan - wider than the fan itself. No collar,
     # no skirt.
     "queen": [
-        # computed radial fan: ball r10 over prongs 10 wide at the tip, inner
-        # pair 14 degrees off vertical so their balls close but do not merge
-        ("circle", 15, 38, 10),
-        ("circle", 35, 20, 10),
-        ("circle", 65, 20, 10),
-        ("circle", 85, 38, 10),
-        ("poly", [(11, 41), (18, 35), (53, 70), (40, 81)]),
-        ("poly", [(30, 21), (40, 19), (57, 72), (40, 76)]),
-        ("poly", [(60, 19), (70, 21), (60, 76), (43, 72)]),
-        ("poly", [(82, 35), (89, 41), (60, 81), (47, 70)]),
-        ("rect", 12, 76, 88, 95, 8),
+        # Four copies of one sharp triangle - wide base, apex high - set side
+        # by side with their bases overlapping, the outer pair leaning
+        # outward. Balls round the apexes, a footer wider than the fan below.
+        ("poly", [(24, 80), (56, 80), (37, 14)]),
+        ("poly", [(44, 80), (76, 80), (63, 14)]),
+        ("poly", [(14, 84), (44, 78), (12, 32)]),
+        ("poly", [(56, 78), (86, 84), (88, 32)]),
+        ("circle", 37, 14, 8),
+        ("circle", 63, 14, 8),
+        ("circle", 12, 32, 8),
+        ("circle", 88, 32, 8),
+        ("rect", 12, 78, 88, 95, 8),
     ],
     # A thick cross planted on one hard mass: a barely-tapered block down to
     # the collar, then the skirt. The arch is punched through the block.
