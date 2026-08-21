@@ -554,7 +554,7 @@ void AddEmailMessage(INT32 iMessageOffset, INT32 iMessageLength, INT32 iDate, UI
 	}
 	else if (iMessageOffset == CHESS_EMAIL_INVITE)
 	{
-		pSubject = "chach.com";
+		pSubject = "Chach.com";
 	}
 	else if (iMessageOffset == CHESS_EMAIL_STREAK)
 	{

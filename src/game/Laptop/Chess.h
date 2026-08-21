@@ -3,7 +3,11 @@
 
 #include "Types.h"
 
+#include <string_theory/string>
+
 void EnterChess(void);
+bool ChessHandleTypedKey(UINT32 usParam, UINT16 usKeyState);
+bool ChessHandleTextInput(const ST::utf32_buffer& codepoints);
 void ExitChess(void);
 void RenderChess(void);
 void HandleChess(void);
@@ -17,6 +21,7 @@ struct ChessPersist
 	UINT8  ubBestStreak;
 	UINT8  ubHearts;        // attempts left on usDay
 	UINT8  ubFlags;         // see the CHESS_FLAG_* bits below
+	char   szLine[121];     // the signed guestbook line; empty = the stock one
 };
 
 // Mirrors ChessDaily's flag bits, exposed so the laptop can gate discovery

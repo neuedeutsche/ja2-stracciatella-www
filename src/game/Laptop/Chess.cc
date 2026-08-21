@@ -26,6 +26,8 @@
 #include "HImage.h"
 #include "IMP_Compile_Character.h"
 #include "Input.h"
+
+#include <SDL_keycode.h>
 #include "Laptop.h"
 #include "LaptopSave.h"
 #include "Local.h"
@@ -41,6 +43,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -54,19 +57,21 @@
 // The rail and panel are inset from the page edges and rounded, so the dark
 // chrome shows as a margin around them.
 #define CH_PAGE_H       400
-#define CH_INSET        6
+#define CH_INSET        8
 #define CH_RADIUS       4
+// the side panels round more generously than the board
+#define CH_PANEL_RADIUS 8
 // The rail is the one exception: it runs the full height of the page and sits
 // flush to the left edge, so no chrome shows around it.
 #define CH_NAV_X        0
 #define CH_NAV_W        70
 #define CH_SQ           34
-#define CH_BOARD_X      74
+#define CH_BOARD_X      76
 #define CH_BOARD_Y      40
 #define CH_BOARD_SIZE   (8 * CH_SQ)
 #define CH_BOARD_BOTTOM (CH_BOARD_Y + CH_BOARD_SIZE)
 #define CH_PANEL_X      352
-#define CH_PANEL_W      144
+#define CH_PANEL_W      142
 // hearts live in the rail beside the avatar, so they are the small variant
 #define CH_HEART_PITCH  9
 
@@ -79,7 +84,8 @@
 #define CH_DATE_Y       28
 #define CH_COACH_Y      78
 #define CH_COACH_TILE   36
-#define CH_HINT_Y       (CH_PAGE_H - 34)
+#define CH_FOOT_Y       (CH_PAGE_H - CH_INSET - 34)
+#define CH_HINT_Y       (CH_FOOT_Y + 6)
 #define CH_HINT_H       22
 
 // The day stepper's arrows sit at fixed points on the panel edges while the
@@ -112,8 +118,20 @@
 #define CH_BANNER_H     30
 #define CH_BANNER_Y     (CH_PAGE_H - 20 - CH_BANNER_H)
 #define CH_COUNTER_Y    (CH_BANNER_Y - 13)
-// player rows for the live views, above and below the board
-#define CH_ROW_TOP_Y    4
+// player rows for the live views, above and below the board. The faces come
+// from the big A.I.M. portraits, cropped square and downsampled a few pixels
+// shy of a board cell so they stay crisp.
+#define CH_ROW_FACE     30
+// guestbook geometry: the book fills the page height, each entry carries an
+// avatar, and the sidebar hosts the skyscraper ad
+#define CH_GB_TOP       26
+// the composer card, centred over the book
+#define CH_GBM_W        260
+#define CH_GBM_H        170
+#define CH_GBM_X        (CH_BOARD_X + (CH_BOARD_SIZE - CH_GBM_W) / 2)
+#define CH_GBM_Y        80
+#define CH_GB_FACE      26
+#define CH_ROW_TOP_Y    6
 #define CH_ROW_BOT_Y    (CH_BOARD_BOTTOM + 3)
 
 #define CH_REPLY_DELAY  650  // ms before the scripted reply lands
@@ -139,6 +157,8 @@
 // Sections are separated by a shift in ground tone rather than by rules, and
 // the shift goes down: a sunk band, never a brighter one.
 #define CH_RGB_PANEL_SUNK  FROMRGB( 29,  26,  24)
+// the guestbook's row separator: a hairline, read more than seen
+#define CH_RGB_ROW_SEP     FROMRGB( 48,  44,  40)
 #define CH_RGB_CTA         FROMRGB(129, 182,  76)
 #define CH_RGB_HEART_SPENT FROMRGB( 70,  68,  65)
 // the account row: the nickname is suggested rather than set, two grey bars
@@ -202,6 +222,7 @@ namespace
 	{
 		ProfileID   pid;
 		const char* handle;
+		const char* title;  // "IM"-style chess title; "" for the untitled
 		int         rating;
 		int         depth;
 		int         err;    // percent of moves played at random
@@ -209,13 +230,23 @@ namespace
 	};
 	static const ChessSeat CHESS_SEATS[6] =
 	{
-		{ IVAN,   "@ivan_d",  2145, 3,  4, 25 },
-		{ BUNS,   "@buns",    1994, 3, 10, 40 },
-		{ SCOPE,  "@scope",   1873, 2,  8, 50 },
-		{ FOX,    "@foxtrot", 1731, 2, 16, 65 },
-		{ IGOR,   "@igor_k",  1677, 2, 24, 70 },
-		{ SPIDER, "@spider",  1512, 1, 30, 80 },
+		{ IVAN,   "@ivan_d",  "IM", 2145, 3,  4, 25 },
+		{ BUNS,   "@buns",    "FM", 1994, 3, 10, 40 },
+		{ SCOPE,  "@scope",   "CM", 1873, 2,  8, 50 },
+		{ FOX,    "@foxtrot", "",   1731, 2, 16, 65 },
+		{ IGOR,   "@igor_k",  "",   1677, 2, 24, 70 },
+		{ SPIDER, "@spider",  "",   1512, 1, 30, 80 },
 	};
+
+	// the guestbook looks a signer's title up by their handle
+	const char* ChessTitleForHandle(const ST::string& handle)
+	{
+		for (const ChessSeat& seat : CHESS_SEATS)
+		{
+			if (handle == seat.handle && seat.title[0]) return seat.title;
+		}
+		return nullptr;
+	}
 	int gWatchSeat[2] = { 0, 1 };            // [0] plays White, [1] Black
 	SGPVSurface* gWatchFaceHalf[2] = { nullptr, nullptr };
 	std::vector<ST::string> gWatchSan;       // the exhibition's move list, SAN
@@ -223,7 +254,10 @@ namespace
 	// Play: a live game against the proprietor. You are White; he is not in a
 	// hurry.
 	ChessGame gPlayGame;
-	int    giPlayState   = 0;   // 0 your move, 1 he is thinking, 2 over
+	int    giPlayState   = 3;   // 0 your move, 1 thinking, 2 over, 3 seeking
+	int    giPlaySeat    = -1;  // index into CHESS_SEATS once paired
+	UINT32 guiPlaySeekDue = 0;
+	SGPVSurface* gPlayOppFace = nullptr;
 	UINT32 guiPlayDue    = 0;
 	UINT8  gubPlayFrom   = ChessGame::NO_SQUARE;
 	UINT8  gubPlayTo     = ChessGame::NO_SQUARE;
@@ -254,7 +288,8 @@ namespace
 	SGPVObject* guiChessCoach  = nullptr;  // Grunty, 29x33
 	SGPVObject* guiChessIcons  = nullptr;  // 7 nav and panel icons, 14x14
 	SGPVObject* guiChessLogo   = nullptr;  // green pawn, 22 and 14
-	SGPVObject* guiChessBanner = nullptr;  // 3 ad slots, 272x30
+	SGPVObject* guiChessAdDragon = nullptr; // the Parlour's medallion, borrowed for its ad
+	SGPVObject* guiChessAdTiles  = nullptr; // and two of its tiles: the ring and the bird
 	SGPVObject* guiChessSelf   = nullptr;  // the player's I.M.P. portrait
 	SGPVSurface* guiChessSelfHalf  = nullptr;  // 16bpp bakes for half-size rows
 	SGPVSurface* guiChessCoachHalf = nullptr;
@@ -284,8 +319,12 @@ namespace
 	MOUSE_REGION gChessHintRegion;
 	MOUSE_REGION gChessNavRegion[5];
 	MOUSE_REGION gChessBannerRegion;
+	MOUSE_REGION gChessAdRegion;
 	MOUSE_REGION gChessSignRegion;
-	MOUSE_REGION gChessLangRegion;
+	MOUSE_REGION gChessGbPrevRegion;
+	MOUSE_REGION gChessGbNextRegion;
+	MOUSE_REGION gChessGbPostRegion;
+	MOUSE_REGION gChessGbCloseRegion;
 	MOUSE_REGION gChessPrevDayRegion;
 	MOUSE_REGION gChessNextDayRegion;
 	MOUSE_REGION gChessModalCloseRegion;
@@ -310,10 +349,11 @@ namespace
 		CHS_DOWN_TITLE, CHS_DOWN_1, CHS_DOWN_2, CHS_DOWN_3,
 		CHS_STUB_TITLE, CHS_STUB_PLAY, CHS_STUB_LEARN, CHS_STUB_WATCH,
 		CHS_STUB_GROUPS, CHS_STUB_BACK, CHS_VISITOR,
-		CHS_GB_TITLE, CHS_GB_PROMPT, CHS_GB_SIGN, CHS_GB_YOURS,
+		CHS_GB_TITLE, CHS_GB_PROMPT, CHS_GB_SIGN, CHS_GB_YOURS, CHS_GB_WRITE,
+		CHS_GB_MOD,
 		CHS_LEARN_PAGE, CHS_WATCH_LIVE, CHS_WATCH_OVER,
 		CHS_PLAY_OPP, CHS_PLAY_YOUR, CHS_PLAY_THINK, CHS_PLAY_WIN,
-		CHS_PLAY_LOSS, CHS_PLAY_DRAW, CHS_PLAY_NEW, CHS_LEARN_NEXT,
+		CHS_PLAY_LOSS, CHS_PLAY_DRAW, CHS_PLAY_NEW, CHS_LEARN_NEXT, CHS_PLAY_SEEK,
 		CHS_COUNT
 	};
 
@@ -341,12 +381,14 @@ namespace
 			"back to ze puzzle",
 			"you are visitor no.",
 			"GUESTBOOK", "sign it. everyone signs it.", "SIGN ZE BOOK",
-			"was here. solved some.",
+			"was here. solved some.", "write in ze book...",
+			"ze moderation reads everything.",
 			"LESSON {} OF 3", "LIVE - ze house plays itself",
 			"game over. ze next one starts alone.",
 			"GRUNTY", "your move.", "he is thinking. he does zis.",
 			"you beat ze proprietor.", "ze proprietor wins. again.",
 			"a draw. nobody is happy.", "NEW GAME", "NEXT LESSON",
+			"seeking opponent...",
 		},
 		{
 			"TAGESRAETSEL", "TAG", "WERTUNG", "WEISS ZIEHT", "SCHWARZ ZIEHT",
@@ -370,12 +412,14 @@ namespace
 			"zurueck zum Raetsel",
 			"Sie sind Besucher Nr.",
 			"GAESTEBUCH", "tragen Sie sich ein. jeder tut es.", "INS BUCH",
-			"war hier. hat einiges geloest.",
+			"war hier. hat einiges geloest.", "schreiben Sie in ze Buch...",
+			"ze Moderation liest alles.",
 			"LEKTION {} VON 3", "LIVE - das Haus spielt gegen sich",
 			"Partie vorbei. die naechste beginnt allein.",
 			"GRUNTY", "Sie sind am Zug.", "er denkt. das macht er so.",
 			"Sie haben den Betreiber geschlagen.", "der Betreiber gewinnt. wieder.",
 			"Remis. niemand ist gluecklich.", "NEUE PARTIE", "NAECHSTE LEKTION",
+			"suche Gegner...",
 		},
 	};
 
@@ -384,17 +428,79 @@ namespace
 	// The guestbook: cast regulars, and the accidental traffic a typo domain
 	// earns. Entries are user content, so they stay in whatever language
 	// their author typed.
-	struct ChessGuestEntry { const char* handle; const char* line; };
+	struct ChessGuestEntry
+	{
+		const char* handle;
+		const char* name;  // fallback display name; a merc's profile overrides
+		const char* date;  // when they signed, 1999 style
+		UINT8       lines; // wrapped message lines; the row is sized from this
+		ProfileID   pid;   // CH_NO_PID: not a merc, the tinted disc stands in
+		UINT32      tint;  // disc colour for the portraitless
+		const char* line;
+	};
+	constexpr ProfileID CH_NO_PID = 0xFF;
+	// Four pages of five: the regulars, the accidental traffic a typo domain
+	// earns, Arulco reading along, and the complaints department. The dates
+	// run back into the '80s: ze book predates the site, the web, and one
+	// wall - Grunty migrated it from paper and no one asks how.
 	const ChessGuestEntry CHESS_GUESTBOOK[] =
 	{
-		{ "@grunty",       "please sign properly. no links. no recipes." },
-		{ "@ivan_d",       "good puzzles. no nonsense." },
-		{ "@e11iot",       "the rook one made me feel things. day 4 i think" },
-		{ "@dorothy_1938", "is this the crochet ring?? the button said NEXT SITE" },
-		{ "@no_refunds",   "nice traffic numbers. ever consider sponsorship? call me" },
-		{ "@chachtourism", "we are the OFFICIAL page of Chach, Slovakia. stop e-mailing us" },
-		{ "@the_house",    "we also run games. ours pay out. mostly to us." },
+		{ "@grunty", "Helmut Grunther", "11/09/1987",        3, GRUNTY,    FROMRGB( 90, 130,  70),
+		  "please sign properly. no links. no recipes. ze book is for chess and chess-adjacent feelings only." },
+		{ "@ivan_d", "Ivan Dolvich", "03/17/1989",        1, IVAN,      FROMRGB( 70,  90, 140),
+		  "good puzzles. no nonsense." },
+		{ "@buns", "Mary Beth Wilkens", "06/24/1992",          3, BUNS,      FROMRGB(120, 100,  60),
+		  "I show the lessons to my students. the German translation is correct. I checked it twice and found nothing. annoyed." },
+		{ "@scope", "Sheila Sterling", "10/02/1995",         3, SCOPE,     FROMRGB( 70, 110, 100),
+		  "solved day 12 in one attempt from a moving jeep, laptop balanced on a crate of ammunition. do not tell me about your office." },
+		{ "@steroid", "Bobby Gontarski", "04/18/1997",       3, STEROID,   FROMRGB(100,  90, 130),
+		  "in Poland we play with no clock and no mercy. site is good. pieces could be more bigger." },
+		{ "@dorothy_1938", "Dorothy Cummins", "02/11/1998",  3, CH_NO_PID, FROMRGB(164,  84, 124),
+		  "is this the crochet ring?? the button said NEXT SITE. i have been here four days now. the horse one is my favourite." },
+		{ "@chachtourism", "Chach Tourism Board", "06/30/1998",  3, CH_NO_PID, FROMRGB( 60, 110, 170),
+		  "we are the OFFICIAL page of Chach, Slovakia. we get your e-mails. we do not want your e-mails. stop." },
+		{ "@webring_admin", "The WebRing", "09/14/1998", 3, CH_NO_PID, FROMRGB( 90,  90,  90),
+		  "removed from the Chess WebRing pending review: excessive load times, suspicious hit counter. reapply in 30 days." },
+		{ "@no_refunds", "Marty", "11/23/1998",    2, CH_NO_PID, FROMRGB(190, 120,  40),
+		  "nice traffic numbers. ever consider sponsorship? call me" },
+		{ "@prague_cc", "Prague Chess Club", "01/07/1999",     3, CH_NO_PID, FROMRGB(140,  70,  60),
+		  "you are not affiliated with any federation we recognize. remove the flag or we write again." },
+		{ "@the_house", "The House", "01/28/1999",     2, CH_NO_PID, FROMRGB(150,  40,  40),
+		  "we also run games. ours pay out. mostly to us. no crocodiles in ours either." },
+		{ "@skyrider", "Skyrider", "02/19/1999",      3, SKYRIDER,  FROMRGB( 70, 120, 140),
+		  "GOOD reading while WAITING at the landing pad for someone to remember FUEL is not free. hint. hint." },
+		{ "@pablo_airport", "Pablo", "03/06/1999", 3, PABLO,     FROMRGB(110, 110,  60),
+		  "packages sometimes arrive with pieces missing. this is normal, is customs, is not my fault. good puzzles." },
+		{ "@micky_o", "Micky O'Brien", "03/22/1999",       3, MICKY,     FROMRGB(150, 100,  50),
+		  "fine site. if anyone here buys crocodile skins, i am in the bar in Estoni until thursday. also elephant." },
+		{ "@biff_m", "Biff Apscott", "04/09/1999",        3, BIFF,      FROMRGB( 90, 120,  90),
+		  "is there a way to practice being braver before the pieces start taking each other. asking for chess reasons." },
+		{ "@igor_k", "Igor Dolvich", "04/17/1999",        2, IGOR,      FROMRGB( 80, 100, 120),
+		  "uncle Ivan says the puzzles are good. so they are good." },
+		{ "@foxtrot", "Cynthia Guzzman", "04/25/1999",       1, FOX,       FROMRGB(160,  90,  90),
+		  "the knight one on day 9 was rude." },
+		{ "@spider", "Spider", "05/02/1999",        3, SPIDER,    FROMRGB( 60, 100,  90),
+		  "lost to the proprietor eleven games in a row. I am a nurse. I have seen things die slower." },
+		{ "@a_free_arulco", "A Patriot", "05/11/1999", 3, CH_NO_PID, FROMRGB( 80, 110,  60),
+		  "a liberated Arulco will have a chess club in every town. mark these words, friend. and tell no one you read them." },
+		{ "@flo_m", "Flo Malone", "05/19/1999",         3, FLO,       FROMRGB(170, 110, 140),
+		  "traded my queen for a horse because the horse looked nicer. no regrets. the site said MISTAKE which felt personal." },
 	};
+	constexpr size_t CH_GB_COUNT = sizeof(CHESS_GUESTBOOK) / sizeof(CHESS_GUESTBOOK[0]);
+	constexpr int CH_GB_PER_PAGE = 5;
+	constexpr int CH_GB_PAGES = int((CH_GB_COUNT + CH_GB_PER_PAGE - 1) / CH_GB_PER_PAGE);
+	int giChessGbPage = 0;
+	MOUSE_REGION gChessGbNumRegion[CH_GB_PAGES];
+	// the composer: a modal the sign button opens; what you type is yours,
+	// survives the save, and ze moderation reads it either way
+	bool gfChessGbCompose = false;
+	std::string gChessGbInput;
+	std::string gChessGuestLine;  // the posted line; empty means the standard one
+	constexpr size_t CH_GB_LINE_MAX = 120;
+	SGPVSurface* gGuestFace[CH_GB_COUNT] = {};
+	ST::string gGuestName[CH_GB_COUNT];
+	SGPVSurface* gGuestSelfFace = nullptr;
+	ST::string gChessSelfName;
 
 	const char* T(ChessStr id) { return CHESS_TEXT[gfChessGerman ? 1 : 0][id]; }
 
@@ -479,16 +585,80 @@ namespace
 
 	UINT32 ChessNow() { return GetJA2Clock(); }
 
-	// Bake a face into a 16bpp surface once, at load, for a plain 1:1 blit
-	// per frame. (The engine's half blitter wants 8bpp sources - that was the
-	// Watch crash - so the rows simply use the face at its natural size.)
-	SGPVSurface* ChessBakeFace(SGPVObject* face)
+	// Bake a face into a 16bpp surface once, at load, scaled to one board
+	// cell (34px tall, nearest neighbour) so the row avatars measure an
+	// eighth of the board. The ETRLE data is decoded directly and pushed
+	// through the object's own palette; the engine's half blitter cannot be
+	// used here - it reads 8bpp sources, which was the Watch crash.
+	// The book shows first names only - the full A.I.M. billing is too wide
+	// for a row. A short title ("Dr.") drags the given name along with it.
+	ST::string ChessFirstName(const ST::string& full)
+	{
+		const char* z = full.c_str();
+		const char* sp = std::strchr(z, ' ');
+		if (!sp) return full;
+		if (sp - z <= 3 && sp[-1] == '.')
+		{
+			const char* sp2 = std::strchr(sp + 1, ' ');
+			return sp2 ? ST::string(z, sp2 - z) : full;
+		}
+		return ST::string(z, sp - z);
+	}
+
+	// The big A.I.M. portrait when the profile has one; the 33 thumbnail
+	// upscales into mush, the big face downsamples cleanly.
+	SGPVObject* ChessLoadPortrait(MERCPROFILESTRUCT const& profile)
+	{
+		try { return LoadBigPortrait(profile); }
+		catch (...) { return Load33Portrait(profile); }
+	}
+
+	SGPVSurface* ChessBakeFace(SGPVObject* face, INT32 size = CH_SQ)
 	{
 		if (!face) return nullptr;
 		const ETRLEObject& e = face->SubregionProperties(0);
-		SGPVSurface* surf = AddVideoSurface(e.usWidth, e.usHeight, PIXEL_DEPTH);
+		const INT32 w = e.usWidth, h = e.usHeight;
+		if (w <= 0 || h <= 0) return nullptr;
+
+		std::vector<UINT8> pixels(size_t(w) * h, 0);
+		const UINT8* in = face->PixData(e);
+		for (INT32 y = 0; y < h; ++y)
+		{
+			INT32 x = 0;
+			while (*in != 0)
+			{
+				const UINT8 code = *in++;
+				const UINT8 run  = code & 0x7F;
+				if (code & 0x80) x += run;
+				else for (UINT8 k = 0; k < run && x < w; ++k) pixels[size_t(y) * w + x++] = *in++;
+			}
+			++in;  // row terminator
+		}
+
+		const UINT16* pal = face->Palette16();
+		if (!pal) return nullptr;
+
+		// crop to a square biased toward the top - the big portraits carry
+		// shoulders the avatar has no room for - then downsample
+		const INT32 side = w < h ? w : h;
+		const INT32 sx = (w - side) / 2;
+		const INT32 sy = (h - side) / 4;
+		SGPVSurface* surf = AddVideoSurface(UINT16(size), UINT16(size), PIXEL_DEPTH);
 		surf->Fill(Get16BPPColor(CH_RGB_CHROME));
-		BltVideoObject(surf, face, 0, 0, 0);
+		{
+			SGPVSurface::Lock lock(surf);
+			UINT16* out = lock.Buffer<UINT16>();
+			const UINT32 pitch = lock.Pitch() / 2;
+			for (INT32 y = 0; y < size; ++y)
+			{
+				for (INT32 x = 0; x < size; ++x)
+				{
+					const UINT8 v = pixels[size_t(sy + y * side / size) * w
+					                       + size_t(sx + x * side / size)];
+					if (v) out[y * pitch + x] = pal[v];
+				}
+			}
+		}
 		return surf;
 	}
 
@@ -520,8 +690,8 @@ namespace
 			if (gWatchFaceHalf[i]) { DeleteVideoSurface(gWatchFaceHalf[i]); gWatchFaceHalf[i] = nullptr; }
 			try
 			{
-				SGPVObject* face = Load33Portrait(GetProfile(CHESS_SEATS[gWatchSeat[i]].pid));
-				gWatchFaceHalf[i] = ChessBakeFace(face);
+				SGPVObject* face = ChessLoadPortrait(GetProfile(CHESS_SEATS[gWatchSeat[i]].pid));
+				gWatchFaceHalf[i] = ChessBakeFace(face, CH_ROW_FACE);
 				DeleteVideoObject(face);
 			}
 			catch (...)
@@ -570,6 +740,8 @@ ChessPersist ChessGetPersist()
 	p.ubBestStreak    = gChessDay.bestStreak;
 	p.ubHearts        = gChessDay.hearts;
 	p.ubFlags         = gChessDay.flags;
+	std::memset(p.szLine, 0, sizeof(p.szLine));
+	std::strncpy(p.szLine, gChessGuestLine.c_str(), sizeof(p.szLine) - 1);
 	return p;
 }
 
@@ -581,6 +753,13 @@ void ChessSetPersist(const ChessPersist& p)
 	gChessDay.bestStreak    = p.ubBestStreak;
 	gChessDay.hearts        = std::min<UINT8>(p.ubHearts, ChessDaily::MAX_HEARTS);
 	gChessDay.flags         = p.ubFlags;
+	gChessGuestLine.clear();
+	for (size_t i = 0; i < sizeof(p.szLine) && p.szLine[i]; ++i)
+	{
+		// old saves hold zeroes here; anything unprintable is not ours
+		const char c = p.szLine[i];
+		if (c >= 32 && c < 127) gChessGuestLine += c;
+	}
 }
 
 // --- board geometry -------------------------------------------------------
@@ -657,6 +836,20 @@ namespace
 	{
 		FillRect(x, y, w, h, rgb);
 		RoundCorners(x, y, w, h, radius, bg);
+	}
+
+	// Rounded fill that never paints outside its own outline - for cards
+	// floating over variegated ground (the dimmed board), where there is no
+	// single colour to hand the corners back to.
+	void FillRoundedOnly(INT32 x, INT32 y, INT32 w, INT32 h, UINT32 rgb, int radius)
+	{
+		for (int row = 0; row < radius; ++row)
+		{
+			const int inset = CornerInset(row, radius);
+			FillRect(x + inset, y + row, w - 2 * inset, 1, rgb);
+			FillRect(x + inset, y + h - 1 - row, w - 2 * inset, 1, rgb);
+		}
+		FillRect(x, y + radius, w, h - 2 * radius, rgb);
 	}
 
 	void PrintAt(SGPFont font, UINT8 colour, INT32 x, INT32 y, const ST::string& text)
@@ -979,11 +1172,29 @@ namespace
 	{
 		gPlayGame.SetStartPosition();
 		gPlaySan.clear();
-		giPlayState = 0;
-		giPlaySaid  = CHS_PLAY_YOUR;
+		giPlayState = 3;
+		giPlaySeat  = -1;
+		giPlaySaid  = CHS_PLAY_SEEK;
+		guiPlaySeekDue = ChessNow() + 1400 + Random(2000);
 		guiPlayDue  = 0;
 		gubPlayFrom = gubPlayTo = ChessGame::NO_SQUARE;
 		gbChessSelected = -1;
+		if (gPlayOppFace) { DeleteVideoSurface(gPlayOppFace); gPlayOppFace = nullptr; }
+	}
+
+	// Your opponent plays like themselves: their depth, their blunders, their
+	// greed - the same triple the exhibition seats use.
+	ChessGame::Move ChessPlayPickMove()
+	{
+		const ChessSeat& seat = CHESS_SEATS[giPlaySeat < 0 ? 0 : giPlaySeat];
+		guiPlaySeed = guiPlaySeed * 1103515245u + 12345u;
+		ChessGame::Move captures[ChessGame::MAX_MOVES];
+		const int nCaps = gPlayGame.GenerateLegalCaptures(captures);
+		if (nCaps > 0 && int((guiPlaySeed >> 16) % 100) < seat.greed)
+		{
+			return captures[(guiPlaySeed >> 8) % unsigned(nCaps)];
+		}
+		return gPlayGame.Search(seat.depth, seat.err, guiPlaySeed);
 	}
 
 	void ChessSquareCallback(MOUSE_REGION* region, UINT32 reason)
@@ -1145,6 +1356,8 @@ namespace
 		ChessRedraw();
 	}
 
+	void ChessSyncPageRegions();
+
 	void ChessNavCallback(MOUSE_REGION* region, UINT32 reason)
 	{
 		if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
@@ -1153,8 +1366,9 @@ namespace
 		const int want = (item == 1) ? -1 : item;
 		if (want != giChessStub) ChessPlay(CH_SND_CLICK2, LOWVOLUME);
 		giChessStub = want;
-		if (want == 0 && guiPlayDue == 0 && gubPlayFrom == ChessGame::NO_SQUARE &&
-		    giPlayState == 0)
+		gChessHintRegion.SetFastHelpText(want < 0 ? "Costs one attempt" : ST::string());
+		ChessSyncPageRegions();
+		if (want == 0 && giPlaySeat < 0 && guiPlaySeekDue == 0)
 		{
 			ChessPlayNewGame();
 		}
@@ -1173,7 +1387,8 @@ namespace
 	void ChessBannerCallback(MOUSE_REGION* region, UINT32 reason)
 	{
 		if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
-		if (gfChessModal || giChessStub >= 0) return;
+		// the guestbook's sidebar ad answers too; the other pages' banner does not
+		if (gfChessModal || (giChessStub >= 0 && giChessStub != 4)) return;
 		// only the crown creative answers, and he answers exactly once
 		if (giChessViewDay % 3 != 1) return;
 		if (gChessDay.flags & ChessDaily::FLAG_CROWN_ASKED) return;
@@ -1182,22 +1397,85 @@ namespace
 		ChessMail(5, 0);
 	}
 
+	void ChessGbPageCallback(MOUSE_REGION* region, UINT32 reason)
+	{
+		if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
+		if (giChessStub != 4) return;
+		const int want = giChessGbPage + int(MSYS_GetRegionUserData(region, 0));
+		if (want < 0 || want >= CH_GB_PAGES) return;
+		giChessGbPage = want;
+		ChessPlay(CH_SND_CLICK2, LOWVOLUME);
+		ChessRedraw();
+	}
+
+	void ChessGbPageSetCallback(MOUSE_REGION* region, UINT32 reason)
+	{
+		if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
+		if (giChessStub != 4) return;
+		const int want = int(MSYS_GetRegionUserData(region, 0));
+		if (want == giChessGbPage) return;
+		giChessGbPage = want;
+		ChessPlay(CH_SND_CLICK2, LOWVOLUME);
+		ChessRedraw();
+	}
+
 	void ChessSignCallback(MOUSE_REGION* region, UINT32 reason)
 	{
 		if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
 		if (giChessStub != 4) return;
 		if (gChessDay.flags & ChessDaily::FLAG_SIGNED) return;
+		// the button does not sign; it opens the composer
+		gfChessGbCompose = true;
+		gChessGbInput.clear();
+		ChessSyncPageRegions();
+		ChessPlay(CH_SND_CLICK2, LOWVOLUME);
+		ChessRedraw();
+	}
+
+	void ChessGbPost()
+	{
+		while (!gChessGbInput.empty() && gChessGbInput.back() == ' ') gChessGbInput.pop_back();
+		gChessGuestLine = gChessGbInput;  // empty posts the standard line
 		gChessDay.flags |= ChessDaily::FLAG_SIGNED;
+		gfChessGbCompose = false;
+		giChessGbPage = CH_GB_PAGES - 1;  // the book opens where you signed it
+		ChessSyncPageRegions();
 		ChessPlay(CH_SND_CLICK);
 		ChessRedraw();
 	}
 
-	void ChessLangCallback(MOUSE_REGION* region, UINT32 reason)
+	void ChessGbPostCallback(MOUSE_REGION* region, UINT32 reason)
 	{
 		if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
-		gfChessGerman = !gfChessGerman;
+		if (!gfChessGbCompose) return;
+		ChessGbPost();
+	}
+
+	void ChessGbCloseCallback(MOUSE_REGION* region, UINT32 reason)
+	{
+		if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
+		if (!gfChessGbCompose) return;
+		gfChessGbCompose = false;
+		ChessSyncPageRegions();
 		ChessPlay(CH_SND_CLICK2, LOWVOLUME);
 		ChessRedraw();
+	}
+
+	// The guestbook trades the bottom banner for the sidebar skyscraper and
+	// grows a pager; every mode switch resolves the swap here.
+	void ChessSyncPageRegions()
+	{
+		if (!gfChessRegionsUp) return;
+		const bool gb = giChessStub == 4;
+		if (gb) gChessBannerRegion.Disable(); else gChessBannerRegion.Enable();
+		const bool list = gb && !gfChessGbCompose;
+		MOUSE_REGION* book[] = { &gChessAdRegion, &gChessSignRegion,
+		                         &gChessGbPrevRegion, &gChessGbNextRegion };
+		for (MOUSE_REGION* r : book) { if (list) r->Enable(); else r->Disable(); }
+		for (MOUSE_REGION& r : gChessGbNumRegion) { if (list) r.Enable(); else r.Disable(); }
+		const bool compose = gb && gfChessGbCompose;
+		if (compose) { gChessGbPostRegion.Enable();  gChessGbCloseRegion.Enable(); }
+		else         { gChessGbPostRegion.Disable(); gChessGbCloseRegion.Disable(); }
 	}
 
 	void ChessPlaceRegions()
@@ -1266,23 +1544,59 @@ namespace
 		gChessModalArchiveRegion.Disable();
 
 		MSYS_DefineRegion(&gChessBannerRegion,
-		                  UINT16(CH_X(CH_BOARD_X)), UINT16(CH_Y(CH_BANNER_Y)),
-		                  UINT16(CH_X(CH_BOARD_X + CH_BOARD_SIZE)), UINT16(CH_Y(CH_BANNER_Y + CH_BANNER_H)),
+		                  UINT16(CH_X(CH_BOARD_X)), UINT16(CH_Y(CH_PAGE_H - CH_INSET - 48)),
+		                  UINT16(CH_X(CH_BOARD_X + CH_BOARD_SIZE)), UINT16(CH_Y(CH_PAGE_H - CH_INSET)),
 		                  MSYS_PRIORITY_HIGH, CURSOR_WWW, MSYS_NO_CALLBACK,
 		                  ChessBannerCallback);
+		// the guestbook's sidebar skyscraper; sits over the panel furniture, so
+		// it only exists while that page is up
+		MSYS_DefineRegion(&gChessAdRegion,
+		                  UINT16(CH_X(CH_PANEL_X)), UINT16(CH_Y(CH_INSET + 14)),
+		                  UINT16(CH_X(CH_PANEL_X + CH_PANEL_W)), UINT16(CH_Y(CH_PAGE_H - CH_INSET)),
+		                  MSYS_PRIORITY_HIGH + 1, CURSOR_WWW, MSYS_NO_CALLBACK,
+		                  ChessBannerCallback);
 		MSYS_DefineRegion(&gChessSignRegion,
-		                  UINT16(CH_X(CH_BOARD_X + 40)), UINT16(CH_Y(CH_BOARD_BOTTOM - 34)),
-		                  UINT16(CH_X(CH_BOARD_X + CH_BOARD_SIZE - 40)), UINT16(CH_Y(CH_BOARD_BOTTOM - 12)),
+		                  UINT16(CH_X(CH_BOARD_X + 8)), UINT16(CH_Y(CH_PAGE_H - CH_INSET - 30)),
+		                  UINT16(CH_X(CH_BOARD_X + 118)), UINT16(CH_Y(CH_PAGE_H - CH_INSET - 8)),
 		                  MSYS_PRIORITY_HIGH, CURSOR_WWW, MSYS_NO_CALLBACK,
 		                  ChessSignCallback);
-		MSYS_DefineRegion(&gChessLangRegion,
-		                  UINT16(CH_X(CH_BOARD_X + CH_BOARD_SIZE - 36)), UINT16(CH_Y(CH_PAGE_H - 18)),
-		                  UINT16(CH_X(CH_BOARD_X + CH_BOARD_SIZE)), UINT16(CH_Y(CH_PAGE_H - 4)),
+		// the composer's two buttons, live only while it is open
+		MSYS_DefineRegion(&gChessGbPostRegion,
+		                  UINT16(CH_X(CH_GBM_X + CH_GBM_W - 100)), UINT16(CH_Y(CH_GBM_Y + CH_GBM_H - 34)),
+		                  UINT16(CH_X(CH_GBM_X + CH_GBM_W - 12)),  UINT16(CH_Y(CH_GBM_Y + CH_GBM_H - 12)),
+		                  MSYS_PRIORITY_HIGHEST, CURSOR_WWW, MSYS_NO_CALLBACK,
+		                  ChessGbPostCallback);
+		MSYS_DefineRegion(&gChessGbCloseRegion,
+		                  UINT16(CH_X(CH_GBM_X + CH_GBM_W - 26)), UINT16(CH_Y(CH_GBM_Y + 4)),
+		                  UINT16(CH_X(CH_GBM_X + CH_GBM_W - 4)),  UINT16(CH_Y(CH_GBM_Y + 26)),
+		                  MSYS_PRIORITY_HIGHEST, CURSOR_WWW, MSYS_NO_CALLBACK,
+		                  ChessGbCloseCallback);
+		// the book's pager, either side of the page count at the foot
+		const INT32 pgX0 = CH_BOARD_X + CH_BOARD_SIZE - 8 - (CH_GB_PAGES + 2) * 22 + 4;
+		const UINT16 pgY0 = UINT16(CH_Y(CH_PAGE_H - CH_INSET - 28));
+		const UINT16 pgY1 = UINT16(CH_Y(CH_PAGE_H - CH_INSET - 8));
+		MSYS_DefineRegion(&gChessGbPrevRegion,
+		                  UINT16(CH_X(pgX0)), pgY0, UINT16(CH_X(pgX0 + 18)), pgY1,
 		                  MSYS_PRIORITY_HIGH, CURSOR_WWW, MSYS_NO_CALLBACK,
-		                  ChessLangCallback);
-		gChessLangRegion.SetFastHelpText("English / Deutsch");
-
+		                  ChessGbPageCallback);
+		MSYS_SetRegionUserData(&gChessGbPrevRegion, 0, -1);
+		MSYS_DefineRegion(&gChessGbNextRegion,
+		                  UINT16(CH_X(pgX0 + 22 + CH_GB_PAGES * 22)), pgY0,
+		                  UINT16(CH_X(pgX0 + 22 + CH_GB_PAGES * 22 + 18)), pgY1,
+		                  MSYS_PRIORITY_HIGH, CURSOR_WWW, MSYS_NO_CALLBACK,
+		                  ChessGbPageCallback);
+		MSYS_SetRegionUserData(&gChessGbNextRegion, 0, 1);
+		for (int i = 0; i < CH_GB_PAGES; ++i)
+		{
+			const INT32 nx = pgX0 + 22 + i * 22;
+			MSYS_DefineRegion(&gChessGbNumRegion[i],
+			                  UINT16(CH_X(nx)), pgY0, UINT16(CH_X(nx + 18)), pgY1,
+			                  MSYS_PRIORITY_HIGH, CURSOR_WWW, MSYS_NO_CALLBACK,
+			                  ChessGbPageSetCallback);
+			MSYS_SetRegionUserData(&gChessGbNumRegion[i], 0, i);
+		}
 		gfChessRegionsUp = true;
+		ChessSyncPageRegions();
 		if (gfChessModal) ChessSetModal(true);
 	}
 
@@ -1306,8 +1620,13 @@ namespace
 		MSYS_RemoveRegion(&gChessModalArchiveRegion);
 		for (MOUSE_REGION& r : gChessNavRegion) MSYS_RemoveRegion(&r);
 		MSYS_RemoveRegion(&gChessBannerRegion);
+		MSYS_RemoveRegion(&gChessAdRegion);
+		MSYS_RemoveRegion(&gChessGbPrevRegion);
+		MSYS_RemoveRegion(&gChessGbNextRegion);
+		for (MOUSE_REGION& r : gChessGbNumRegion) MSYS_RemoveRegion(&r);
+		MSYS_RemoveRegion(&gChessGbPostRegion);
+		MSYS_RemoveRegion(&gChessGbCloseRegion);
 		MSYS_RemoveRegion(&gChessSignRegion);
-		MSYS_RemoveRegion(&gChessLangRegion);
 		MSYS_RemoveRegion(&gChessPrevDayRegion);
 		MSYS_RemoveRegion(&gChessNextDayRegion);
 		gfChessRegionsUp = false;
@@ -1348,7 +1667,8 @@ namespace
 		for (INT32 r = -half; r <= half; ++r)
 		{
 			const INT32 step = (r < 0 ? -r : r);
-			const INT32 x = left ? cx - 2 + step : cx + 2 - step - 3;
+			// tips land at cx-4 and cx+4, so the two glyphs mirror optically
+			const INT32 x = left ? cx - 4 + step : cx + 2 - step;
 			FillRect(x, cy + r, 3, 1, rgb);
 		}
 	}
@@ -1600,42 +1920,54 @@ namespace
 	}
 
 	void ChessRenderMoveList(const std::vector<ST::string>& san, INT32 y0, INT32 y1);
+	void ChessDrawCTAButton(INT32 x, INT32 y, INT32 w, INT32 h, UINT32 bg);
+	INT32 ChessRenderSectionPanel(UINT16 icon, ChessStr title);
+	void ChessDrawPagerButton(INT32 x, INT32 y, INT32 s, bool lit);
+	INT32 ChessDrawTitleBadge(INT32 x, INT32 y, const char* title, UINT32 bg);
 
 	// The right panel while a live game runs: the opponent, the state of
 	// play, and the one button.
 	void ChessRenderPlayPanel()
 	{
-		FillRounded(CH_PANEL_X, CH_INSET, CH_PANEL_W, CH_PAGE_H - 2 * CH_INSET,
-		            CH_RGB_PANEL, CH_RADIUS, CH_RGB_CHROME);
-		const INT32 cx = CH_PANEL_X + CH_PANEL_W / 2;
+		const INT32 cx = ChessRenderSectionPanel(CH_ICON_PLAY, CHS_NAV_PLAY);
+		// the NEW GAME button gets the same sunk footer as the puzzle's hint
+		FillRect(CH_PANEL_X, CH_FOOT_Y, CH_PANEL_W, 34, CH_RGB_PANEL_SUNK);
+		RoundCorners(CH_PANEL_X, CH_INSET, CH_PANEL_W, CH_PAGE_H - 2 * CH_INSET,
+		             CH_PANEL_RADIUS, CH_RGB_CHROME);
 
-		FillRect(CH_PANEL_X, CH_INSET, CH_PANEL_W, 66, CH_RGB_PANEL_SUNK);
-		const ST::string title = T(CHS_NAV_PLAY);
-		const INT32 titleW = ChessIconLabelWidth(FONT10ARIALBOLD, title);
-		ChessIconLabel(CH_ICON_PLAY, cx - titleW / 2, 21,
-		               FONT10ARIALBOLD, FONT_MCOLOR_WHITE, title);
-
-		// the opponent: his portrait and his invented rating
+		// the opponent card follows the pairing; a grey pawn holds the seat
 		const INT32 faceX = CH_PANEL_X + 8;
-		if (guiChessCoach)
+		if (giPlaySeat >= 0 && gPlayOppFace)
 		{
-			BltVideoObject(FRAME_BUFFER, guiChessCoach, 0, CH_X(faceX), CH_Y(CH_COACH_Y));
+			BltVideoSurface(FRAME_BUFFER, gPlayOppFace, CH_X(faceX + 2), CH_Y(CH_COACH_Y + 2), NULL);
+			const ChessSeat& opp = CHESS_SEATS[giPlaySeat];
+			INT32 hx = faceX + CH_SQ + 6;
+			hx += ChessDrawTitleBadge(hx, CH_COACH_Y + 5, opp.title, CH_RGB_PANEL);
+			PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, hx, CH_COACH_Y + 6, opp.handle);
+			PrintAt(FONT10ARIAL, FONT_GRAY4,
+			        hx + 6 + StringPixLength(opp.handle, FONT10ARIALBOLD),
+			        CH_COACH_Y + 6, ST::format("({})", opp.rating));
 		}
-		PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, faceX + 34, CH_COACH_Y + 4, T(CHS_PLAY_OPP));
-		PrintAt(FONT10ARIAL, FONT_GRAY4,
-		        faceX + 40 + StringPixLength(T(CHS_PLAY_OPP), FONT10ARIALBOLD),
-		        CH_COACH_Y + 4, "(1850)");
+		else
+		{
+			FillRounded(faceX, CH_COACH_Y, CH_SQ, CH_SQ, CH_RGB_PANEL_SUNK, 3, CH_RGB_PANEL);
+			if (guiChessPieces)
+			{
+				BltVideoObject(FRAME_BUFFER, guiChessPieces, 12, CH_X(faceX), CH_Y(CH_COACH_Y));
+			}
+			PrintAt(FONT10ARIALBOLD, FONT_GRAY4, faceX + CH_SQ + 6, CH_COACH_Y + 6, T(CHS_PLAY_SEEK));
+		}
 
 		const UINT8 colour = giPlaySaid == CHS_PLAY_WIN  ? FONT_MCOLOR_LTGREEN
 		                   : giPlaySaid == CHS_PLAY_LOSS ? FONT_MCOLOR_LTRED
 		                                                 : FONT_GRAY2;
 		PrintAt(FONT10ARIAL, colour, CH_PANEL_X + 10, CH_COACH_Y + 44, T(ChessStr(giPlaySaid)));
 
-		ChessRenderMoveList(gPlaySan, CH_COACH_Y + 62, CH_HINT_Y - 6);
+		ChessRenderMoveList(gPlaySan, CH_COACH_Y + 62, CH_FOOT_Y - 4);
 
 		// the hint button doubles as NEW GAME here; same box, same region
-		FillRounded(CH_PANEL_X + 10, CH_HINT_Y, CH_PANEL_W - 20, CH_HINT_H,
-		            CH_RGB_CTA, 3, CH_RGB_PANEL);
+		ChessDrawCTAButton(CH_PANEL_X + 10, CH_HINT_Y, CH_PANEL_W - 20, CH_HINT_H,
+		                   CH_RGB_PANEL);
 		PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, cx,
 		             CH_HINT_Y + (CH_HINT_H - GetFontHeight(FONT10ARIALBOLD)) / 2,
 		             T(CHS_PLAY_NEW));
@@ -1644,15 +1976,16 @@ namespace
 	void ChessRenderPanel()
 	{
 		FillRounded(CH_PANEL_X, CH_INSET, CH_PANEL_W, CH_PAGE_H - 2 * CH_INSET,
-		            CH_RGB_PANEL, CH_RADIUS, CH_RGB_CHROME);
+		            CH_RGB_PANEL, CH_PANEL_RADIUS, CH_RGB_CHROME);
 		const INT32 cx = CH_PANEL_X + CH_PANEL_W / 2;
 		const ChessPuzzle& puzzle = CHESS_PUZZLES[giChessPuzzle];
 
-		// header band: a lighter ground stands in for the rule that used to
-		// sit under the date
+		// header band: snug around the title, the stepper and the day's name
 		FillRect(CH_PANEL_X, CH_INSET, CH_PANEL_W, 66, CH_RGB_PANEL_SUNK);
+		// and its mirror at the foot: the hint button sits padded inside
+		FillRect(CH_PANEL_X, CH_FOOT_Y, CH_PANEL_W, 34, CH_RGB_PANEL_SUNK);
 		RoundCorners(CH_PANEL_X, CH_INSET, CH_PANEL_W, CH_PAGE_H - 2 * CH_INSET,
-		             CH_RADIUS, CH_RGB_CHROME);
+		             CH_PANEL_RADIUS, CH_RGB_CHROME);
 
 		const ST::string title = T(CHS_TITLE);
 		// the real bold cut: faking bold by double-printing 12pt crushed the
@@ -1764,8 +2097,8 @@ namespace
 		const INT32 x = CH_MODAL_X, y = CH_MODAL_Y;
 		const INT32 cx = x + w / 2;
 
-		FillRect(x - 1, y - 1, w + 2, h + 2, CH_RGB_PANEL_UP);
-		FillRect(x, y, w, h, CH_RGB_PANEL);
+		FillRoundedOnly(x - 1, y - 1, w + 2, h + 2, CH_RGB_PANEL_UP, 6);
+		FillRoundedOnly(x, y, w, h, CH_RGB_PANEL, 5);
 
 		PrintAt(FONT10ARIAL, FONT_GRAY4, x + w - 14, y + 4, "X");
 
@@ -1793,7 +2126,7 @@ namespace
 			}
 		}
 
-		FillRounded(x + 12, y + 46, w - 24, 22, CH_RGB_CTA, 3, CH_RGB_PANEL);
+		ChessDrawCTAButton(x + 12, y + 46, w - 24, 22, CH_RGB_PANEL);
 		PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, cx, y + 52, T(CHS_MODAL_ARCHIVE));
 
 		// streak and best, side by side on sunk ground
@@ -1814,19 +2147,69 @@ namespace
 	// a house ad and one a plug for the other site in the collection.
 	void ChessRenderBanner()
 	{
-		if (guiChessBanner)
+		// Code-drawn creatives in the guestbook skyscraper's dress: a flat
+		// card, one hairline border, each ad in its target site's colours.
+		// Pages without player rows give the banner the extra height.
+		const bool tall = giChessStub != 0 && giChessStub != 3;
+		const INT32 bh = tall ? 48 : 30;
+		const INT32 bx = CH_BOARD_X, bw = CH_BOARD_SIZE;
+		const INT32 by = CH_PAGE_H - CH_INSET - bh;
+		const INT32 cx = bx + bw / 2;
+		const int slot = giChessViewDay % 3;
+		FillRect(bx, by, bw, bh, FROMRGB(0, 0, 0));
+		if (slot == 0)
 		{
-			const UINT16 slot = UINT16(giChessViewDay % 3);
-			BltVideoObject(FRAME_BUFFER, guiChessBanner, slot,
-			               CH_X(CH_BOARD_X), CH_Y(CH_BANNER_Y));
+			FillRect(bx + 1, by + 1, bw - 2, bh - 2, FROMRGB(214, 213, 206));
+			PrintCentred(FONT10ARIALBOLD, FONT_RED, cx, by + (tall ? 8 : 4),
+			             "BOBBY RAY'S - GUNS AND MORE");
+			PrintCentred(FONT10ARIAL, FONT_MCOLOR_BLACK, cx, by + (tall ? 22 : 16),
+			             "always cheap. always stocked. always legal*");
+			if (tall) PrintCentred(FONT10ARIAL, FONT_GRAY6, cx, by + 35, "*mostly");
+		}
+		else if (slot == 1)
+		{
+			FillRect(bx + 1, by + 1, bw - 2, bh - 2, FROMRGB(24, 20, 12));
+			PrintCentred(FONT10ARIALBOLD, FONT_YELLOW, cx, by + (tall ? 8 : 4),
+			             "CHACH.COM GOLD CROWN");
+			PrintCentred(FONT10ARIAL, FONT_MCOLOR_WHITE, cx, by + (tall ? 22 : 16),
+			             "MEMBERSHIP - COMING SOON");
+			if (tall) PrintCentred(FONT10ARIAL, FONT_GRAY6, cx, by + 35, "do not ask");
+		}
+		else
+		{
+			FillRect(bx + 1, by + 1, bw - 2, bh - 2, FROMRGB(94, 26, 26));
+			// tall: the copy stacks between the flanking tiles, so the slogan
+			// breaks in two and stays inside the column
+			PrintCentred(FONT10ARIALBOLD, FONT_YELLOW, cx, by + (tall ? 6 : 4),
+			             "SAN MONA MAHJONG PARLOUR");
+			if (tall)
+			{
+				PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_LTRED, cx, by + 20,
+				             "GAMES ARE FAIR BECAUSE");
+				PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_LTRED, cx, by + 33,
+				             "MR. KLAUS SAYS SO");
+			}
+			else
+			{
+				PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_LTRED, cx, by + 16,
+				             "GAMES ARE FAIR BECAUSE MR. KLAUS SAYS SO");
+			}
+			if (tall && guiChessAdTiles)
+			{
+				// the homepage's pair flanks the copy
+				BltVideoObject(FRAME_BUFFER, guiChessAdTiles, 9,
+				               CH_X(bx + 8), CH_Y(by + 4));
+				BltVideoObject(FRAME_BUFFER, guiChessAdTiles, 18,
+				               CH_X(bx + bw - 38), CH_Y(by + 4));
+			}
 		}
 		// A hit counter nobody has ever believed. Derived from the campaign
 		// clock rather than stored, so it climbs without costing save bytes.
-		if (giChessStub != 0 && giChessStub != 3)
+		if (tall)
 		{
 			const int hits = 148299 + giChessViewDay * 17 + gChessDay.bestStreak * 3;
-			PrintCentred(FONT10ARIAL, FONT_GRAY7, CH_BOARD_X + CH_BOARD_SIZE / 2,
-			             CH_COUNTER_Y, ST::format("{} {}", T(CHS_VISITOR), hits));
+			PrintCentred(FONT10ARIAL, FONT_GRAY7, cx, by - 25,
+			             ST::format("{} {}", T(CHS_VISITOR), hits));
 		}
 	}
 
@@ -1863,22 +2246,59 @@ namespace
 
 	// One player row: avatar, handle with grey rating, the pieces they have
 	// taken as coloured discs beneath the name, and a clock on the right edge.
+	// The green button, with a little body to it: a darker foot edge, the
+	// fill graded lighter toward the top, and a highlight line under the rim.
+	void ChessDrawCTAButton(INT32 x, INT32 y, INT32 w, INT32 h, UINT32 bg)
+	{
+		const INT32 band = (h - 2) / 3;
+		FillRounded(x, y, w, h, FROMRGB(86, 128, 45), 3, bg);
+		FillRounded(x, y, w, h - 2, CH_RGB_CTA, 3, bg);
+		FillRect(x + 2, y + 2, w - 4, band, FROMRGB(150, 199, 88));
+		FillRect(x + 3, y + 1, w - 6, 1, FROMRGB(184, 221, 130));
+		// the gradient steps down through two dithered rows - checkerboarded
+		// pixels of the lighter green over the body, the 1999 blend
+		for (INT32 row = 0; row < 2; ++row)
+		{
+			const INT32 dy = y + 2 + band + row;
+			for (INT32 dx = x + 2 + ((row + 1) & 1); dx < x + w - 2; dx += 2)
+			{
+				FillRect(dx, dy, 1, 1, row == 0 ? FROMRGB(150, 199, 88)
+				                                : FROMRGB(140, 191, 82));
+			}
+		}
+	}
+
+	// A chess title, chess.com style: a small crimson chip, white letters.
+	// Returns the width it consumed, zero for the untitled.
+	INT32 ChessDrawTitleBadge(INT32 x, INT32 y, const char* title, UINT32 bg)
+	{
+		if (!title || !*title) return 0;
+		const INT32 w = StringPixLength(title, TINYFONT1) + 4;
+		FillRounded(x, y, w, 9, FROMRGB(167, 45, 45), 2, bg);
+		PrintCentred(TINYFONT1, FONT_MCOLOR_WHITE, x + w / 2, y, title);
+		return w + 5;
+	}
+
 	void ChessRenderPlayerRow(SGPVSurface* face, const ST::string& handle,
 	                          const ST::string& rating, INT32 y,
 	                          const ChessGame* game, ChessGame::Color side,
-	                          int plies, bool clockActive)
+	                          int plies, bool clockActive,
+	                          const char* title = nullptr)
 	{
 		INT32 nameX = CH_BOARD_X;
 		if (face)
 		{
-			BltVideoSurface(FRAME_BUFFER, face, CH_X(CH_BOARD_X), CH_Y(y), NULL);
-			nameX += 37;
+			BltVideoSurface(FRAME_BUFFER, face,
+			                CH_X(CH_BOARD_X + (CH_SQ - CH_ROW_FACE) / 2),
+			                CH_Y(y + (CH_SQ - CH_ROW_FACE) / 2), NULL);
+			nameX += CH_SQ + 8;
 		}
-		PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, nameX, y + 3, handle);
+		nameX += ChessDrawTitleBadge(nameX, y + 5, title, CH_RGB_CHROME);
+		PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, nameX, y + 6, handle);
 		if (!rating.empty())
 		{
 			PrintAt(FONT10ARIAL, FONT_GRAY4,
-			        nameX + StringPixLength(handle, FONT10ARIALBOLD) + 6, y + 3, rating);
+			        nameX + StringPixLength(handle, FONT10ARIALBOLD) + 6, y + 6, rating);
 		}
 
 		if (game)
@@ -1902,7 +2322,7 @@ namespace
 			{
 				for (int k = onBoard[type]; k < START[type]; ++k)
 				{
-					ChessDrawDot(dx, y + 18, disc);
+					ChessDrawDot(dx, y + 21, disc);
 					dx += 6;
 				}
 			}
@@ -1952,8 +2372,11 @@ namespace
 	INT32 ChessRenderSectionPanel(UINT16 icon, ChessStr title)
 	{
 		FillRounded(CH_PANEL_X, CH_INSET, CH_PANEL_W, CH_PAGE_H - 2 * CH_INSET,
-		            CH_RGB_PANEL, CH_RADIUS, CH_RGB_CHROME);
+		            CH_RGB_PANEL, CH_PANEL_RADIUS, CH_RGB_CHROME);
+		// the band sits snug around the title alone
 		FillRect(CH_PANEL_X, CH_INSET, CH_PANEL_W, 34, CH_RGB_PANEL_SUNK);
+		RoundCorners(CH_PANEL_X, CH_INSET, CH_PANEL_W, CH_PAGE_H - 2 * CH_INSET,
+		             CH_PANEL_RADIUS, CH_RGB_CHROME);
 		const INT32 cx = CH_PANEL_X + CH_PANEL_W / 2;
 		const ST::string text = T(title);
 		const INT32 w = ChessIconLabelWidth(FONT10ARIALBOLD, text);
@@ -2005,8 +2428,8 @@ namespace
 		                     FONT_MCOLOR_BLACK, LEFT_JUSTIFIED);
 
 		// NEXT LESSON in the CTA green, on the shared button box
-		FillRounded(CH_PANEL_X + 10, CH_HINT_Y, CH_PANEL_W - 20, CH_HINT_H,
-		            CH_RGB_CTA, 3, CH_RGB_PANEL);
+		ChessDrawCTAButton(CH_PANEL_X + 10, CH_HINT_Y, CH_PANEL_W - 20, CH_HINT_H,
+		                   CH_RGB_PANEL);
 		PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, cx,
 		             CH_HINT_Y + (CH_HINT_H - GetFontHeight(FONT10ARIALBOLD)) / 2,
 		             T(CHS_LEARN_NEXT));
@@ -2027,10 +2450,12 @@ namespace
 		const bool bTurn = gWatchGame.SideToMove() == ChessGame::Black && !giWatchResult;
 		ChessRenderPlayerRow(gWatchFaceHalf[1], black.handle,
 		                     ST::format("({})", black.rating), CH_ROW_TOP_Y,
-		                     &gWatchGame, ChessGame::Black, wPlies, bTurn);
+		                     &gWatchGame, ChessGame::Black, wPlies, bTurn,
+		                     black.title);
 		ChessRenderPlayerRow(gWatchFaceHalf[0], white.handle,
 		                     ST::format("({})", white.rating), CH_ROW_BOT_Y,
-		                     &gWatchGame, ChessGame::White, wPlies, wTurn);
+		                     &gWatchGame, ChessGame::White, wPlies, wTurn,
+		                     white.title);
 
 		// the LIVE chip rides the top row's right end
 		if (!giWatchResult)
@@ -2051,57 +2476,315 @@ namespace
 		ChessRenderMoveList(gWatchSan, 66, CH_PAGE_H - CH_INSET - 8);
 	}
 
-	// The guestbook. Sign once; the signature is forever.
-	void ChessRenderGuestbook()
+	// One guestbook entry: a sunk row with the avatar - the merc portrait if
+	// the handle belongs to one, a tinted initial disc if it does not.
+	INT32 ChessRenderGuestRow(INT32 y, SGPVSurface* face, UINT32 tint,
+	                          const ST::string& name, const ST::string& handle,
+	                          const char* date, const char* line, int lines,
+	                          bool separated)
 	{
-		FillRounded(CH_BOARD_X, CH_BOARD_Y, CH_BOARD_SIZE, CH_BOARD_SIZE,
-		            CH_RGB_PANEL, CH_RADIUS, CH_RGB_CHROME);
-		const INT32 cx = CH_BOARD_X + CH_BOARD_SIZE / 2;
-
-		PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, cx, CH_BOARD_Y + 10, T(CHS_GB_TITLE));
-		PrintCentred(FONT10ARIAL, FONT_GRAY4, cx, CH_BOARD_Y + 24, T(CHS_GB_PROMPT));
-
-		const int shown = int(sizeof(CHESS_GUESTBOOK) / sizeof(CHESS_GUESTBOOK[0]));
-		INT32 y = CH_BOARD_Y + 44;
-		for (int i = 0; i < shown; ++i)
+		const INT32 rowH = 24 + 13 * lines;
+		// rows sit on the book's own ground; a hairline divides neighbours
+		if (separated) FillRect(CH_BOARD_X + 8, y, CH_BOARD_SIZE - 16, 1, CH_RGB_ROW_SEP);
+		const INT32 ax = CH_BOARD_X + 14;
+		const INT32 ay = y + 8;
+		if (face)
 		{
-			FillRect(CH_BOARD_X + 8, y - 2, CH_BOARD_SIZE - 16, 24, CH_RGB_PANEL_SUNK);
-			PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_LTGREEN, CH_BOARD_X + 14, y, CHESS_GUESTBOOK[i].handle);
-			PrintAt(FONT10ARIAL, FONT_GRAY2, CH_BOARD_X + 14, y + 11, CHESS_GUESTBOOK[i].line);
-			y += 26;
-		}
-
-		if (gChessDay.flags & ChessDaily::FLAG_SIGNED)
-		{
-			// your entry, in the site's accent - the one line you control
-			FillRect(CH_BOARD_X + 8, y - 2, CH_BOARD_SIZE - 16, 24, CH_RGB_PANEL_SUNK);
-			const ST::string handle = gChessSelfNick.empty()
-				? ST::string("@commander") : ST::format("@{}", gChessSelfNick);
-			PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, CH_BOARD_X + 14, y, handle);
-			PrintAt(FONT10ARIAL, FONT_GRAY2, CH_BOARD_X + 14, y + 11, T(CHS_GB_YOURS));
+			BltVideoSurface(FRAME_BUFFER, face, CH_X(ax), CH_Y(ay), NULL);
 		}
 		else
 		{
-			FillRounded(CH_BOARD_X + 40, CH_BOARD_BOTTOM - 34, CH_BOARD_SIZE - 80, 22,
-			            CH_RGB_CTA, 3, CH_RGB_PANEL);
-			PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, cx, CH_BOARD_BOTTOM - 28,
-			             T(CHS_GB_SIGN));
+			FillRounded(ax, ay, CH_GB_FACE, CH_GB_FACE, tint, 4, CH_RGB_PANEL_SUNK);
+			char c = handle.size() > 1 ? handle[1] : '?';
+			if (c >= 'a' && c <= 'z') c -= 32;
+			const char ini[2] = { c, 0 };
+			PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, ax + CH_GB_FACE / 2,
+			             ay + (CH_GB_FACE - GetFontHeight(FONT10ARIALBOLD)) / 2, ini);
+		}
+		INT32 tx = CH_BOARD_X + 52;
+		// the date owns the right edge on every row; the handle only prints
+		// when it fits in the space a long name leaves before it
+		const INT32 dx = CH_BOARD_X + CH_BOARD_SIZE - 12 - StringPixLength(date, TINYFONT1);
+		PrintAt(TINYFONT1, FONT_GRAY6, dx, y + 7, date);
+		tx += ChessDrawTitleBadge(tx, y + 7, ChessTitleForHandle(handle), CH_RGB_PANEL);
+		PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, tx, y + 8, name);
+		const INT32 nameEnd = tx + StringPixLength(name, FONT10ARIALBOLD) + 6;
+		if (nameEnd + StringPixLength(handle, FONT10ARIAL) < dx - 8)
+		{
+			PrintAt(FONT10ARIAL, FONT_GRAY4, nameEnd, y + 8, handle);
+		}
+		DisplayWrappedString(UINT16(CH_X(tx)), UINT16(CH_Y(y + 20)),
+		                     UINT16(CH_BOARD_X + CH_BOARD_SIZE - 12 - tx), 3,
+		                     FONT10ARIAL, FONT_GRAY2, line,
+		                     FONT_MCOLOR_BLACK, LEFT_JUSTIFIED);
+		return rowH;
+	}
+
+	// The guestbook fills the page: the title sits above the book in the
+	// daily header's lockup, the entries carry avatars, and signing is forever.
+	void ChessRenderGuestbook()
+	{
+		ChessIconLabel(CH_ICON_COMMUNITY, CH_BOARD_X + 2, 15, FONT10ARIALBOLD,
+		               FONT_MCOLOR_WHITE, T(CHS_GB_TITLE));
+		PrintAt(FONT10ARIAL, FONT_GRAY4,
+		        CH_BOARD_X + 2 + ChessIconLabelWidth(FONT10ARIALBOLD, T(CHS_GB_TITLE)) + 10,
+		        15 - GetFontHeight(FONT10ARIAL) / 2, T(CHS_GB_PROMPT));
+
+		FillRounded(CH_BOARD_X, CH_GB_TOP, CH_BOARD_SIZE,
+		            CH_PAGE_H - CH_INSET - CH_GB_TOP,
+		            CH_RGB_PANEL, CH_PANEL_RADIUS, CH_RGB_CHROME);
+
+		INT32 y = CH_GB_TOP + 8;
+		const size_t first = size_t(giChessGbPage) * CH_GB_PER_PAGE;
+		size_t shown = 0;
+		for (size_t i = first; i < first + CH_GB_PER_PAGE && i < CH_GB_COUNT; ++i, ++shown)
+		{
+			y += ChessRenderGuestRow(y, gGuestFace[i], CHESS_GUESTBOOK[i].tint,
+			                         gGuestName[i], CHESS_GUESTBOOK[i].handle,
+			                         CHESS_GUESTBOOK[i].date,
+			                         CHESS_GUESTBOOK[i].line,
+			                         CHESS_GUESTBOOK[i].lines, shown > 0);
+		}
+
+		// your signature closes the book, zebra parity and all
+		if ((gChessDay.flags & ChessDaily::FLAG_SIGNED) && giChessGbPage == CH_GB_PAGES - 1)
+		{
+			const ST::string handle = gChessSelfNick.empty()
+				? ST::string("@commander") : ST::format("@{}", gChessSelfNick);
+			const char* mine = gChessGuestLine.empty() ? T(CHS_GB_YOURS)
+			                                           : gChessGuestLine.c_str();
+			const int mlines = int(std::min<size_t>(3, std::strlen(mine) / 39 + 1));
+			const ST::string name = gChessSelfName.empty() ? ST::string("Commander")
+			                                               : gChessSelfName;
+			ChessRenderGuestRow(y, gGuestSelfFace, 0, name, handle, "today",
+			                    mine, mlines, shown > 0);
+		}
+
+		// the foot, one shared centreline at the book's bottom edge: the sign
+		// button bottom-left, the numbered pager to its right
+		const INT32 fy = CH_PAGE_H - CH_INSET - 30;
+		if (!(gChessDay.flags & ChessDaily::FLAG_SIGNED))
+		{
+			ChessDrawCTAButton(CH_BOARD_X + 8, fy, 110, 22, CH_RGB_PANEL);
+			PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, CH_BOARD_X + 63,
+			             fy + 6, T(CHS_GB_SIGN));
+		}
+		const INT32 px0 = CH_BOARD_X + CH_BOARD_SIZE - 8 - (CH_GB_PAGES + 2) * 22 + 4;
+		const INT32 by = fy + 2;
+		ChessDrawPagerButton(px0, by, 18, false);
+		ChessDrawChevron(px0 + 9, by + 8, true,
+		                 giChessGbPage > 0 ? FROMRGB(180, 175, 168) : FROMRGB(104, 98, 91));
+		for (int i = 0; i < CH_GB_PAGES; ++i)
+		{
+			const INT32 nx = px0 + 22 + i * 22;
+			const bool cur = i == giChessGbPage;
+			ChessDrawPagerButton(nx, by, 18, cur);
+			PrintCentred(FONT10ARIALBOLD, cur ? FONT_NEARBLACK : FONT_GRAY2,
+			             nx + 9, by + 4, ST::format("{}", i + 1));
+		}
+		const INT32 nxe = px0 + 22 + CH_GB_PAGES * 22;
+		ChessDrawPagerButton(nxe, by, 18, false);
+		ChessDrawChevron(nxe + 9, by + 8, false,
+		                 giChessGbPage < CH_GB_PAGES - 1 ? FROMRGB(180, 175, 168)
+		                                                 : FROMRGB(104, 98, 91));
+	}
+
+	// The CTA button's construction in grey miniature, for the pager: a foot
+	// edge, a body, a lighter top band and a highlight line. The lit variant
+	// is the current page.
+	void ChessDrawPagerButton(INT32 x, INT32 y, INT32 s, bool lit)
+	{
+		const UINT32 body = lit ? FROMRGB(124, 119, 112) : FROMRGB( 70,  64,  59);
+		const UINT32 band = lit ? FROMRGB(138, 133, 126) : FROMRGB( 80,  74,  68);
+		const UINT32 high = lit ? FROMRGB(152, 147, 140) : FROMRGB( 90,  84,  77);
+		FillRounded(x, y, s, s, FROMRGB(28, 25, 22), 3, CH_RGB_PANEL);
+		FillRounded(x, y, s, s - 2, body, 3, CH_RGB_PANEL);
+		FillRect(x + 2, y + 2, s - 4, (s - 2) / 3, band);
+		FillRect(x + 3, y + 1, s - 6, 1, high);
+	}
+
+	// The composer: your avatar, your handle, a box you can actually type in.
+	// The page dims behind it, the way the board dims under the result card.
+	void ChessRenderGuestCompose()
+	{
+		if (!gfChessGbCompose) return;
+		FRAME_BUFFER->ShadowRect(CH_X(0), CH_Y(0),
+		                         CH_X(LAPTOP_SCREEN_WIDTH) - 1, CH_Y(CH_PAGE_H) - 1);
+
+		const INT32 mx = CH_GBM_X, my = CH_GBM_Y;
+		const INT32 mw = CH_GBM_W, mh = CH_GBM_H;
+		FillRounded(mx - 2, my - 2, mw + 4, mh + 4, CH_RGB_CHROME, 6, CH_RGB_PANEL);
+		FillRounded(mx, my, mw, mh, CH_RGB_PANEL_UP, 5, CH_RGB_CHROME);
+
+		// title row, closed by a hairline
+		PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, mx + 12, my + 10, T(CHS_GB_SIGN));
+		PrintAt(FONT10ARIALBOLD, FONT_GRAY4, mx + mw - 18, my + 10, "X");
+		FillRect(mx + 12, my + 28, mw - 24, 1, CH_RGB_ROW_SEP);
+
+		// you, as the book will show you
+		const ST::string handle = gChessSelfNick.empty()
+			? ST::string("@commander") : ST::format("@{}", gChessSelfNick);
+		if (gGuestSelfFace)
+		{
+			BltVideoSurface(FRAME_BUFFER, gGuestSelfFace, CH_X(mx + 12), CH_Y(my + 38), NULL);
+		}
+		const ST::string name = gChessSelfName.empty() ? ST::string("Commander")
+		                                               : gChessSelfName;
+		PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, mx + 46, my + 46, name);
+		PrintAt(FONT10ARIAL, FONT_GRAY4,
+		        mx + 52 + StringPixLength(name, FONT10ARIALBOLD), my + 46, handle);
+
+		// the input: typed text wraps, the caret blinks, the limit is ze disk
+		FillRounded(mx + 12, my + 72, mw - 24, 44, FROMRGB(22, 20, 18), 3, CH_RGB_PANEL_UP);
+		if (gChessGbInput.empty())
+		{
+			PrintAt(FONT10ARIAL, FONT_GRAY6, mx + 18, my + 79, T(CHS_GB_WRITE));
+		}
+		const bool caret = (ChessNow() / 400) & 1;
+		const std::string typed = gChessGbInput + (caret ? "_" : " ");
+		DisplayWrappedString(UINT16(CH_X(mx + 18)), UINT16(CH_Y(my + 79)),
+		                     UINT16(mw - 36), 1, FONT10ARIAL, FONT_GRAY1,
+		                     ST::string(typed.c_str()), FONT_MCOLOR_BLACK, LEFT_JUSTIFIED);
+
+		// the counter and the small print share a line above the button row
+		PrintAt(FONT10ARIAL, FONT_GRAY4, mx + 12, my + 122, T(CHS_GB_MOD));
+		PrintAt(FONT10ARIAL, FONT_GRAY6, mx + mw - 46, my + 122,
+		        ST::format("{}/{}", gChessGbInput.size(), CH_GB_LINE_MAX));
+
+		ChessDrawCTAButton(mx + mw - 100, my + mh - 34, 88, 22, CH_RGB_PANEL_UP);
+		PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, mx + mw - 56, my + mh - 28, "POST");
+	}
+
+	// With the book at full height the ad moves to the sidebar and grows into
+	// the 1999 skyscraper: white card, hard border, foreign to the site.
+	void ChessRenderGuestAd()
+	{
+		const INT32 x = CH_PANEL_X, w = CH_PANEL_W;
+		const INT32 cx = x + w / 2;
+		PrintCentred(FONT10ARIAL, FONT_GRAY7, cx, 10, "- ADVERTISEMENT -");
+		// the card runs level with the book beside it
+		const INT32 y = CH_GB_TOP;
+		const INT32 h = CH_PAGE_H - CH_INSET - y;
+		const int slot = giChessViewDay % 3;
+		FillRect(x, y, w, h, FROMRGB(0, 0, 0));
+
+		if (slot == 0)
+		{
+			// Bobby Ray's, in his storefront's dusty grey and red
+			FillRect(x + 1, y + 1, w - 2, h - 2, FROMRGB(214, 213, 206));
+			FillRect(x + 8, y + 10, w - 16, 70, FROMRGB(52, 48, 44));
+			PrintCentred(FONT12ARIAL, FONT_RED, cx, y + 22, "BOBBY RAY'S");
+			PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, cx, y + 46, "GUNS AND MORE");
+			PrintCentred(FONT10ARIAL, FONT_MCOLOR_BLACK, cx, y + 110, "ALWAYS CHEAP.");
+			PrintCentred(FONT10ARIAL, FONT_MCOLOR_BLACK, cx, y + 128, "ALWAYS STOCKED.");
+			PrintCentred(FONT10ARIAL, FONT_MCOLOR_BLACK, cx, y + 146, "ALWAYS LEGAL*");
+			PrintCentred(FONT10ARIAL, FONT_GRAY6, cx, y + 166, "*mostly");
+			FillRect(x + 24, y + h - 60, w - 48, 24, FROMRGB(178, 24, 24));
+			PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, cx, y + h - 53, "SHOP NOW");
+		}
+		else if (slot == 1)
+		{
+			// the crown, coming soon forever; clicking asks, and he answers once
+			FillRect(x + 1, y + 1, w - 2, h - 2, FROMRGB(24, 20, 12));
+			PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, cx, y + 24, "CHACH.COM");
+			const UINT32 gold = FROMRGB(212, 175, 55);
+			const INT32 cy = y + 66;
+			FillRect(cx - 16, cy + 10, 32, 8, gold);
+			FillRect(cx - 16, cy, 6, 10, gold);
+			FillRect(cx - 3,  cy - 4, 6, 14, gold);
+			FillRect(cx + 10, cy, 6, 10, gold);
+			PrintCentred(FONT12ARIAL, FONT_YELLOW, cx, cy + 34, "GOLD CROWN");
+			PrintCentred(FONT10ARIAL, FONT_MCOLOR_WHITE, cx, cy + 56, "MEMBERSHIP");
+			PrintCentred(FONT10ARIALBOLD, FONT_YELLOW, cx, cy + 84, "COMING SOON");
+			PrintCentred(FONT10ARIAL, FONT_GRAY6, cx, y + h - 30, "do not ask");
+		}
+		else
+		{
+			// the Parlour, in the Parlour's own maroon and gold homepage dress
+			FillRect(x + 1, y + 1, w - 2, h - 2, FROMRGB(94, 26, 26));
+			FillRect(x + 8, y + 10, w - 16, 84, FROMRGB(58, 14, 14));
+			PrintCentred(FONT12ARIAL, FONT_YELLOW, cx, y + 22, "SAN MONA");
+			PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, cx, y + 44, "MAHJONG PARLOUR");
+			FillRect(x + 22, y + 62, w - 44, 1, FROMRGB(200, 160, 40));
+			PrintCentred(FONT10ARIAL, FONT_GRAY4, cx, y + 72, "a Kingpin establishment");
+			if (guiChessAdTiles)
+			{
+				// the homepage's pair: the one-ring and the bird
+				BltVideoObject(FRAME_BUFFER, guiChessAdTiles, 9,
+				               CH_X(cx - 34), CH_Y(y + 104));
+				BltVideoObject(FRAME_BUFFER, guiChessAdTiles, 18,
+				               CH_X(cx + 4), CH_Y(y + 104));
+			}
+			PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_LTRED, cx, y + 160, "GAMES ARE FAIR");
+			PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_LTRED, cx, y + 176, "BECAUSE MR. KLAUS");
+			PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_LTRED, cx, y + 192, "SAYS SO");
+			if (guiChessAdDragon)
+			{
+				// the gold medallion from the Parlour's own masthead
+				BltVideoObject(FRAME_BUFFER, guiChessAdDragon, 3,
+				               CH_X(cx - 44), CH_Y(y + 208));
+			}
+			FillRect(x + 20, y + h - 56, w - 40, 26, FROMRGB(58, 14, 14));
+			PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, cx, y + h - 48, "Play the Table");
+			PrintCentred(FONT10ARIAL, FONT_GRAY4, cx, y + h - 20, "est. 1999");
 		}
 	}
 
 	void ChessRenderFooter()
 	{
-		PrintAt(FONT10ARIAL, FONT_GRAY7, CH_BOARD_X, CH_PAGE_H - 16, T(CHS_FOOTER));
-		// the language link lives down here now: the proprietor is German and
-		// it costs one small footer line
-		const INT32 lx = CH_BOARD_X + CH_BOARD_SIZE - 34;
-		PrintAt(FONT10ARIAL, gfChessGerman ? FONT_GRAY7 : FONT_MCOLOR_LTGREEN, lx, CH_PAGE_H - 16, "EN");
-		PrintAt(FONT10ARIAL, FONT_GRAY7, lx + 14, CH_PAGE_H - 16, "|");
-		PrintAt(FONT10ARIAL, gfChessGerman ? FONT_MCOLOR_LTGREEN : FONT_GRAY7, lx + 20, CH_PAGE_H - 16, "DE");
+		PrintAt(FONT10ARIAL, FONT_GRAY7, CH_BOARD_X, CH_PAGE_H - CH_INSET - 60, T(CHS_FOOTER));
 	}
 }
 
 // --- laptop page hooks ----------------------------------------------------
+
+// The composer eats the keyboard while it is open - the parlour chat's
+// pattern. Returns true when the key was ours.
+bool ChessHandleTypedKey(UINT32 usParam, UINT16 usKeyState)
+{
+	if (!gfChessGbCompose) return false;
+	if (usParam == SDLK_ESCAPE)
+	{
+		gfChessGbCompose = false;
+		ChessSyncPageRegions();
+		ChessRedraw();
+		return true;
+	}
+	if (usParam == SDLK_RETURN || usParam == SDLK_KP_ENTER)
+	{
+		ChessGbPost();
+		return true;
+	}
+	if (usParam == SDLK_BACKSPACE)
+	{
+		if (!gChessGbInput.empty())
+		{
+			gChessGbInput.pop_back();
+			ChessRedraw();
+		}
+		return true;
+	}
+	// printable characters arrive as TEXT_INPUT events, which know the
+	// keyboard layout; here they are only swallowed so no shortcut fires
+	return true;
+}
+
+// Layout-aware typing: the engine's TEXT_INPUT events carry the character
+// the keyboard actually produced, shift, dead keys and all.
+bool ChessHandleTextInput(const ST::utf32_buffer& codepoints)
+{
+	if (!gfChessGbCompose) return false;
+	bool changed = false;
+	for (char32_t cp : codepoints)
+	{
+		if (cp < 32 || cp > 126) continue;  // ze book is ASCII
+		if (gChessGbInput.size() >= CH_GB_LINE_MAX) break;
+		gChessGbInput += char(cp);
+		changed = true;
+	}
+	if (changed) ChessRedraw();
+	return true;
+}
 
 void EnterChess()
 {
@@ -2112,10 +2795,15 @@ void EnterChess()
 	guiChessCoach  = nullptr;
 	guiChessIcons  = nullptr;
 	guiChessLogo   = nullptr;
-	guiChessBanner = nullptr;
+	guiChessAdDragon = nullptr;
+	guiChessAdTiles  = nullptr;
 	guiChessSelf   = nullptr;
 	giChessStub    = -1;
+	giChessGbPage  = 0;
+	gfChessGbCompose = false;
+	gChessGbInput.clear();
 	gChessSelfNick = ST::string();
+	gChessSelfName = ST::string();
 	try
 	{
 		guiChessPieces      = AddVideoObjectFromFile("sti/laptop/chesspieces.sti");
@@ -2129,7 +2817,8 @@ void EnterChess()
 	{
 		guiChessIcons  = AddVideoObjectFromFile("sti/laptop/chessicons.sti");
 		guiChessLogo   = AddVideoObjectFromFile("sti/laptop/chesslogo.sti");
-		guiChessBanner = AddVideoObjectFromFile("sti/laptop/chessbanner.sti");
+		guiChessAdDragon = AddVideoObjectFromFile("sti/laptop/mahjongdragon.sti");
+		guiChessAdTiles  = AddVideoObjectFromFile("sti/laptop/mahjongtiles.sti");
 	}
 	catch (...)
 	{
@@ -2155,12 +2844,36 @@ void EnterChess()
 		{
 			MERCPROFILESTRUCT const& imp = GetProfile(
 				static_cast<ProfileID>(PLAYER_GENERATED_CHARACTER_ID + LaptopSaveInfo.iVoiceId));
-			guiChessSelf     = Load33Portrait(imp);
-			guiChessSelfHalf = ChessBakeFace(guiChessSelf);
+			guiChessSelf = Load33Portrait(imp);
+			SGPVObject* big = ChessLoadPortrait(imp);
+			guiChessSelfHalf = ChessBakeFace(big, CH_ROW_FACE);
+			gGuestSelfFace   = ChessBakeFace(big, CH_GB_FACE);
+			DeleteVideoObject(big);
 			gChessSelfNick   = imp.zNickname;
+			gChessSelfName   = ChessFirstName(imp.zName);
 		}
 		catch (...)
 		{
+		}
+	}
+
+	// the guestbook regulars: whoever has a portrait gets it by their entry
+	for (size_t i = 0; i < CH_GB_COUNT; ++i)
+	{
+		gGuestFace[i] = nullptr;
+		gGuestName[i] = CHESS_GUESTBOOK[i].name;
+		if (CHESS_GUESTBOOK[i].pid == CH_NO_PID) continue;
+		try
+		{
+			MERCPROFILESTRUCT const& profile = GetProfile(CHESS_GUESTBOOK[i].pid);
+			if (!profile.zName.empty()) gGuestName[i] = ChessFirstName(profile.zName);
+			SGPVObject* f = ChessLoadPortrait(profile);
+			gGuestFace[i] = ChessBakeFace(f, CH_GB_FACE);
+			DeleteVideoObject(f);
+		}
+		catch (...)
+		{
+			// no portrait on disk: the tinted initial disc stands in
 		}
 	}
 
@@ -2181,6 +2894,28 @@ void EnterChess()
 	}
 	ChessBeginSession();
 	ChessPlaceRegions();
+
+	// Dev shortcut leg four: JA2_DEV_CHESS=0/2/3/4 lands on Play, Learn,
+	// Watch or Groups; any other value stays on the puzzle.
+	if (const char* dev = getenv("JA2_DEV_CHESS"))
+	{
+		const int want = dev[0] == '0' ? 0
+		               : dev[0] == '2' ? 2
+		               : dev[0] == '3' ? 3
+		               : dev[0] == '4' ? 4 : -1;
+		if (want >= 0)
+		{
+			giChessStub = want;
+			if (want == 0 && giPlaySeat < 0 && guiPlaySeekDue == 0) ChessPlayNewGame();
+			if (want == 2) gLearnGame.SetFen(CHESS_LESSONS[giChessLesson].fen);
+			if (want == 3 && guiWatchNextMove == 0)
+			{
+				ChessWatchNewGame();
+				guiWatchNextMove = ChessNow() + 900;
+			}
+			ChessSyncPageRegions();
+		}
+	}
 }
 
 void ExitChess()
@@ -2191,10 +2926,17 @@ void ExitChess()
 	if (guiChessCoach)  { DeleteVideoObject(guiChessCoach);  guiChessCoach  = nullptr; }
 	if (guiChessIcons)  { DeleteVideoObject(guiChessIcons);  guiChessIcons  = nullptr; }
 	if (guiChessLogo)   { DeleteVideoObject(guiChessLogo);   guiChessLogo   = nullptr; }
-	if (guiChessBanner) { DeleteVideoObject(guiChessBanner); guiChessBanner = nullptr; }
+	if (guiChessAdDragon) { DeleteVideoObject(guiChessAdDragon); guiChessAdDragon = nullptr; }
+	if (guiChessAdTiles)  { DeleteVideoObject(guiChessAdTiles);  guiChessAdTiles  = nullptr; }
 	if (guiChessSelf)   { DeleteVideoObject(guiChessSelf);   guiChessSelf   = nullptr; }
 	if (guiChessSelfHalf)  { DeleteVideoSurface(guiChessSelfHalf);  guiChessSelfHalf  = nullptr; }
+	if (gPlayOppFace)      { DeleteVideoSurface(gPlayOppFace);      gPlayOppFace      = nullptr; }
 	if (guiChessCoachHalf) { DeleteVideoSurface(guiChessCoachHalf); guiChessCoachHalf = nullptr; }
+	if (gGuestSelfFace)    { DeleteVideoSurface(gGuestSelfFace);    gGuestSelfFace    = nullptr; }
+	for (SGPVSurface*& f : gGuestFace)
+	{
+		if (f) { DeleteVideoSurface(f); f = nullptr; }
+	}
 	for (int i = 0; i < 2; ++i)
 	{
 		if (gWatchFaceHalf[i]) { DeleteVideoSurface(gWatchFaceHalf[i]); gWatchFaceHalf[i] = nullptr; }
@@ -2208,8 +2950,8 @@ void RenderChess()
 	if (giChessStub == 4)
 	{
 		ChessRenderGuestbook();
-		ChessRenderBanner();
-		ChessRenderFooter();
+		ChessRenderGuestAd();
+		ChessRenderGuestCompose();
 	}
 	else if (giChessStub == 2)
 	{
@@ -2223,14 +2965,32 @@ void RenderChess()
 		ChessRenderWatch();
 		ChessRenderBanner();
 		ChessRenderWatchPanel();
-		ChessRenderFooter();
 	}
 	else if (giChessStub == 0)
 	{
 		ChessRenderBoard();
 		const int pPlies = int(gPlaySan.size());
-		ChessRenderPlayerRow(guiChessCoachHalf, T(CHS_PLAY_OPP), "(1850)", CH_ROW_TOP_Y,
-		                     &gPlayGame, ChessGame::Black, pPlies, giPlayState == 1);
+		if (giPlayState == 3 || giPlaySeat < 0)
+		{
+			// still seeking: a grey pawn stands in where the opponent will be
+			FillRounded(CH_BOARD_X, CH_ROW_TOP_Y, CH_SQ, CH_SQ,
+			            CH_RGB_PANEL_SUNK, 3, CH_RGB_CHROME);
+			if (guiChessPieces)
+			{
+				BltVideoObject(FRAME_BUFFER, guiChessPieces, 12,
+				               CH_X(CH_BOARD_X), CH_Y(CH_ROW_TOP_Y));
+			}
+			PrintAt(FONT10ARIALBOLD, FONT_GRAY4, CH_BOARD_X + CH_SQ + 8,
+			        CH_ROW_TOP_Y + 6, T(CHS_PLAY_SEEK));
+		}
+		else
+		{
+			const ChessSeat& opp = CHESS_SEATS[giPlaySeat];
+			ChessRenderPlayerRow(gPlayOppFace, opp.handle,
+			                     ST::format("({})", opp.rating), CH_ROW_TOP_Y,
+			                     &gPlayGame, ChessGame::Black, pPlies, giPlayState == 1,
+			                     opp.title);
+		}
 		ChessRenderPlayerRow(guiChessSelfHalf,
 		                     gChessSelfNick.empty() ? ST::string("@you")
 		                                            : ST::format("@{}", gChessSelfNick),
@@ -2238,7 +2998,6 @@ void RenderChess()
 		                     &gPlayGame, ChessGame::White, pPlies, giPlayState == 0);
 		ChessRenderBanner();
 		ChessRenderPlayPanel();
-		ChessRenderFooter();
 	}
 	else if (giChessStub >= 0)
 	{
@@ -2264,6 +3023,18 @@ void RenderChess()
 
 void HandleChess()
 {
+	// the composer's caret blinks on the strategic clock
+	if (gfChessGbCompose)
+	{
+		static bool sLastCaret = false;
+		const bool caret = (ChessNow() / 400) & 1;
+		if (caret != sLastCaret)
+		{
+			sLastCaret = caret;
+			ChessRedraw();
+		}
+	}
+
 	// a piece in flight repaints every frame until it lands
 	if (gChessAnim.active)
 	{
@@ -2271,10 +3042,27 @@ void HandleChess()
 		ChessRedraw();
 	}
 
+	// matchmaking: the seek resolves into a random regular
+	if (giChessStub == 0 && giPlayState == 3 && ChessNow() >= guiPlaySeekDue)
+	{
+		giPlaySeat = int(Random(6));
+		try
+		{
+			SGPVObject* face = ChessLoadPortrait(GetProfile(CHESS_SEATS[giPlaySeat].pid));
+			gPlayOppFace = ChessBakeFace(face, CH_ROW_FACE);
+			DeleteVideoObject(face);
+		}
+		catch (...) {}
+		giPlayState = 0;
+		giPlaySaid  = CHS_PLAY_YOUR;
+		ChessPlay(CH_SND_CLICK2, LOWVOLUME);
+		ChessRedraw();
+	}
+
 	// his move in the live game lands on his own clock
 	if (giChessStub == 0 && giPlayState == 1 && ChessNow() >= guiPlayDue)
 	{
-		const ChessGame::Move m = gPlayGame.Search(3, 8, guiPlaySeed);
+		const ChessGame::Move m = ChessPlayPickMove();
 		if (!m.IsNull())
 		{
 			gPlaySan.push_back(gPlayGame.San(m));

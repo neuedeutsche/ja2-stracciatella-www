@@ -3014,18 +3014,25 @@ bool MahjongHandleTypedKey(UINT32 usParam, UINT16 usKeyState)
 		}
 		return true;
 	}
-	if (usParam >= 32 && usParam < 127)
-	{
-		char c = static_cast<char>(usParam);
-		if ((usKeyState & SHIFT_DOWN) && c >= 'a' && c <= 'z') c = static_cast<char>(c - 32);
-		if (gMJInput.size() < MJ_CHAT_INPUT_MAX)
-		{
-			gMJInput += c;
-			MahjongRedraw();
-		}
-		return true;
-	}
+	// printable characters arrive as TEXT_INPUT events, which know the
+	// keyboard layout; here they are only swallowed so no shortcut fires
+	if (usParam >= 32 && usParam < 127) return true;
 	return false;
+}
+
+// Layout-aware typing for the chat line, via the engine's TEXT_INPUT events.
+bool MahjongHandleTextInput(const ST::utf32_buffer& codepoints)
+{
+	bool changed = false;
+	for (char32_t cp : codepoints)
+	{
+		if (cp < 32 || cp > 126) continue;
+		if (gMJInput.size() >= MJ_CHAT_INPUT_MAX) break;
+		gMJInput += static_cast<char>(cp);
+		changed = true;
+	}
+	if (changed) MahjongRedraw();
+	return true;
 }
 
 

@@ -342,6 +342,15 @@ static void GetLaptopKeyboardInput(void)
 	InputAtom InputEvent;
 	while (DequeueSpecificEvent(&InputEvent, KEYBOARD_EVENTS))
 	{
+		// layout-aware typing arrives as TEXT_INPUT; the focused site input
+		// gets it before the shortcut handling sees anything
+		if (InputEvent.usEvent == TEXT_INPUT)
+		{
+			if (guiCurrentLaptopMode == LAPTOP_MODE_CHESS &&
+				ChessHandleTextInput(InputEvent.codepoints)) continue;
+			if (guiCurrentLaptopMode == LAPTOP_MODE_MAHJONG &&
+				MahjongHandleTextInput(InputEvent.codepoints)) continue;
+		}
 		HandleKeyBoardShortCutsForLapTop(InputEvent.usEvent, InputEvent.usParam, InputEvent.usKeyState);
 	}
 }
@@ -585,6 +594,9 @@ static void EnterLaptop(void)
 	{
 		guiCurrentWWWMode    = LAPTOP_MODE_CHESS;
 		guiCurrentLaptopMode = LAPTOP_MODE_CHESS;
+		// straight onto the page: no bookmark dropdown, no mail box
+		fFirstTimeInLaptop = FALSE;
+		fNewMailFlag       = FALSE;
 	}
 
 	DrawDeskTopBackground();
@@ -2840,6 +2852,9 @@ void HandleKeyBoardShortCutsForLapTop(UINT16 usEvent, UINT32 usParam, UINT16 usK
 	// mahjong site: the chat input line eats printable keys first
 	if (guiCurrentLaptopMode == LAPTOP_MODE_MAHJONG && MahjongHandleTypedKey(usParam, usKeyState)) return;
 
+	// chess site: the guestbook composer eats keys the same way
+	if (guiCurrentLaptopMode == LAPTOP_MODE_CHESS && ChessHandleTypedKey(usParam, usKeyState)) return;
+
 	switch (usParam)
 	{
 		case SDLK_ESCAPE:
@@ -3418,8 +3433,11 @@ void SaveLaptopInfoToSavedGame(HWFILE const f)
 		INJ_U8(  d, ch.ubBestStreak)
 		INJ_U8(  d, ch.ubHearts)
 		INJ_U8(  d, ch.ubFlags)
+		// the marker guards the tail: only this format's saves carry one
+		INJ_U8(  d, 0xC5)
+		INJ_U8(  d, UINT8(strnlen(ch.szLine, sizeof(ch.szLine) - 1)))
 	}
-	INJ_SKIP( d, 63)
+	INJ_SKIP( d, 61)
 	Assert(d.getConsumed() == lengthof(data));
 
 	f->write(data, sizeof(data));
@@ -3433,6 +3451,14 @@ void SaveLaptopInfoToSavedGame(HWFILE const f)
 	if (l.ubNumberLifeInsurancePayoutUsed != 0)
 	{ // There are any insurance payouts in progress
 		f->write(l.pLifeInsurancePayouts.data(), sizeof(LIFE_INSURANCE_PAYOUT) * l.pLifeInsurancePayouts.size());
+	}
+
+	{
+		// the guestbook signature rides behind the fixed block, the same way
+		// the order arrays do; old saves simply carry a zero length
+		ChessPersist const ch = ChessGetPersist();
+		size_t const len = strnlen(ch.szLine, sizeof(ch.szLine) - 1);
+		if (len != 0) f->write(ch.szLine, len);
 	}
 }
 
@@ -3518,18 +3544,23 @@ void LoadLaptopInfoFromSavedGame(HWFILE const f)
 		EXTR_U8(  d, mj.ubGrudge)
 		MahjongSetPersist(mj);
 	}
+	// chach.com: old saves read harmless zeroes here. The signature text
+	// itself rides behind the fixed block; only its length lives in it.
+	ChessPersist ch;
+	UINT8 ubChessLineLen;
 	{
-		// chach.com: old saves read harmless zeroes here
-		ChessPersist ch;
 		EXTR_U16( d, ch.usDay)
 		EXTR_U16( d, ch.usLastSolvedDay)
 		EXTR_U8(  d, ch.ubStreak)
 		EXTR_U8(  d, ch.ubBestStreak)
 		EXTR_U8(  d, ch.ubHearts)
 		EXTR_U8(  d, ch.ubFlags)
-		ChessSetPersist(ch);
+		UINT8 ubChessLineMarker;
+		EXTR_U8(  d, ubChessLineMarker)
+		EXTR_U8(  d, ubChessLineLen)
+		if (ubChessLineMarker != 0xC5) ubChessLineLen = 0;
 	}
-	EXTR_SKIP( d, 63)
+	EXTR_SKIP( d, 61)
 	Assert(d.getConsumed() == lengthof(data));
 
 	// Handle old saves in M.E.R.C. module
@@ -3555,6 +3586,14 @@ void LoadLaptopInfoFromSavedGame(HWFILE const f)
 	{
 		l.pLifeInsurancePayouts.clear();
 	}
+
+	std::memset(ch.szLine, 0, sizeof(ch.szLine));
+	if (ubChessLineLen != 0)
+	{
+		if (ubChessLineLen > sizeof(ch.szLine) - 1) ubChessLineLen = UINT8(sizeof(ch.szLine) - 1);
+		f->read(ch.szLine, ubChessLineLen);
+	}
+	ChessSetPersist(ch);
 }
 
 // Used to determine delay if its raining

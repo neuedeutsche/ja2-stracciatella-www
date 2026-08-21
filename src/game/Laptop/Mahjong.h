@@ -3,6 +3,8 @@
 
 #include "Types.h"
 
+#include <string_theory/string>
+
 void EnterMahjong(void);
 void ExitMahjong(void);
 void RenderMahjong(void);
@@ -10,6 +12,7 @@ void HandleMahjong(void);
 
 // chat input: returns true if the key was consumed by the chat line
 bool MahjongHandleTypedKey(UINT32 usParam, UINT16 usKeyState);
+bool MahjongHandleTextInput(const ST::utf32_buffer& codepoints);
 
 // save-game persistence: 16 bytes carved from the laptop blob's reserve
 struct MahjongPersist
