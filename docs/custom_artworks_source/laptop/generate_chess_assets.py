@@ -99,11 +99,14 @@ PIECES = {
     # mass sits low - these are not tall thin Staunton silhouettes.
     # head, then a collar bar wider than the head, then the bell: the collar
     # only reads if it overhangs both the head above and the neck below
+    # Shorter than the majors on purpose, and hourglass-shaped: head, collar,
+    # a bell flaring in a concave curve, and a foot lip jutting past the bell.
     "pawn": [
-        ("circle", 50, 26, 15),
-        ("poly", [(30, 40), (70, 40), (64, 51), (36, 51)]),
-        ("poly", [(43, 50), (57, 50), (70, 82), (30, 82)]),
-        ("rect", 20, 80, 80, 95, 5),
+        ("circle", 50, 31, 14),
+        ("poly", [(31, 44), (69, 44), (62, 54), (38, 54)]),
+        ("poly", [(43, 54), (57, 54), (59, 62), (64, 71), (75, 80), (79, 88),
+                  (21, 88), (25, 80), (36, 71), (41, 62)]),
+        ("rect", 15, 85, 85, 95, 6),
     ],
     "rook": [
         ("rect", 21, 13, 79, 32, 2),
@@ -111,15 +114,13 @@ PIECES = {
         ("poly", [(32, 41), (68, 41), (71, 74), (29, 74)]),
         ("rect", 21, 71, 79, 90, 3),
     ],
-    # An egg, not a mitre: a fat rounded body with a small knob at the top
-    # and a vertical slot cut down into the upper right.
+    # Constructed, not organic: the body is an elongated octagon - straight
+    # segments only - with a ball on top and the slot cut into the upper
+    # right. Circles are reserved for balls and heads across the whole set.
     "bishop": [
-        ("circle", 42, 12, 8),
-        ("circle", 52, 28, 19),
-        ("circle", 50, 50, 26),
-        ("poly", [(34, 28), (70, 28), (74, 50), (26, 50)]),
-        ("poly", [(28, 50), (72, 50), (66, 82), (34, 82)]),
-        ("rect", 18, 78, 82, 95, 8),
+        ("poly", [(38, 22), (62, 22), (75, 41), (75, 61), (62, 85),
+                  (38, 85), (25, 61), (25, 41)]),
+        ("rect", 19, 78, 81, 94, 5),
     ],
     "queen": [
         # Four copies of one sharp triangle - wide base, apex high - set side
@@ -137,27 +138,28 @@ PIECES = {
         ("circle", 88, 32, 8),
         ("rect", 12, 78, 88, 95, 8),
     ],
-    # A thick cross planted on one hard mass: a barely-tapered block down to
-    # the collar, then the skirt. The arch is punched through the block.
+    # An even cross over a crown: straight column up the middle, two bows
+    # arching outward to the sides. Built solid, then the teardrop hollows
+    # between column and bows are cut out.
     "king": [
-        ("rect", 44, 2, 56, 27, 1),
-        ("rect", 33, 9, 67, 20, 1),
-        ("poly", [(27, 27), (73, 27), (75, 62), (25, 62)]),
-        ("rect", 29, 60, 71, 70, 2),
-        ("poly", [(36, 70), (64, 70), (74, 83), (26, 83)]),
-        ("rect", 19, 80, 81, 95, 4),
+        ("rect", 46, 2, 54, 36, 1),
+        ("rect", 38, 10, 62, 18, 1),
+        ("poly", [(46, 30), (38, 24), (28, 22), (18, 28), (12, 40), (12, 56),
+                  (18, 72), (28, 80), (72, 80), (82, 72), (88, 56), (88, 40),
+                  (82, 28), (72, 22), (62, 24), (54, 30)]),
+        ("rect", 20, 78, 80, 95, 8),
     ],
-    # Traced clockwise from the back ear: mane down the right, then onto the
-    # same slab the rest of the set stands on.
+    # The knight keeps the traced outline - it was the one organic shape that
+    # earned it. Clockwise from the back ear: mane down the right, base, up
+    # the chest, out along the muzzle, back over the face.
     "knight": [
         ("poly", [
             (52, 5), (60, 19), (70, 29), (76, 43), (73, 53), (79, 64),
-            (80, 74), (25, 74), (28, 64), (26, 52),
-            (18, 48), (10, 49), (6, 42), (9, 34), (18, 29), (27, 23),
-            (33, 13), (38, 5), (44, 15),
+            (80, 76), (25, 76), (28, 64), (26, 52), (18, 48), (10, 49),
+            (6, 42), (9, 34), (18, 29), (27, 23), (33, 13), (38, 5), (44, 15),
         ]),
-        ("poly", [(30, 66), (70, 66), (74, 78), (26, 78)]),
-        ("rect", 21, 75, 79, 91, 4),
+        ("poly", [(30, 72), (74, 72), (78, 80), (26, 80)]),
+        ("rect", 19, 77, 81, 93, 5),
     ],
 }
 
@@ -167,16 +169,25 @@ CUTOUTS = {
         ("rect", 36, 10, 45, 28, 0),
         ("rect", 55, 10, 64, 28, 0),
     ],
-    # the hollow in the king is two rings, one off to each side, overlapping
-    # so they connect in the centre
+    # the teardrop hollows between the column and each bow, tails pointing
+    # up toward the base of the cross
     "king": [
-        ("circle", 44, 42, 7),
-        ("circle", 56, 42, 7),
+        # round end up by the cross, point tapering down and outward
+        ("circle", 36, 45, 8),
+        ("poly", [(29, 48), (44, 44), (26, 68)]),
+        ("circle", 64, 45, 8),
+        ("poly", [(56, 44), (71, 48), (74, 68)]),
     ],
     "bishop": [
         # the slot: cut from above the egg straight down into it
-        ("rect", 51, 2, 59, 38, 3),
+        ("rect", 52, 3, 60, 52, 2),
     ],
+}
+
+# Drawn after the cutouts, so a cut can never slice into them: the bishop's
+# knob rides over the slot rather than being notched by it.
+OVERLAYS = {
+    "bishop": [("circle", 50, 16, 10)],
 }
 
 # Punched in outline colour rather than cut to transparent.
@@ -218,6 +229,8 @@ def _silhouette(name, size, margin):
     _draw_primitives(d, PIECES[name], scale, offset, 255)
     if name in CUTOUTS:
         _draw_primitives(d, CUTOUTS[name], scale, offset, 0)
+    if name in OVERLAYS:
+        _draw_primitives(d, OVERLAYS[name], scale, offset, 255)
 
     small = mask.resize((size, size), Image.BOX)
     return small.point(lambda v: 255 if v >= 128 else 0)
