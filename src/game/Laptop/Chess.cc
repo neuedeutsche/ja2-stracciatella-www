@@ -116,6 +116,12 @@
 #define CH_RGB_DARK        FROMRGB(115, 149,  82)
 #define CH_RGB_HL_LIGHT    FROMRGB(245, 246, 130)
 #define CH_RGB_HL_DARK     FROMRGB(185, 202,  67)
+// the board under the result card: every square colour pulled halfway to the
+// chrome grey, in place of the scanline dim
+#define CH_RGB_LIGHT_DIM   FROMRGB(140, 139, 123)
+#define CH_RGB_DARK_DIM    FROMRGB( 80,  95,  60)
+#define CH_RGB_HL_LIGHT_DIM FROMRGB(145, 144,  84)
+#define CH_RGB_HL_DARK_DIM  FROMRGB(115, 122,  52)
 #define CH_RGB_DOT_LIGHT   FROMRGB(200, 201, 178)
 #define CH_RGB_DOT_DARK    FROMRGB( 98, 127,  70)
 // Warm greys: the neutral values read green next to the board, so red leads
@@ -971,18 +977,18 @@ namespace
 		FillRect(CH_NAV_X, 0, CH_NAV_W, CH_PAGE_H, CH_RGB_PANEL);
 
 		// masthead: chess.com's lockup, pawn to the left of the wordmark
-		const INT32 markW = StringPixLength("chach", FONT10ARIALBOLD) +
+		const INT32 markW = StringPixLength("Chach", FONT10ARIALBOLD) +
 		                    StringPixLength(".com", FONT10ARIAL);
 		const INT32 lockW = 14 + 2 + markW;
 		const INT32 lockX = std::max(2, CH_NAV_X + (CH_NAV_W - lockW) / 2);
 		if (guiChessLogo)
 		{
 			// frame 1 is the 14px pawn; the 22px one will not sit on one line
-			BltVideoObject(FRAME_BUFFER, guiChessLogo, 1, CH_X(lockX + 2), CH_Y(7));
+			BltVideoObject(FRAME_BUFFER, guiChessLogo, 1, CH_X(lockX + 1), CH_Y(8));
 		}
-		PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, lockX + 16, 12, "chach");
+		PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, lockX + 15, 13, "Chach");
 		PrintAt(FONT10ARIAL, FONT_GRAY2,
-		        lockX + 16 + StringPixLength("chach", FONT10ARIALBOLD), 11, ".com");
+		        lockX + 15 + StringPixLength("Chach", FONT10ARIALBOLD), 13, ".com");
 
 		static const ChessStr items[5] = {
 			CHS_NAV_PLAY, CHS_NAV_PUZZLES, CHS_NAV_LEARN, CHS_NAV_WATCH, CHS_NAV_COMMUNITY
@@ -998,8 +1004,10 @@ namespace
 			}
 			if (guiChessIcons)
 			{
+				// two up from the row origin: the 14px icon otherwise hangs
+				// below the 10px label's line
 				BltVideoObject(FRAME_BUFFER, guiChessIcons, UINT16(i),
-				               CH_X(CH_NAV_X + 4), CH_Y(rowY));
+				               CH_X(CH_NAV_X + 4), CH_Y(rowY - 2));
 			}
 			PrintAt(FONT10ARIAL, active ? FONT_MCOLOR_WHITE : FONT_GRAY2,
 			        CH_NAV_X + 20, rowY + 1, T(items[i]));
@@ -1043,8 +1051,13 @@ namespace
 				const bool light = IsLightSquare(sq);
 				const bool lit = sq == gubChessLastFrom || sq == gubChessLastTo ||
 				                 (gbChessSelected >= 0 && sq == UINT8(gbChessSelected));
-				const UINT32 rgb = lit ? (light ? CH_RGB_HL_LIGHT : CH_RGB_HL_DARK)
-				                       : (light ? CH_RGB_LIGHT : CH_RGB_DARK);
+				UINT32 rgb = lit ? (light ? CH_RGB_HL_LIGHT : CH_RGB_HL_DARK)
+				                 : (light ? CH_RGB_LIGHT : CH_RGB_DARK);
+				if (gfChessModal)
+				{
+					rgb = lit ? (light ? CH_RGB_HL_LIGHT_DIM : CH_RGB_HL_DARK_DIM)
+					          : (light ? CH_RGB_LIGHT_DIM : CH_RGB_DARK_DIM);
+				}
 				FillRect(CH_BOARD_X + col * CH_SQ, CH_BOARD_Y + row * CH_SQ, CH_SQ, CH_SQ, rgb);
 			}
 		}
@@ -1097,9 +1110,11 @@ namespace
 			const UINT8 fileSq = ScreenToSquare(i, 7);
 			const char rankGlyph[2] = { char('1' + ChessGame::RankOf(rankSq)), '\0' };
 			const char fileGlyph[2] = { char('a' + ChessGame::FileOf(fileSq)), '\0' };
-			PrintAt(FONT10ARIAL, IsLightSquare(rankSq) ? FONT_GRAY7 : FONT_WHITE,
+			const UINT8 onLight = gfChessModal ? FONT_GRAY6 : FONT_GRAY7;
+			const UINT8 onDark  = gfChessModal ? FONT_GRAY4 : FONT_MCOLOR_WHITE;
+			PrintAt(FONT10ARIAL, IsLightSquare(rankSq) ? onLight : onDark,
 			        CH_BOARD_X + 3, CH_BOARD_Y + i * CH_SQ + 4, rankGlyph);
-			PrintAt(FONT10ARIAL, IsLightSquare(fileSq) ? FONT_GRAY7 : FONT_WHITE,
+			PrintAt(FONT10ARIAL, IsLightSquare(fileSq) ? onLight : onDark,
 			        CH_BOARD_X + i * CH_SQ + CH_SQ - 8, CH_BOARD_BOTTOM - 11, fileGlyph);
 		}
 
@@ -1116,8 +1131,10 @@ namespace
 				// the piece in hand rides the cursor instead of its square
 				if (gfChessDragging && sq == gubChessDragFrom) continue;
 				const UINT8 type = gChessGame.PieceAt(sq);
+				// frames 12-23 are the dimmed twins, used while the card is up
 				const UINT16 frame = UINT16((type - 1) +
-					(gChessGame.ColorAt(sq) == ChessGame::Black ? 6 : 0));
+					(gChessGame.ColorAt(sq) == ChessGame::Black ? 6 : 0) +
+					(gfChessModal ? 12 : 0));
 				BltVideoObject(FRAME_BUFFER, guiChessPieces, frame,
 				               CH_X(CH_BOARD_X + col * CH_SQ), CH_Y(CH_BOARD_Y + row * CH_SQ));
 			}
@@ -1186,13 +1203,11 @@ namespace
 		             CH_RADIUS, CH_RGB_CHROME);
 
 		const ST::string title = T(CHS_TITLE);
-		const INT32 titleW = ChessIconLabelWidth(FONT12ARIAL, title);
-		// no bold cut of the 12pt face exists, so bold is faked the 1999 way:
-		// the label printed twice, one pixel apart
+		// the real bold cut: faking bold by double-printing 12pt crushed the
+		// letter spacing, and oversize beat bold anyway
+		const INT32 titleW = ChessIconLabelWidth(FONT10ARIALBOLD, title);
 		ChessIconLabel(CH_ICON_PUZZLEMARK, cx - titleW / 2, 20,
-		               FONT12ARIAL, FONT_MCOLOR_WHITE, title);
-		PrintAt(FONT12ARIAL, FONT_MCOLOR_WHITE, cx - titleW / 2 + 19,
-		        20 - GetFontHeight(FONT12ARIAL) / 2, title);
+		               FONT10ARIALBOLD, FONT_MCOLOR_WHITE, title);
 
 		// date stepper: < [calendar] DAY n >
 		const ST::string day = ST::format("{} {}", T(CHS_DAY), giChessViewDay);
@@ -1292,12 +1307,6 @@ namespace
 	void ChessRenderModal()
 	{
 		if (!gfChessModal) return;
-
-		// dim by dropping every other scanline to the chrome tone
-		for (INT32 row = 0; row < CH_BOARD_SIZE; row += 2)
-		{
-			FillRect(CH_BOARD_X, CH_BOARD_Y + row, CH_BOARD_SIZE, 1, CH_RGB_CHROME);
-		}
 
 		const INT32 w = CH_MODAL_W, h = CH_MODAL_H;
 		const INT32 x = CH_MODAL_X, y = CH_MODAL_Y;

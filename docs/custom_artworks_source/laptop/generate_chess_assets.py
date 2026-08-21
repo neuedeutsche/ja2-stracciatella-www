@@ -66,7 +66,13 @@ PALETTE = [
     ( 24,  22,  20),  # 34 banner ink
     (196,  36,  36),  # 35 banner red
     (250, 205,  70),  # 36 banner gold
-    (250, 190,  70),  # 37 flame core
+    (148, 146, 144),  # 37 dim white fill
+    (126, 124, 121),  # 38 dim white shade
+    ( 69,  66,  62),  # 39 dim white outline
+    ( 55,  52,  48),  # 40 dim black fill
+    ( 45,  42,  39),  # 41 dim black shade
+    ( 36,  34,  31),  # 42 dim black outline
+    (250, 190,  70),  # 43 flame core
     (230, 110,  40),  # 38 flame edge
 ]
 (TRANSPARENT, W_FILL, W_SHADE, W_LINE, B_FILL, B_SHADE, B_LINE,
@@ -75,10 +81,16 @@ PALETTE = [
  LOGO_SHADE, LOGO_LINE,
  PLAY_L, PLAY_D, PUZ_L, PUZ_D, LEARN_L, LEARN_D,
  WATCH_L, WATCH_D, COMM_L, COMM_D, CAL_L, CAL_D, PUZG_D,
- BAN_PAPER, BAN_INK, BAN_RED, BAN_GOLD, FLAME_L, FLAME_D) = range(39)
+ BAN_PAPER, BAN_INK, BAN_RED, BAN_GOLD,
+ DW_FILL, DW_SHADE, DW_LINE, DB_FILL, DB_SHADE, DB_LINE,
+ FLAME_L, FLAME_D) = range(45)
 
 WHITE_INKS = (W_FILL, W_SHADE, W_LINE)
 BLACK_INKS = (B_FILL, B_SHADE, B_LINE)
+# the same pieces pulled toward the chrome grey, blitted while the result
+# card dims the board
+WHITE_DIM  = (DW_FILL, DW_SHADE, DW_LINE)
+BLACK_DIM  = (DB_FILL, DB_SHADE, DB_LINE)
 # chess.com's mark is a green pawn; ours is the same pawn in the CTA green
 LOGO_INKS  = (CTA, LOGO_SHADE, LOGO_LINE)
 
@@ -327,8 +339,9 @@ PIECE_ORDER = ["pawn", "knight", "bishop", "rook", "queen", "king"]
 
 
 def make_pieces(size):
+    """Frames 0-11 are the live set, 12-23 the dimmed twins for the modal."""
     frames = []
-    for inks in (WHITE_INKS, BLACK_INKS):
+    for inks in (WHITE_INKS, BLACK_INKS, WHITE_DIM, BLACK_DIM):
         for name in PIECE_ORDER:
             frames.append(render_piece(name, inks, size))
     return frames
