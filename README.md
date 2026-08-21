@@ -36,8 +36,8 @@ ecosystem.
 | Site | Status | |
 |---|---|---|
 | **San Mona Mahjong Parlour** — a gambling establishment, and its regulars | live | [details ›](docs/sites/mahjong.md) |
+| **Chach.com** — one merc's chess site, daily puzzle and all | live | [details ›](docs/sites/chach.md) |
 | A dating site | planned | |
-| A chess puzzle page | planned | |
 
 Each site's page documents it in full. **Those pages contain spoilers** — how
 you find it, who you meet, what it costs. The sites are written to introduce
