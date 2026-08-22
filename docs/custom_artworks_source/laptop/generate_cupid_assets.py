@@ -6,8 +6,14 @@ box, drawn at 6x supersample, threshold-downsampled into an indexed palette and
 packed into ETRLE-compressed STI sheets. No anti-aliased fringes.
 
 Output (relative to the repo root):
-    assets/externalized/sti/laptop/cupidlogo.sti   2 frames: heart mark, 22 and 14
+    assets/externalized/sti/laptop/cupidlogo.sti   3 frames: heart mark at 22, 14 and 40
     assets/externalized/sti/laptop/cupidicons.sti  8 frames of 14x14 site chrome
+    assets/externalized/sti/laptop/cupidnight.sti  1 frame: 502x400 grainy night sky
+    assets/externalized/sti/laptop/cupidpanels.sti 4 frames: rail + 3 landscape card plates
+
+The night sky and the panel plates use the mahjong felt recipe: a
+deterministic LCG picks weighted shades per pixel, so the grain is
+reproducible and never anti-aliased.
 
 Icon frame order: home, browse, profile, viewed, mail, verified, heart, arrow.
 
@@ -49,11 +55,38 @@ PALETTE = [
     (135,  95, 170),  # 18 viewed lilac dark
     (235, 200, 120),  # 19 mail cream
     (180, 140,  70),  # 20 mail cream dark
+    # the night sky: plum-black grain, stars, drifting hearts
+    ( 30,  22,  32),  # 21 night base
+    ( 26,  18,  28),  # 22 night deep
+    ( 40,  31,  44),  # 23 night fleck
+    ( 48,  38,  52),  # 24 night bright fleck
+    (120, 104, 136),  # 25 star lavender
+    ( 86,  40,  58),  # 26 heart adrift
+    # the rail plate: warm rose, soft against the dark stage
+    ( 66,  30,  42),  # 27 rail base
+    ( 60,  26,  38),  # 28 rail dim
+    ( 78,  40,  52),  # 29 rail fleck
+    ( 52,  22,  33),  # 30 rail deep
+    (150,  92, 110),  # 31 rail bevel lit
+    ( 34,  14,  22),  # 32 rail bevel dark
+    # the member card plate: worn maroon leather
+    ( 74,  20,  28),  # 33 card base
+    ( 66,  17,  25),  # 34 card dim
+    ( 84,  26,  34),  # 35 card fleck
+    ( 56,  13,  21),  # 36 card deep
+    (118,  48,  58),  # 37 card bevel lit
+    ( 38,   9,  15),  # 38 card bevel dark
+    ( 14,  10,  16),  # 39 rivet ink
+    (170, 150, 180),  # 40 rivet glint
 ]
 (TRANSPARENT, HEART, HEART_SH, HEART_LN, GOLD, GOLD_SH,
  CHROME, PANEL, PANEL_UP, TEXT, TEXT_DIM,
  HOME_L, HOME_D, BROWSE_L, BROWSE_D, PROF_L, PROF_D,
- VIEW_L, VIEW_D, MAIL_L, MAIL_D) = range(21)
+ VIEW_L, VIEW_D, MAIL_L, MAIL_D,
+ NIGHT0, NIGHT1, NIGHT2, NIGHT3, STAR, DRIFT,
+ RAIL0, RAIL1, RAIL2, RAIL3, RAIL_HI, RAIL_LO,
+ CARD0, CARD1, CARD2, CARD3, CARD_HI, CARD_LO,
+ RIVET, GLINT) = range(41)
 
 SUPERSAMPLE = 6
 
@@ -129,9 +162,24 @@ LOGO_LAYERS = [
     (ARROW, GOLD),
 ]
 
+# the brand-size mark: outlined, shaded, glinting, pierced - a logo that
+# survives being looked at
+LOGO_BIG_LAYERS = [
+    (_heart(s=1.08), HEART_LN),                       # dark outline
+    (_heart(), HEART_SH),                             # body shade
+    (_heart(s=0.86), HEART),                          # the heart itself
+    ([("circle", 36, 34, 7)], TEXT),                  # the glint
+    ([("circle", 38, 36, 5)], HEART),                 # glint carved back
+    (ARROW, GOLD),
+    ([("poly", [(80, 84), (97, 71), (99, 89)])], GOLD_SH),  # head shade
+    ([("poly", [(88, 10), (92, 18), (100, 22), (92, 26), (88, 34),
+                (84, 26), (76, 22), (84, 18)])], TEXT),     # one sparkle
+]
+
 
 def make_logo():
-    return [render_layers(LOGO_LAYERS, 22), render_layers(LOGO_LAYERS, 14)]
+    return [render_layers(LOGO_LAYERS, 22), render_layers(LOGO_LAYERS, 14),
+            render_layers(LOGO_BIG_LAYERS, 40)]
 
 
 # --- site chrome icons ------------------------------------------------------
@@ -156,11 +204,12 @@ ICONS = {
           ("rect", 24, 68, 52, 76, 0)], PROF_D),
         ([("poly", [(66, 92), (90, 40), (98, 44), (74, 96)])], GOLD),
     ],
-    # who's viewed me: the eye
+    # the lounge: a speech bubble with three thinking dots
     "viewed": [
-        ([("poly", [(2, 50), (50, 18), (98, 50), (50, 82)])], VIEW_L),
-        ([("circle", 50, 50, 17)], VIEW_D),
-        ([("circle", 50, 50, 7)], PANEL),
+        ([("rect", 2, 10, 98, 68, 16),
+          ("poly", [(20, 64), (20, 96), (48, 66)])], VIEW_L),
+        ([("circle", 28, 40, 7), ("circle", 50, 40, 7),
+          ("circle", 72, 40, 7)], VIEW_D),
     ],
     # the envelope, for Speck's correspondence
     "mail": [
@@ -191,6 +240,100 @@ ICON_ORDER = ["home", "browse", "profile", "viewed", "mail",
 
 def make_icons(size=14):
     return [render_layers(ICONS[name], size) for name in ICON_ORDER]
+
+
+# --- textures (the mahjong felt recipe, replumbed) --------------------------
+def _lcg(state):
+    return (state * 1103515245 + 12345) & 0x7FFFFFFF
+
+
+def _speckle(w, h, shades, seed):
+    """Weighted-shade grain from a deterministic LCG - no PIL randomness."""
+    img = Image.new("P", (w, h), shades[0])
+    img.putpalette([v for rgb in PALETTE for v in rgb] +
+                   [0] * (768 - 3 * len(PALETTE)))
+    px = img.load()
+    state = seed
+    n = len(shades)
+    for y in range(h):
+        for x in range(w):
+            state = _lcg(state)
+            px[x, y] = shades[(state >> 16) % n]
+    return img
+
+
+def _blocky_heart(px, x, y, s, ink, w, h):
+    """The site's 7x6 pixel heart, clipped to the sheet."""
+    cells = [(0, 0, 3, 2), (4, 0, 3, 2), (0, 2, 7, 2), (1, 4, 5, 1),
+             (2, 5, 3, 1)]
+    for cx, cy, cw, ch in cells:
+        for yy in range(ch * s):
+            for xx in range(cw * s):
+                tx, ty = x + cx * s + xx, y + cy * s + yy
+                if 0 <= tx < w and 0 <= ty < h:
+                    px[tx, ty] = ink
+
+
+def make_night(w=502, h=400):
+    """The wallpaper: grainy plum night with baked stars and stray hearts."""
+    shades = [NIGHT0] * 7 + [NIGHT1] * 2 + [NIGHT2] * 2 + [NIGHT3]
+    img = _speckle(w, h, shades, seed=0x10E5)
+    px = img.load()
+    state = 0x5EEDED
+    for i in range(74):
+        state = _lcg(state)
+        x = state % w
+        y = (state >> 12) % h
+        ink = TEXT if i % 9 == 0 else STAR
+        d = 1 + ((state >> 20) % 2)
+        for yy in range(d):
+            for xx in range(d):
+                if x + xx < w and y + yy < h:
+                    px[x + xx, y + yy] = ink
+    for i in range(8):
+        state = _lcg(state)
+        _blocky_heart(px, state % (w - 8), (state >> 12) % (h - 7), 1,
+                      DRIFT, w, h)
+    return img
+
+
+def _rivet(px, x, y):
+    for yy in range(3):
+        for xx in range(3):
+            px[x + xx, y + yy] = RIVET
+    px[x, y] = GLINT
+
+
+def make_plate(w, h, shades, hi, lo, seed):
+    """A riveted plate: grain, 1px chisel bevel, studs in the corners."""
+    img = _speckle(w, h, shades, seed)
+    px = img.load()
+    for x in range(w):
+        px[x, 0] = hi
+        px[x, h - 1] = lo
+    for y in range(h):
+        px[0, y] = hi
+        px[w - 1, y] = lo
+    px[w - 1, 0] = shades[0]
+    px[0, h - 1] = shades[0]
+    for x, y in ((3, 3), (w - 6, 3), (3, h - 6), (w - 6, h - 6)):
+        _rivet(px, x, y)
+    return img
+
+
+RAIL_SHADES = [RAIL0] * 7 + [RAIL1] * 2 + [RAIL2] * 2 + [RAIL3]
+CARD_SHADES = [CARD0] * 7 + [CARD1] * 2 + [CARD2] * 2 + [CARD3]
+
+
+def make_panels():
+    """Frame 0: the nav rail. Frames 1-3: the landscape member card at its
+    three heights (deck 302, ME 306, detail 300)."""
+    return [
+        make_plate(112, 384, RAIL_SHADES, RAIL_HI, RAIL_LO, seed=0xA110),
+        make_plate(366, 302, CARD_SHADES, CARD_HI, CARD_LO, seed=0xBEA7),
+        make_plate(366, 306, CARD_SHADES, CARD_HI, CARD_LO, seed=0xC0DE),
+        make_plate(366, 300, CARD_SHADES, CARD_HI, CARD_LO, seed=0xD07E),
+    ]
 
 
 # --- STI packing (same layout the mahjong and chess generators emit) --------
@@ -265,6 +408,8 @@ def write_preview(frames, size, path, zoom=6):
 def main():
     write_sti(OUT_DIR / "cupidlogo.sti", make_logo())
     write_sti(OUT_DIR / "cupidicons.sti", make_icons())
+    write_sti(OUT_DIR / "cupidnight.sti", [make_night()])
+    write_sti(OUT_DIR / "cupidpanels.sti", make_panels())
 
     if "--preview" in sys.argv:
         frames = make_logo() + make_icons(28)
