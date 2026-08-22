@@ -340,6 +340,14 @@ BOOLEAN ExecuteStrategicEvent( STRATEGICEVENT *pEvent )
 
 		case EVENT_CUPID_SPECK_EMAIL:
 		{
+			// bit 0x10 carries the delayed welcome letter: Speck reviews
+			// every profile personally, and personally takes a while
+			if (pEvent->uiParam & 0x10)
+			{
+				AddEmailWithSpecialData(CUPID_EMAIL_WELCOME, 0,
+						CUPID_SPECK_SENDER, pEvent->uiTimeStamp, 0, 0);
+				break;
+			}
 			// param is the ad-campaign stage; the campaign stops the moment
 			// the member has actually visited the site
 			UINT32 const uiStage = pEvent->uiParam & 0x3;
