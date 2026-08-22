@@ -254,8 +254,10 @@ namespace
 	// the card photo downloads over a 28.8k line: rows revealed so far
 	INT32 giCupidPhotoReveal = 0;
 
-	// how far the dossier under the photo has been scrolled
+	// how far the dossier under the photo has been scrolled, and how far
+	// it can go (measured by the last render)
 	INT32 giCupidCardScroll = 0;
+	INT32 giCupidCardScrollMax = 0x7FFF;
 
 	// the card on the table: a verdict button flies it off the stage.
 	// No dragging - this is 1999, and pages have buttons.
@@ -1528,6 +1530,7 @@ namespace
 		giCupidCardDx = 0;
 		giCupidFlyDir = 0;
 		giCupidCardScroll = 0;
+		giCupidCardScrollMax = 0x7FFF; // remeasured on first render
 		giCupidPhotoReveal = 6; // the next photo arrives at 28.8kbps
 		if (gCupidDeckPos < int(gCupidDeck.size()) - 1) ++gCupidDeckPos;
 	}
@@ -1636,17 +1639,27 @@ namespace
 		}
 		const Card& card = CurrentCard();
 
-		// the dossier scrolls in place; the whole story is on the card
+		// the dossier scrolls in place; the whole story is on the card.
+		// At the ends nothing moves, so nothing repaints.
 		if (reason & MSYS_CALLBACK_REASON_WHEEL_UP)
 		{
-			giCupidCardScroll = std::max(0, giCupidCardScroll - 22);
-			CupidRedraw();
+			const INT32 next = std::max(0, giCupidCardScroll - 22);
+			if (next != giCupidCardScroll)
+			{
+				giCupidCardScroll = next;
+				CupidRedraw();
+			}
 			return;
 		}
 		if (reason & MSYS_CALLBACK_REASON_WHEEL_DOWN)
 		{
-			giCupidCardScroll += 22; // clamped against content in render
-			CupidRedraw();
+			const INT32 next = std::min(giCupidCardScrollMax,
+					giCupidCardScroll + 22);
+			if (next != giCupidCardScroll)
+			{
+				giCupidCardScroll = next;
+				CupidRedraw();
+			}
 			return;
 		}
 		(void)card;
@@ -2414,10 +2427,10 @@ namespace
 		{
 			if (pass == 1)
 			{
-				const INT32 maxScroll = std::max<INT32>(0, total - viewH);
-				if (giCupidCardScroll > maxScroll)
+				giCupidCardScrollMax = std::max<INT32>(0, total - viewH);
+				if (giCupidCardScroll > giCupidCardScrollMax)
 				{
-					giCupidCardScroll = maxScroll;
+					giCupidCardScroll = giCupidCardScrollMax;
 				}
 			}
 			INT32 cy = 0;
@@ -3611,13 +3624,26 @@ bool CupidHandleTypedKey(UINT32 usParam, UINT16 usKeyState)
 		case SDLK_LEFT:  StartFly(-1); return true;
 		case SDLK_RIGHT: StartFly(1);  return true;
 		case SDLK_UP:
-			giCupidCardScroll = std::max(0, giCupidCardScroll - 22);
-			CupidRedraw();
+		{
+			const INT32 next = std::max(0, giCupidCardScroll - 22);
+			if (next != giCupidCardScroll)
+			{
+				giCupidCardScroll = next;
+				CupidRedraw();
+			}
 			return true;
+		}
 		case SDLK_DOWN:
-			giCupidCardScroll += 22;
-			CupidRedraw();
+		{
+			const INT32 next = std::min(giCupidCardScrollMax,
+					giCupidCardScroll + 22);
+			if (next != giCupidCardScroll)
+			{
+				giCupidCardScroll = next;
+				CupidRedraw();
+			}
 			return true;
+		}
 		default: return false;
 	}
 }
