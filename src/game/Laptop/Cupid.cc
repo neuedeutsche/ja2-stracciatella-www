@@ -401,19 +401,14 @@ namespace
 			"DEAL BREAKERS: {}", "Blocked by {} member(s)",
 			"You both answered:", "You differ on:", "You agree on {} of {}.",
 			"SEND FLOWERS", "< BACK",
-			"MERCS & KISSES - where the tough get tender - a Speck T. "
-			"Kline company",
+			"where the tough get tender - a Speck T. Kline company",
 			"No profile, no romance. The ME tab is right there. - Speck",
-			"Out of winks. GOLD members never run out. Just saying. - Speck",
+			"Out of winks. GOLD never runs out. Just saying. - Speck",
 			"Thank you for going GOLD. You complete me. - Speck",
-			"Your card was declined. It happens to everyone. Not to me. "
-			"- Speck",
-			"Your M.E.R.C. account is overdue. Romance waits, invoices "
-			"don't. - Speck",
-			"You have my greatest appreciation for your payment. Thank "
-			"you. - Speck",
-			"THE SUNDAY SPECIAL!! Double winks all day. Science says "
-			"Sunday is for love.",
+			"Your card was declined. It happens. Not to me. - Speck",
+			"Your M.E.R.C. account is overdue. Romance can wait. - Speck",
+			"My greatest appreciation for your payment. Thank you. - Speck",
+			"SUNDAY SPECIAL!! Double winks all day, per science.",
 			"Membership attrition remains within industry norms. - mgmt",
 			"advertisement - mercsandkisses.com",
 			"!!! CONGRATULATIONS !!!",
@@ -478,20 +473,15 @@ namespace
 			"Sie antworteten beide:", "Sie unterscheiden sich bei:",
 			"Sie stimmen bei {} von {} ueberein.",
 			"BLUMEN SENDEN", "< ZURUECK",
-			"MERCS & KISSES - wo die Harten zaertlich werden - eine Speck "
-			"T. Kline Firma",
-			"Kein Profil, keine Romantik. Der ICH-Tab ist gleich da. - Speck",
-			"Kein Zwinkern mehr. GOLD-Mitgliedern passiert das nie. Nur so. "
-			"- Speck",
-			"Danke, dass Sie GOLD sind. Sie vervollstaendigen mich. - Speck",
-			"Ihre Karte wurde abgelehnt. Passiert jedem. Mir nicht. - Speck",
-			"Ihr M.E.R.C.-Konto ist ueberfaellig. Romantik wartet, "
-			"Rechnungen nicht. - Speck",
-			"Sie haben meine groesste Wertschaetzung fuer Ihre Zahlung. "
-			"Danke. - Speck",
-			"DAS SONNTAGS-SPEZIAL!! Doppeltes Zwinkern den ganzen Tag. Die "
-			"Wissenschaft sagt: Sonntag ist fuer die Liebe.",
-			"Mitgliederschwund bleibt im Branchenrahmen. - Verwaltung",
+			"wo die Harten zaertlich werden - eine Speck T. Kline Firma",
+			"Kein Profil, keine Romantik. Der ICH-Tab wartet. - Speck",
+			"Kein Zwinkern mehr. GOLD geht nie aus. Nur so. - Speck",
+			"Danke fuer GOLD. Sie vervollstaendigen mich. - Speck",
+			"Karte abgelehnt. Passiert jedem. Mir nicht. - Speck",
+			"Ihr M.E.R.C.-Konto ist ueberfaellig. Amor wartet. - Speck",
+			"Meine groesste Wertschaetzung fuer Ihre Zahlung. - Speck",
+			"SONNTAGS-SPEZIAL!! Doppeltes Zwinkern, laut Wissenschaft.",
+			"Mitgliederschwund im Branchenrahmen. - Verwaltung",
 			"werbung - mercsandkisses.com",
 			"!!! HERZLICHEN GLUECKWUNSCH !!!",
 			"Sie sind der 1.000.000ste Besucher dieser Seite!! Sie haben "
@@ -2349,16 +2339,29 @@ namespace
 			y += 20;
 		}
 
-		// two lines of the bio, the way the future would quote it
+		// two lines of the bio, quoted, the way the future would
 		const char* flavor = FlavorFor(card.pid);
 		const int att = p.bAttitude >= 0 && p.bAttitude < NUM_ATTITUDES
 					? p.bAttitude : 0;
 		const char* bio = flavor ? flavor
 			: (merc ? CUPID_SUMMARY_MERC : CUPID_SUMMARY_AIM)
 				[gfCupidGerman ? 1 : 0][att];
+		y += DisplayWrappedString(UINT16(CP_X(cardX + 12)), UINT16(CP_Y(y)),
+				CP_CARD_W - 24, 2, FONT10ARIAL, FONT_GRAY3,
+				ST::format("\"{}\"", bio), FONT_MCOLOR_BLACK,
+				LEFT_JUSTIFIED) + 5;
+
+		// what they are looking for, and the vanity plate at the foot
 		DisplayWrappedString(UINT16(CP_X(cardX + 12)), UINT16(CP_Y(y)),
-				CP_CARD_W - 24, 2, FONT10ARIAL, FONT_GRAY3, bio,
+				CP_CARD_W - 24, 2, FONT10ARIAL, FONT_GRAY4,
+				ST::format(T(CPS_LOOKING_FOR),
+					CUPID_LOOKING[gfCupidGerman ? 1 : 0][att]),
 				FONT_MCOLOR_BLACK, LEFT_JUSTIFIED);
+		PrintCentred(FONT10ARIAL, FONT_GRAY5, cardX + CP_CARD_W / 2,
+				CP_CARD_Y + CP_CARD_H - 30,
+				ST::format(gfCupidGerman ? "Mitglied Nr. {}"
+							 : "member no. {}",
+						1000 + int(card.pid) * 7));
 
 		// the opinion graph, surfacing as dating drama: this member has
 		// blocked somebody currently on your payroll
@@ -2681,14 +2684,14 @@ namespace
 		DrawHeart(CP_BTN_LIKE_X + 8, CP_BTN_Y + 10, 3,
 				likeLive ? CP_RGB_PINK : CP_RGB_GREY);
 
-		// the allowance between the buttons
+		// the allowance, on its own line beneath the verdict
 		const ST::string likes = IsGold() ? T(CPS_LIKES_GOLD)
 			: CanLike()
 				? ST::format(T(CPS_LIKES_LEFT), gCupidPersist.ubLikesLeft)
 				: T(CPS_OUT_OF_LIKES);
 		PrintCentred(FONT10ARIAL, IsGold() ? FONT_DKYELLOW
 				: CanLike() ? FONT_GRAY4 : FONT_DKRED,
-				251, CP_BTN_Y + 14, likes);
+				251, CP_BTN_Y + CP_BTN_SIZE + 5, likes);
 
 		// the popup: a little window with a big claim and one honest pixel
 		if (gfCupidPopupUp)
