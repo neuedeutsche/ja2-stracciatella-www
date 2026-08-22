@@ -319,6 +319,14 @@ static const char* MahjongSeatName(int seat)
 	return gMJSeatNameFixed[seat];
 }
 
+// seat 0 speaks in the second person, so third-person verbs shed their s
+// ("You win", not "You wins") - unless the House is playing itself
+static const char* MahjongVerb(int seat, const char* second,
+		const char* third)
+{
+	return (seat == 0 && !gfMJExhibition) ? second : third;
+}
+
 // today's guest, deterministic by game day: Elliot most nights, Kingpin and
 // Tony drop in on a rota
 static int MahjongPersonaForToday()
@@ -1430,8 +1438,10 @@ static void MahjongChatOnWin(int winner, int discarder)
 	ST::string const fanInfo = gGame && !gGame->wins().empty()
 		? ST::format(" - {}", MahjongFanLabel(gGame->wins().back())) : ST::string();
 	MahjongSystemSay(discarder < 0
-		? ST::format("{} wins by self-draw{}", MahjongSeatName(winner), fanInfo)
-		: ST::format("{} claims {} discard{}", MahjongSeatName(winner),
+		? ST::format("{} {} by self-draw{}", MahjongSeatName(winner),
+				MahjongVerb(winner, "win", "wins"), fanInfo)
+		: ST::format("{} {} {} discard{}", MahjongSeatName(winner),
+				MahjongVerb(winner, "claim", "claims"),
 				discarder == 0 ? "your" : ST::format("{}'s", MahjongSeatName(discarder)).c_str(), fanInfo));
 	// the Queen keeps count of who robs her
 	if (winner == 0 && discarder == 2 && gGame)
@@ -2016,8 +2026,10 @@ static void MahjongEnterState(MahjongUiState state)
 					}
 					else if (!gGame->IsTenpai(i))
 					{
-						MahjongEventSay(ST::format("{} was not ready - pays the waiting players",
-								MahjongSeatName(i)));
+						MahjongEventSay(ST::format("{} {} not ready - {} the waiting players",
+								MahjongSeatName(i),
+								MahjongVerb(i, "were", "was"),
+								MahjongVerb(i, "pay", "pays")));
 					}
 				}
 			}
@@ -2280,7 +2292,8 @@ static void MahjongAfterDiscard()
 			MahjongGame::TileId const t = gGame->lastDiscard();
 			gGame->ClaimKong(mc);
 			MahjongPlay(MJ_SND_MELD, BTNVOLUME, MahjongSeatPan(mc));
-			MahjongEventSay(ST::format("{} kongs the {}", MahjongSeatName(mc), MahjongTileLabel(t)));
+			MahjongEventSay(ST::format("{} {} the {}", MahjongSeatName(mc),
+					MahjongVerb(mc, "kong", "kongs"), MahjongTileLabel(t)));
 			{
 				MahjongGuestPack const* const g = MahjongPackFor(mc);
 				MahjongSay(mc, g ? g->claim[MahjongChatRoll() % 3] : gMJChatClaim[mc - 1][MahjongChatRoll() % 8]);
@@ -2293,7 +2306,8 @@ static void MahjongAfterDiscard()
 			MahjongGame::TileId const t = gGame->lastDiscard();
 			gGame->ClaimPong(mc);
 			MahjongPlay(MJ_SND_MELD, BTNVOLUME, MahjongSeatPan(mc));
-			MahjongEventSay(ST::format("{} pongs the {}", MahjongSeatName(mc), MahjongTileLabel(t)));
+			MahjongEventSay(ST::format("{} {} the {}", MahjongSeatName(mc),
+					MahjongVerb(mc, "pong", "pongs"), MahjongTileLabel(t)));
 			if (mc == 3 && giMJSeat3Persona == 0 && MahjongChatRoll() % 7 == 3)
 			{
 				MahjongSay(3, "wait. WAIT. I didn't need that one. um. no takebacks? ok.");
@@ -3887,13 +3901,8 @@ static void MahjongDrawFeed(int opponent, INT32 x, INT32 y, bool large)
 		INT32 const w2 = large ? MJ_FACE65_W : MJ_FACE33_W;
 		INT32 const h2 = large ? MJ_FACE65_H : MJ_FACE33_H;
 		ColorFillVideoSurfaceArea(FRAME_BUFFER, x, y, x + w2, y + h2, Get16BPPColor(FROMRGB(9, 34, 21)));
-		MahjongDrawSpinner(x + w2 / 2, y + h2 / 2 - (large ? 4 : 0), large ? 13 : 7);
-		if (large)
-		{
-			SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_LTGREEN, FONT_MCOLOR_BLACK, 0);
-			SetFontForegroundRGB(MJ_TOKEN_RGB);
-			MPrint(x + 5, y + h2 - 14, "reconnecting");
-		}
+		// the spinner says it all; a caption would only crowd the feed
+		MahjongDrawSpinner(x + w2 / 2, y + h2 / 2, large ? 9 : 7);
 		(void)base;
 	}
 	else if (!disconnected && face)
@@ -4551,11 +4560,11 @@ static void MahjongRenderHand()
 		if (!waits.empty())
 		{
 			SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_LTYELLOW, FONT_MCOLOR_BLACK, 0);
-			MPrint(MJ_X(MJ_HAND_X), MJ_Y(234), "Waiting on:");
-			INT32 tx = MJ_X(MJ_HAND_X + 58);
+			MPrint(MJ_X(MJ_HAND_X), MJ_Y(166), "Waiting on:");
+			INT32 tx = MJ_X(MJ_HAND_X);
 			for (size_t i = 0; i < waits.size() && i < 4; ++i)
 			{
-				MahjongDrawTile(tx, MJ_Y(184), MJ_MINI_W, MJ_MINI_H, waits[i], false);
+				MahjongDrawTile(tx, MJ_Y(MJ_POND_BOTTOM_Y), MJ_MINI_W, MJ_MINI_H, waits[i], false);
 				tx += MJ_MINI_PITCH;
 			}
 		}
@@ -4634,13 +4643,33 @@ static void MahjongDrawFaceChip(INT8 who, INT32 cx, INT32 cy, UINT16 cw, UINT16 
 	BltStretchVideoSurface(FRAME_BUFFER, surf, &src, &dst);
 }
 
+// a rounded panel painted span by span, so the corners never stamp over
+// whatever the table has going on underneath them
+static void MahjongFillRounded(INT32 x, INT32 y, INT32 w, INT32 h, INT32 r, UINT16 col)
+{
+	for (INT32 row = 0; row < h; ++row)
+	{
+		INT32 inset = 0;
+		INT32 const edge = row < r ? row : h - 1 - row;
+		if (edge < r)
+		{
+			double const dy = r - edge - 0.5;
+			inset = static_cast<INT32>(r - std::sqrt(static_cast<double>(r) * r - dy * dy) + 0.5);
+		}
+		ColorFillVideoSurfaceArea(FRAME_BUFFER, x + inset, y + row, x + w - inset, y + row + 1, col);
+	}
+}
+
 static void MahjongRenderOverlay()
 {
 	if (guiMJState != MJUI_HAND_END && guiMJState != MJUI_MATCH_END) return;
 
-	INT32 const x = MJ_X(61), y = MJ_Y(24), w = 380, h = 266;
-	ColorFillVideoSurfaceArea(FRAME_BUFFER, x, y, x + w, y + h, Get16BPPColor(FROMRGB(240, 220, 60)));
-	ColorFillVideoSurfaceArea(FRAME_BUFFER, x + 2, y + 2, x + w - 2, y + h - 2, Get16BPPColor(FROMRGB(16, 40, 30)));
+	// the table dims under the verdict, chach.com fashion
+	FRAME_BUFFER->ShadowRect(MJ_X(2), MJ_Y(2), MJ_X(500), MJ_Y(398));
+
+	INT32 const x = MJ_X(75), y = MJ_Y(24), w = 352, h = 266;
+	MahjongFillRounded(x, y, w, h, 7, Get16BPPColor(FROMRGB(240, 220, 60)));
+	MahjongFillRounded(x + 2, y + 2, w - 4, h - 4, 6, Get16BPPColor(FROMRGB(16, 40, 30)));
 
 	INT32 const textX = x + 14;
 
@@ -4683,23 +4712,23 @@ static void MahjongRenderOverlay()
 	// mini profile rows: avatar, stacked identity, results in columns
 	INT32 const rowL = textX - 4, rowR = x + w - 12;
 	INT32 const nameX = textX + 34;
-	INT32 const ratingRight = textX + 156;
-	INT32 const chipsX = textX + 172;
-	INT32 const scoreRight = textX + 286;
-	INT32 const deltaX = textX + 294;
+	INT32 const scoreRight = textX + 262;
+	INT32 const deltaX = textX + 270;
 	for (int i = 0; i < MahjongGame::NUM_PLAYERS; ++i)
 	{
 		// zebra stripes on the token's dark shades - no felt gaps
-		ColorFillVideoSurfaceArea(FRAME_BUFFER, rowL, lineY - 4, rowR, lineY + 34,
+		ColorFillVideoSurfaceArea(FRAME_BUFFER, rowL, lineY - 4, rowR, lineY + 30,
 					Get16BPPColor(i % 2 == 0 ? FROMRGB(22, 52, 38) : FROMRGB(14, 38, 28)));
-		MahjongDrawFaceChip(static_cast<INT8>(i), textX, lineY + 2, 26, 26, true);
+		MahjongDrawFaceChip(static_cast<INT8>(i), textX, lineY + 1, 26, 26, true);
+		// line one: who they are - name, handle, rating, in one breath
 		SetFontAttributes(FONT12ARIAL, FONT_MCOLOR_WHITE, FONT_MCOLOR_BLACK, 0);
-		MPrint(nameX, lineY + 1, MahjongSeatName(i));
+		MPrint(nameX, lineY, MahjongSeatName(i));
+		INT32 const nameW = StringPixLength(MahjongSeatName(i), FONT12ARIAL);
 		SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_DKGRAY, FONT_MCOLOR_BLACK, 0);
-		MPrint(nameX, lineY + 17, i == 0
+		MPrint(nameX + nameW + 8, lineY + 2, i == 0
 				? (gMJSelfNick.empty() ? ST::string("@you") : ST::format("@{}", gMJSelfNick.to_lower()))
 				: ST::string(MahjongSeatHandle(i)));
-		// rating is its own right-aligned column; at match end yours shows
+		// rating right-aligned on the same line; at match end yours shows
 		// where it moved from
 		ST::string rating = ST::format("{}", i == 0 ? MahjongPlayerRating() : MahjongSeatRating(i));
 		if (i == 0 && guiMJState == MJUI_MATCH_END && giMJRatingBefore != 0 &&
@@ -4707,26 +4736,26 @@ static void MahjongRenderOverlay()
 		{
 			rating = ST::format("{} > {}", giMJRatingBefore, MahjongPlayerRating());
 		}
-		MPrint(ratingRight - StringPixLength(rating, FONT10ARIAL), lineY + 17, rating);
-		// winnings in the row: one chip per 5000 points, gold for the leader
+		MPrint(scoreRight - StringPixLength(rating, FONT10ARIAL), lineY + 2, rating);
+		// line two: the money - chips, total, movement
 		if (guiMJChips)
 		{
 			INT32 const chips = std::max(0, std::min(6, gGame->player(i).score / 5000));
 			for (INT32 c = 0; c < chips; ++c)
 			{
 				BltVideoObject(FRAME_BUFFER, guiMJChips, i == leader ? 1 : 0,
-						chipsX + c * 9, lineY + 9);
+						nameX + c * 9, lineY + 16);
 			}
 		}
 		SetFontAttributes(FONT12ARIAL, FONT_MCOLOR_WHITE, FONT_MCOLOR_BLACK, 0);
 		ST::string const score = ST::format("{}", gGame->player(i).score);
-		MPrint(scoreRight - StringPixLength(score, FONT12ARIAL), lineY + 9, score);
+		MPrint(scoreRight - StringPixLength(score, FONT12ARIAL), lineY + 15, score);
 		if (guiMJState == MJUI_HAND_END && gGame->handDelta(i) != 0)
 		{
 			bool const up = gGame->handDelta(i) > 0;
 			INT32 const shown = gGame->handDelta(i) * animPct / 100;
 			SetFontAttributes(FONT10ARIAL, up ? FONT_MCOLOR_LTGREEN : FONT_MCOLOR_LTRED, FONT_MCOLOR_BLACK, 0);
-			MPrint(deltaX, lineY + 11, ST::format("{}{}", up ? "+" : "", shown));
+			MPrint(deltaX, lineY + 17, ST::format("{}{}", up ? "+" : "", shown));
 		}
 		// final standings still rank the room; hand results speak for themselves
 		if (guiMJState == MJUI_MATCH_END)
@@ -4739,9 +4768,9 @@ static void MahjongRenderOverlay()
 			static const char* const place[4] = { "1st", "2nd", "3rd", "4th" };
 			SetFontAttributes(FONT10ARIAL, rank == 1 ? FONT_MCOLOR_LTYELLOW : FONT_MCOLOR_DKGRAY,
 					FONT_MCOLOR_BLACK, 0);
-			MPrint(rowR - 8 - StringPixLength(place[rank - 1], FONT10ARIAL), lineY + 1, place[rank - 1]);
+			MPrint(rowR - 8 - StringPixLength(place[rank - 1], FONT10ARIAL), lineY + 16, place[rank - 1]);
 		}
-		lineY += 42;
+		lineY += 38;
 	}
 
 	// final standings: the cash side of the evening, writ large
@@ -4766,8 +4795,8 @@ static void MahjongRenderGuestbook()
 	if (!gfMJShowRules || giMJOverlayKind != 2) return;
 
 	INT32 const x = MJ_X(41), y = MJ_Y(14), w = 420, h = 330;
-	ColorFillVideoSurfaceArea(FRAME_BUFFER, x, y, x + w, y + h, Get16BPPColor(FROMRGB(240, 220, 60)));
-	ColorFillVideoSurfaceArea(FRAME_BUFFER, x + 2, y + 2, x + w - 2, y + h - 2, Get16BPPColor(FROMRGB(24, 32, 24)));
+	MahjongFillRounded(x, y, w, h, 7, Get16BPPColor(FROMRGB(240, 220, 60)));
+	MahjongFillRounded(x + 2, y + 2, w - 4, h - 4, 6, Get16BPPColor(FROMRGB(24, 32, 24)));
 
 	if (guiMJLogo) BltVideoObject(FRAME_BUFFER, guiMJLogo, 0, x + 20, y + 8);
 
@@ -4816,8 +4845,8 @@ static void MahjongRenderRules()
 	if (!gfMJShowRules || giMJOverlayKind != 1) return;
 
 	INT32 const x = MJ_X(111), y = MJ_Y(40), w = 280, h = 280;
-	ColorFillVideoSurfaceArea(FRAME_BUFFER, x, y, x + w, y + h, Get16BPPColor(FROMRGB(240, 220, 60)));
-	ColorFillVideoSurfaceArea(FRAME_BUFFER, x + 2, y + 2, x + w - 2, y + h - 2, Get16BPPColor(FROMRGB(24, 32, 24)));
+	MahjongFillRounded(x, y, w, h, 7, Get16BPPColor(FROMRGB(240, 220, 60)));
+	MahjongFillRounded(x + 2, y + 2, w - 4, h - 4, 6, Get16BPPColor(FROMRGB(24, 32, 24)));
 
 	SetFontAttributes(FONT14ARIAL, FONT_MCOLOR_LTYELLOW, FONT_MCOLOR_BLACK, 0);
 	MPrint(x + 14, y + 12, "San Mona house rules");
@@ -5251,7 +5280,8 @@ static void MahjongExhibitionStep()
 				int const w = gGame->currentPlayer();
 				gGame->ResolveTsumo();
 				MahjongPlay(MJ_SND_WIN, LOWVOLUME);
-				MahjongEventSay(ST::format("{} wins by self-draw", MahjongSeatName(w)));
+				MahjongEventSay(ST::format("{} {} by self-draw",
+						MahjongSeatName(w), MahjongVerb(w, "win", "wins")));
 			}
 			else
 			{
@@ -5267,8 +5297,11 @@ static void MahjongExhibitionStep()
 				int const d = gGame->lastDiscarder();
 				gGame->ResolveRon(claimant);
 				MahjongPlay(MJ_SND_WIN, LOWVOLUME);
-				MahjongEventSay(ST::format("{} claims {}'s discard",
-						MahjongSeatName(claimant), MahjongSeatName(d)));
+				MahjongEventSay(ST::format("{} {} {} discard",
+						MahjongSeatName(claimant),
+						MahjongVerb(claimant, "claim", "claims"),
+						d == 0 ? ST::string("your")
+							: ST::format("{}'s", MahjongSeatName(d))));
 				break;
 			}
 			bool kongPossible = false;
@@ -5278,7 +5311,8 @@ static void MahjongExhibitionStep()
 			{
 				gGame->ClaimKong(mc);
 				MahjongPlay(MJ_SND_MELD, LOWVOLUME);
-				MahjongSystemSay(ST::format("{} kongs the {}", MahjongSeatName(mc), MahjongTileLabel(claimed)));
+				MahjongSystemSay(ST::format("{} {} the {}", MahjongSeatName(mc),
+						MahjongVerb(mc, "kong", "kongs"), MahjongTileLabel(claimed)));
 			}
 			else if (mc >= 0 && gGame->AiWantsPong(mc))
 			{
@@ -5586,8 +5620,10 @@ void HandleMahjong()
 					int const declarer = gGame->currentPlayer();
 					gGame->DeclareSelfKong(t);
 					MahjongPlay(MJ_SND_MELD, BTNVOLUME, MahjongSeatPan(declarer));
-					MahjongSystemSay(ST::format("{} kongs the {} - the table pays the bonus",
-							MahjongSeatName(declarer), MahjongTileLabel(t)));
+					MahjongSystemSay(ST::format("{} {} the {} - the table pays the bonus",
+							MahjongSeatName(declarer),
+							MahjongVerb(declarer, "kong", "kongs"),
+							MahjongTileLabel(t)));
 					break;
 				}
 				if (guiMJState != MJUI_AI_THINK) break; // a rob or window interrupted the turn
@@ -5655,8 +5691,10 @@ void HandleMahjong()
 				int const declarer = gGame->currentPlayer();
 				gGame->DeclareSelfKong(gMJRobTile);
 				MahjongPlay(MJ_SND_MELD, BTNVOLUME, MahjongSeatPan(declarer));
-				MahjongEventSay(ST::format("{} kongs the {} - everyone pays the bonus",
-						MahjongSeatName(declarer), MahjongTileLabel(gMJRobTile)));
+				MahjongEventSay(ST::format("{} {} the {} - everyone pays the bonus",
+						MahjongSeatName(declarer),
+						MahjongVerb(declarer, "kong", "kongs"),
+						MahjongTileLabel(gMJRobTile)));
 				MahjongEnterState(declarer == 0 ? MJUI_PLAYER_TURN : MJUI_AI_THINK);
 			}
 			break;
