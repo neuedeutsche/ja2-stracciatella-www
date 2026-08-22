@@ -1901,11 +1901,11 @@ namespace
 
 		for (int i = 0; i < 3; ++i)
 		{
-			const INT32 y = 44 + i * 34;
+			const INT32 y = 80 + i * 32;
 			MSYS_DefineRegion(&gCupidTabRegion[i],
 					UINT16(CP_X(CP_LCOL_X + 6)), UINT16(CP_Y(y)),
 					UINT16(CP_X(CP_LCOL_X + CP_COL_W - 6)),
-					UINT16(CP_Y(y + 26)),
+					UINT16(CP_Y(y + 24)),
 					MSYS_PRIORITY_HIGH, CURSOR_WWW, MSYS_NO_CALLBACK,
 					TabCallback);
 			MSYS_SetRegionUserData(&gCupidTabRegion[i], 0, i);
