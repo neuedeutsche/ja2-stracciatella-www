@@ -186,6 +186,7 @@ enum {
 // Mercs & Kisses: Speck writes often, and never briefly
 #define CUPID_EMAIL_SPAM    5200 // the ad campaign; iFirstData is the stage
 #define CUPID_EMAIL_WELCOME 5201 // your profile is LIVE
+#define CUPID_EMAIL_CONDOLENCE 5202 // a memorial, and an upsell; iFirstData is the pid
 #define CUPID_SPECK_SENDER  53   // appended to pSenderNameList
 
 extern BOOLEAN fUnReadMailFlag;

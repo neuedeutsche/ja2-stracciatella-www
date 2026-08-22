@@ -589,6 +589,10 @@ void AddEmailMessage(INT32 iMessageOffset, INT32 iMessageLength, INT32 iDate, UI
 	{
 		pSubject = "WELCOME to Mercs & Kisses!!";
 	}
+	else if (iMessageOffset == CUPID_EMAIL_CONDOLENCE)
+	{
+		pSubject = "In memoriam (and a word about your account)";
+	}
 	else if (iMessageOffset == MAHJONG_EMAIL_SPAM)
 	{
 		switch (pTempEmail->iFirstData)
@@ -1777,6 +1781,7 @@ static void HandleMailSpecialMessages(UINT16 usMessageId, Email* pMail)
 
 		case CUPID_EMAIL_SPAM:
 		case CUPID_EMAIL_WELCOME:
+		case CUPID_EMAIL_CONDOLENCE:
 			HandleCupidSpeckMessage(usMessageId, pMail);
 			break;
 
@@ -1964,6 +1969,21 @@ static void HandleCupidSpeckMessage(UINT16 usMessageId, const Email* pMail)
 {
 	if (pMessageRecordList != NULL) return;
 	auto const blank = []() { AddEmailRecordToList(" "); };
+
+	if (usMessageId == CUPID_EMAIL_CONDOLENCE)
+	{
+		const ST::string& nick =
+			GetProfile(ProfileID(pMail->iFirstData)).zNickname;
+		AddEmailRecordToList(ST::format("It has come to my attention that {} - a member you matched with - has passed away in the line of work. On behalf of the entire Mercs & Kisses family, which is me, my condolences.", nick));
+		blank();
+		AddEmailRecordToList("Per our terms of service, the profile will remain live as a memorial. The match percentage will continue to be displayed. Some find that comforting. The terms of service do.");
+		blank();
+		AddEmailRecordToList("GOLD members may light a virtual candle. If you are not yet a GOLD member, I mention it only because grief makes people reflect on what matters, and what matters is connection, which we sell.");
+		blank();
+		AddEmailRecordToList("With sympathy and warm regards,");
+		AddEmailRecordToList("Speck T. Kline, Founder, Proprietor, Head of Member Relations, Bereavement Desk");
+		return;
+	}
 
 	if (usMessageId == CUPID_EMAIL_WELCOME)
 	{

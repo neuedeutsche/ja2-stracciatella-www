@@ -41,7 +41,8 @@ struct CupidPersist
 #define CUPID_FLAG_IMP_ANSWERS 0x08 // the answers came from the real I.M.P. quiz
 #define CUPID_FLAG_WELCOMED    0x10 // Speck's personal welcome has been sent
 #define CUPID_FLAG_FEMALE      0x20 // the site quiz asked; I.M.P. members use their profile
-#define CUPID_FLAG_GOLD        0x40 // MERCS & KISSES GOLD: likes never run out
+#define CUPID_FLAG_GOLD        0x40 // MERCS & KISSES GOLD: winks never run out
+#define CUPID_FLAG_CONDOLED    0x80 // the one condolence letter has been sent
 
 CupidPersist CupidGetPersist();
 void CupidSetPersist(const CupidPersist& p);

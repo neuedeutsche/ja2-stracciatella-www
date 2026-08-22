@@ -226,6 +226,13 @@ namespace
 	std::vector<Card> gCupidDeck;
 	int gCupidDeckPos = 0;
 
+	// the 1,000,000th-visitor popup: one per fresh day, closable only by
+	// its own little X, as was the law of the era
+	bool  gfCupidPopupUp = false;
+
+	// the card photo downloads over a 28.8k line: rows revealed so far
+	INT32 giCupidPhotoReveal = 0;
+
 	// the card in hand: dragging follows the pointer, a commit flies it out
 	bool  gfCupidDragging = false;
 	INT32 giCupidDragAnchor = 0;
@@ -237,6 +244,8 @@ namespace
 		ProfileID pid;
 		bool      merc;    // M.E.R.C., unverified, oversharing
 		bool      locked;  // not yet unlocked on the M.E.R.C. site
+		bool      fresh;   // a later unlock: wears the NEW!! tag forever,
+		                   // because nobody ever took those down
 		DatingGame::Profile prof;
 	};
 	std::vector<Member> gCupidRoster;
@@ -260,6 +269,9 @@ namespace
 	MOUSE_REGION gCupidActionRegion[2]; // ME landing / detail / splash slots
 	MOUSE_REGION gCupidMatchRegion[7];  // clickable rows on the matches page
 	MOUSE_REGION gCupidSideAdRegion[2]; // the skyscraper banners, deck page
+	MOUSE_REGION gCupidRingRegion[3];   // the webring: prev, random, next
+	MOUSE_REGION gCupidPopupXRegion;    // the popup's only honest exit
+	MOUSE_REGION gCupidPopupCtaRegion;  // and its entire reason to exist
 
 	bool Hover(const MOUSE_REGION& r)
 	{
@@ -271,7 +283,8 @@ namespace
 	void SyncRegions()
 	{
 		if (!gfCupidRegionsUp) return;
-		const bool deck    = gCupidPage == CPP_DECK;
+		const bool popup   = gfCupidPopupUp && gCupidPage == CPP_DECK;
+		const bool deck    = gCupidPage == CPP_DECK && !popup;
 		const bool actions = (gCupidPage == CPP_ME && !gfCupidQuizLive) ||
 					gCupidPage == CPP_DETAIL ||
 					gCupidPage == CPP_SPLASH;
@@ -287,6 +300,8 @@ namespace
 		for (MOUSE_REGION& r : gCupidSideAdRegion) set(r, deck);
 		for (MOUSE_REGION& r : gCupidActionRegion) set(r, actions);
 		for (MOUSE_REGION& r : gCupidMatchRegion)  set(r, matches);
+		set(gCupidPopupXRegion, popup);
+		set(gCupidPopupCtaRegion, popup);
 	}
 
 	// --- text, EN/DE -------------------------------------------------------
@@ -317,6 +332,10 @@ namespace
 		CPS_SEND_FLOWERS, CPS_BACK,
 		CPS_TICKER_DEFAULT, CPS_TICKER_NO_PROFILE, CPS_TICKER_NO_LIKES,
 		CPS_TICKER_GOLD, CPS_TICKER_BROKE,
+		CPS_TICKER_DEBT, CPS_TICKER_THANKS, CPS_TICKER_SUNDAY,
+		CPS_TICKER_ATTRITION,
+		CPS_POPUP_TITLE, CPS_POPUP_HEAD, CPS_POPUP_BODY, CPS_POPUP_CTA,
+		CPS_BLOCKED_WARN, CPS_UNDER_CONSTRUCTION, CPS_CONDOLENCE_ROW,
 		CPS_COUNT
 	};
 
@@ -324,19 +343,18 @@ namespace
 	{
 		{
 			"DECK", "MATCHES", "ME",
-			"{} likes left today", "GOLD - likes never run out",
-			"OUT OF LIKES",
-			"LIKE", "NOPE",
+			"{} winks left today", "GOLD - winks never run out",
+			"OUT OF WINKS",
+			"WINK", "PASS",
 			"ONLINE NOW", "AWAY - ON CONTRACT", "ON YOUR PAYROLL",
 			"LAST LOGIN: a long time ago", "MARRIED (a satisfied customer)",
 			"A.I.M. VERIFIED", "unverified",
 			"{}% MATCH", "{}-{}% MATCH",
-			"IT'S A MATCH!!", "{} likes you back. The algorithm saw it "
-			"coming.", "KEEP SWIPING", "VIEW PROFILE",
+			"IT'S A MATCH!!", "{} winked back. The algorithm saw it coming.", "KEEP SWIPING", "VIEW PROFILE",
 			"YOUR MATCHES", "No matches yet. The deck is waiting.",
 			"Click a match to read the full dossier.",
-			"{} members already LIKE you.", "They liked you. Now you know.",
-			"MERCS & KISSES GOLD", "Unlimited likes. See who liked you "
+			"{} members already WINKED at you.", "They winked. Now you know who.",
+			"MERCS & KISSES GOLD", "Unlimited winks. See who winked at you "
 			"FIRST. Prestige beyond measure. One payment of ${}, to me, "
 			"Speck T. Kline.", "GET GOLD - ${}", "You are a GOLD member. "
 			"Everything I promised is now true.",
@@ -346,7 +364,7 @@ namespace
 			"Spend generously and love will follow. That is just science.",
 			"THAT'S EVERYONE", "You have seen every professional in Arulco. "
 			"I am in talks with several other war zones. - S.T.K.",
-			"(the heart accepts. the X declines. no refunds.)",
+			"(the heart winks. the X declines. no refunds.)",
 			"THE QUESTIONNAIRE", "IMPORT MY I.M.P. PROFILE (free)",
 			"TAKE THE QUESTIONNAIRE (free)", "RETAKE THE QUESTIONNAIRE (${})",
 			"COMPLETE MY PROFILE (${})",
@@ -366,30 +384,45 @@ namespace
 			"MERCS & KISSES - where the tough get tender - a Speck T. "
 			"Kline company",
 			"No profile, no romance. The ME tab is right there. - Speck",
-			"Out of likes. GOLD members never run out. Just saying. - Speck",
+			"Out of winks. GOLD members never run out. Just saying. - Speck",
 			"Thank you for going GOLD. You complete me. - Speck",
 			"Your card was declined. It happens to everyone. Not to me. "
 			"- Speck",
+			"Your M.E.R.C. account is overdue. Romance waits, invoices "
+			"don't. - Speck",
+			"You have my greatest appreciation for your payment. Thank "
+			"you. - Speck",
+			"THE SUNDAY SPECIAL!! Double winks all day. Science says "
+			"Sunday is for love.",
+			"Membership attrition remains within industry norms. - mgmt",
+			"advertisement - mercsandkisses.com",
+			"!!! CONGRATULATIONS !!!",
+			"You are the 1,000,000th visitor to this page!! You have won: "
+			"eligibility to purchase MERCS & KISSES GOLD.",
+			"CLAIM MY PRIZE",
+			"has BLOCKED {}",
+			"TESTIMONIALS: UNDER CONSTRUCTION (since day 1)",
+			"in loving memory - profile retained",
 		},
 		{
 			"DECK", "MATCHES", "ICH",
-			"noch {} Likes heute", "GOLD - Likes gehen nie aus",
-			"KEINE LIKES MEHR",
-			"LIKE", "NEIN",
+			"noch {} Zwinkern heute", "GOLD - Zwinkern geht nie aus",
+			"KEIN ZWINKERN MEHR",
+			"ZWINKER", "PASS",
 			"JETZT ONLINE", "ABWESEND - IM EINSATZ", "AUF IHRER GEHALTSLISTE",
 			"LETZTER LOGIN: vor langer Zeit", "VERHEIRATET (zufriedene "
 			"Kundin)",
 			"A.I.M.-GEPRUEFT", "ungeprueft",
 			"{}% PASSUNG", "{}-{}% PASSUNG",
-			"EIN MATCH!!", "{} mag Sie auch. Der Algorithmus wusste es "
+			"EIN MATCH!!", "{} zwinkert zurueck. Der Algorithmus wusste es "
 			"vorher.", "WEITER WISCHEN", "PROFIL ANSEHEN",
 			"IHRE MATCHES", "Noch keine Matches. Das Deck wartet.",
 			"Klicken Sie ein Match fuer das volle Dossier.",
-			"{} Mitglieder LIKEN Sie bereits.", "Sie mochten Sie. Jetzt "
-			"wissen Sie es.",
-			"MERCS & KISSES GOLD", "Unbegrenzte Likes. Sehen Sie ZUERST, "
-			"wer Sie mag. Unermessliches Prestige. Eine Zahlung von {} $, "
-			"an mich, Speck T. Kline.", "GOLD HOLEN - {} $",
+			"{} Mitglieder ZWINKERN Ihnen bereits zu.", "Sie zwinkerten. "
+			"Jetzt wissen Sie, wer.",
+			"MERCS & KISSES GOLD", "Unbegrenztes Zwinkern. Sehen Sie ZUERST, "
+			"wer Ihnen zuzwinkert. Unermessliches Prestige. Eine Zahlung von "
+			"{} $, an mich, Speck T. Kline.", "GOLD HOLEN - {} $",
 			"Sie sind GOLD-Mitglied. Alles, was ich versprach, ist jetzt "
 			"wahr.",
 			"\"Er wollte sich nie binden.\"", "\"Wir sind jetzt VERHEIRATET. "
@@ -398,7 +431,7 @@ namespace
 			"Sie grosszuegig aus, die Liebe folgt. Das ist Wissenschaft.",
 			"DAS WAREN ALLE", "Sie haben jeden Profi in Arulco gesehen. Ich "
 			"verhandle mit weiteren Kriegsgebieten. - S.T.K.",
-			"(das Herz nimmt an. das X lehnt ab. keine Rueckerstattung.)",
+			"(das Herz zwinkert. das X lehnt ab. keine Rueckerstattung.)",
 			"DER FRAGEBOGEN", "MEIN I.M.P.-PROFIL IMPORTIEREN (gratis)",
 			"FRAGEBOGEN AUSFUELLEN (gratis)", "FRAGEBOGEN WIEDERHOLEN ({} $)",
 			"PROFIL VERVOLLSTAENDIGEN ({} $)",
@@ -421,10 +454,25 @@ namespace
 			"MERCS & KISSES - wo die Harten zaertlich werden - eine Speck "
 			"T. Kline Firma",
 			"Kein Profil, keine Romantik. Der ICH-Tab ist gleich da. - Speck",
-			"Keine Likes mehr. GOLD-Mitgliedern passiert das nie. Nur so. "
+			"Kein Zwinkern mehr. GOLD-Mitgliedern passiert das nie. Nur so. "
 			"- Speck",
 			"Danke, dass Sie GOLD sind. Sie vervollstaendigen mich. - Speck",
 			"Ihre Karte wurde abgelehnt. Passiert jedem. Mir nicht. - Speck",
+			"Ihr M.E.R.C.-Konto ist ueberfaellig. Romantik wartet, "
+			"Rechnungen nicht. - Speck",
+			"Sie haben meine groesste Wertschaetzung fuer Ihre Zahlung. "
+			"Danke. - Speck",
+			"DAS SONNTAGS-SPEZIAL!! Doppeltes Zwinkern den ganzen Tag. Die "
+			"Wissenschaft sagt: Sonntag ist fuer die Liebe.",
+			"Mitgliederschwund bleibt im Branchenrahmen. - Verwaltung",
+			"werbung - mercsandkisses.com",
+			"!!! HERZLICHEN GLUECKWUNSCH !!!",
+			"Sie sind der 1.000.000ste Besucher dieser Seite!! Sie haben "
+			"gewonnen: die Berechtigung, MERCS & KISSES GOLD zu kaufen.",
+			"PREIS ABHOLEN",
+			"hat {} BLOCKIERT",
+			"REFERENZEN: IM AUFBAU (seit Tag 1)",
+			"in liebevoller Erinnerung - Profil bleibt bestehen",
 		},
 	};
 
@@ -887,6 +935,7 @@ namespace
 			m.pid    = pid;
 			m.merc   = prof.isMERCMerc();
 			m.locked = false;
+			m.fresh  = false;
 			m.prof   = BuildMercProfile(pid);
 			gCupidRoster.push_back(m);
 		}
@@ -897,6 +946,7 @@ namespace
 			{
 				if (GetProfileIDFromMERCListing(l) != m.pid) continue;
 				m.locked = l->index > LaptopSaveInfo.gubLastMercIndex;
+				m.fresh  = !m.locked && !l->isAvailableAtStart();
 				break;
 			}
 		}
@@ -990,13 +1040,52 @@ namespace
 		return gCupidDeck[size_t(gCupidDeckPos)];
 	}
 
+	// Speck read the April 1999 research: Sundays are the big day for
+	// personals. He responded with a promotion.
+	bool IsSiteSunday() { return GetWorldDay() % 7 == 0; }
+
+	// the other ledger: an overdue M.E.R.C. account follows you here
+	bool SpeckHasGrudge()
+	{
+		switch (LaptopSaveInfo.gubPlayersMercAccountStatus)
+		{
+			case MERC_ACCOUNT_SUSPENDED:
+			case MERC_ACCOUNT_INVALID:
+			case MERC_ACCOUNT_VALID_FIRST_WARNING:
+				return true;
+			default:
+				return false;
+		}
+	}
+
 	void RefreshDailyLikes()
 	{
 		const UINT16 today = UINT16(GetWorldDay());
 		if (gCupidPersist.usDeckDay != today)
 		{
 			gCupidPersist.usDeckDay   = today;
-			gCupidPersist.ubLikesLeft = CP_FREE_LIKES_A_DAY;
+			gCupidPersist.ubLikesLeft = UINT8(IsSiteSunday()
+					? CP_FREE_LIKES_A_DAY * 2 : CP_FREE_LIKES_A_DAY);
+		}
+	}
+
+	bool ChargeSpeck(INT32 amount); // defined with the money below
+
+	// one GOLD purchase path for the ad card and the popup: Speck will not
+	// sell prestige to a member whose other account with him is overdue
+	void TryBuyGold()
+	{
+		if (IsGold()) return;
+		if (SpeckHasGrudge())
+		{
+			giCupidTicker = CPS_TICKER_DEBT;
+			return;
+		}
+		if (ChargeSpeck(CP_GOLD_PRICE))
+		{
+			gCupidPersist.ubFlags |= CUPID_FLAG_GOLD;
+			// his canon settle-up line, and he means it
+			giCupidTicker = CPS_TICKER_THANKS;
 		}
 	}
 
@@ -1329,6 +1418,7 @@ namespace
 	{
 		giCupidCardDx = 0;
 		giCupidFlyDir = 0;
+		giCupidPhotoReveal = 6; // the next photo arrives at 28.8kbps
 		if (gCupidDeckPos < int(gCupidDeck.size()) - 1) ++gCupidDeckPos;
 	}
 
@@ -1340,14 +1430,7 @@ namespace
 		if (card.kind != CARD_MEMBER)
 		{
 			// the heart accepts an offer; the X declines it
-			if (dir > 0 && card.kind == CARD_AD_GOLD && !IsGold())
-			{
-				if (ChargeSpeck(CP_GOLD_PRICE))
-				{
-					gCupidPersist.ubFlags |= CUPID_FLAG_GOLD;
-					giCupidTicker = CPS_TICKER_GOLD;
-				}
-			}
+			if (dir > 0 && card.kind == CARD_AD_GOLD) TryBuyGold();
 			if (card.kind != CARD_END) AdvanceCard();
 			else { giCupidCardDx = 0; giCupidFlyDir = 0; }
 			CupidRedraw();
@@ -1696,6 +1779,34 @@ namespace
 		}
 	}
 
+	void RingCallback(MOUSE_REGION* region, UINT32 reason)
+	{
+		if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
+		// the ring's three stops: prev, random, next. Random is the funeral
+		// home, which is exactly the kind of luck 1999 dealt.
+		switch (MSYS_GetRegionUserData(region, 0))
+		{
+			case 0: GoToWebPage(CHESS_BOOKMARK);   break;
+			case 1: GoToWebPage(FUNERAL_BOOKMARK); break;
+			default: GoToWebPage(MAHJONG_BOOKMARK); break;
+		}
+	}
+
+	void PopupXCallback(MOUSE_REGION* region, UINT32 reason)
+	{
+		if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
+		gfCupidPopupUp = false;
+		CupidRedraw();
+	}
+
+	void PopupCtaCallback(MOUSE_REGION* region, UINT32 reason)
+	{
+		if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
+		TryBuyGold();
+		gfCupidPopupUp = false;
+		CupidRedraw();
+	}
+
 	void CupidPlaceRegions()
 	{
 		if (gfCupidRegionsUp) return;
@@ -1779,6 +1890,30 @@ namespace
 			MSYS_SetRegionUserData(&gCupidMatchRegion[i], 0, i);
 		}
 
+		// the webring, living in the footer's left corner
+		for (int i = 0; i < 3; ++i)
+		{
+			const INT32 x = 96 + i * 16;
+			MSYS_DefineRegion(&gCupidRingRegion[i],
+					UINT16(CP_X(x)), UINT16(CP_Y(CP_PAGE_H - 14)),
+					UINT16(CP_X(x + 15)), UINT16(CP_Y(CP_PAGE_H)),
+					MSYS_PRIORITY_HIGH, CURSOR_WWW, MSYS_NO_CALLBACK,
+					RingCallback);
+			MSYS_SetRegionUserData(&gCupidRingRegion[i], 0, i);
+		}
+
+		// the popup's chrome: the X and the prize
+		MSYS_DefineRegion(&gCupidPopupXRegion,
+				UINT16(CP_X(131 + 240 - 16)), UINT16(CP_Y(120)),
+				UINT16(CP_X(131 + 240 - 2)), UINT16(CP_Y(134)),
+				MSYS_PRIORITY_HIGH + 2, CURSOR_WWW, MSYS_NO_CALLBACK,
+				PopupXCallback);
+		MSYS_DefineRegion(&gCupidPopupCtaRegion,
+				UINT16(CP_X(161)), UINT16(CP_Y(206)),
+				UINT16(CP_X(341)), UINT16(CP_Y(230)),
+				MSYS_PRIORITY_HIGH + 2, CURSOR_WWW, MSYS_NO_CALLBACK,
+				PopupCtaCallback);
+
 		gfCupidRegionsUp = true;
 		SyncRegions();
 	}
@@ -1796,6 +1931,9 @@ namespace
 		MSYS_RemoveRegion(&gCupidPassRegion);
 		MSYS_RemoveRegion(&gCupidLikeRegion);
 		MSYS_RemoveRegion(&gCupidLangRegion);
+		for (MOUSE_REGION& r : gCupidRingRegion) MSYS_RemoveRegion(&r);
+		MSYS_RemoveRegion(&gCupidPopupXRegion);
+		MSYS_RemoveRegion(&gCupidPopupCtaRegion);
 		gfCupidRegionsUp = false;
 	}
 
@@ -1892,8 +2030,42 @@ namespace
 		FillRect(0, CP_PAGE_H - 14, CP_PAGE_W, 14, CP_RGB_BLUE);
 		FillRect(0, CP_PAGE_H - 14, CP_PAGE_W, 1, CP_RGB_BLUE_DK);
 		FillRect(0, CP_PAGE_H - 13, CP_PAGE_W, 1, CP_RGB_BLUE_LITE);
-		PrintCentred(FONT10ARIAL, FONT_NEARBLACK, CP_PAGE_W / 2, CP_PAGE_H - 12,
-				T(CupidStr(giCupidTicker)));
+
+		// the webring: sideways discovery, as the era intended
+		PrintAt(FONT10ARIAL, FONT_GRAY3, 8, CP_PAGE_H - 12, "ARULCO-NET");
+		static const char* const glyphs[3] = { "<<", "?", ">>" };
+		for (int i = 0; i < 3; ++i)
+		{
+			PrintAt(FONT10ARIALBOLD,
+					Hover(gCupidRingRegion[i]) ? FONT_DKRED : FONT_NEARBLACK,
+					98 + i * 16, CP_PAGE_H - 12, glyphs[i]);
+		}
+
+		// the site survived the millennium bug in advance
+		PrintAt(FONT10ARIALBOLD, FONT_DKYELLOW, CP_PAGE_W - 58,
+				CP_PAGE_H - 12, "Y2K OK");
+
+		// the ticker: events speak first, then the daily rotation
+		int say = giCupidTicker;
+		if (say == CPS_TICKER_DEFAULT)
+		{
+			if (IsSiteSunday()) say = CPS_TICKER_SUNDAY;
+			else if (SpeckHasGrudge()) say = CPS_TICKER_DEBT;
+			else if (GetWorldDay() % 3 == 2)
+			{
+				for (const Member& m : gCupidRoster)
+				{
+					if (!m.locked && MemberIsDead(m.pid))
+					{
+						say = CPS_TICKER_ATTRITION;
+						break;
+					}
+				}
+			}
+		}
+		// centred in the band between the ring and the badge
+		PrintCentred(FONT10ARIAL, FONT_NEARBLACK, (160 + CP_PAGE_W - 64) / 2,
+				CP_PAGE_H - 12, T(CupidStr(say)));
 	}
 
 	void RenderVerdictStamp(INT32 cardX)
@@ -1936,6 +2108,21 @@ namespace
 		{
 			BltVideoObject(FRAME_BUFFER, big, 0, CP_X(photoX),
 					CP_Y(CP_CARD_Y + 10));
+			// the 28.8k curtain: everything below the download line is
+			// still on its way, with an interlace fringe above it
+			if (giCupidPhotoReveal < CP_PHOTO_H)
+			{
+				const INT32 edge = CP_CARD_Y + 10 + giCupidPhotoReveal;
+				FillRect(photoX, edge, CP_PHOTO_W,
+						CP_PHOTO_H - giCupidPhotoReveal, CP_RGB_CARD_DIM);
+				for (INT32 fy = edge - 12; fy < edge; fy += 2)
+				{
+					if (fy >= CP_CARD_Y + 10)
+					{
+						FillRect(photoX, fy, CP_PHOTO_W, 1, CP_RGB_CARD_DIM);
+					}
+				}
+			}
 		}
 		else
 		{
@@ -2001,6 +2188,29 @@ namespace
 				ST::format(T(CPS_NOTICE_FIRST),
 					CUPID_TRAIT_SPIN[gfCupidGerman ? 1 : 0][trait]),
 				FONT_MCOLOR_BLACK, CENTER_JUSTIFIED);
+
+		// the opinion graph, surfacing as dating drama: this member has
+		// blocked somebody currently on your payroll
+		for (int i = 0; i < 2; ++i)
+		{
+			const INT8 hated = p.bHated[i];
+			if (hated < 0 || !IsMercOnTeam(UINT8(hated))) continue;
+			PrintCentred(FONT10ARIAL, FONT_DKRED, cardX + CP_CARD_W / 2,
+					CP_CARD_Y + CP_CARD_H - 18,
+					ST::format(T(CPS_BLOCKED_WARN),
+						GetProfile(ProfileID(hated)).zNickname));
+			break;
+		}
+
+		// the NEW!! tag: applied on unlock, removed never
+		if (idx >= 0 && gCupidRoster[size_t(idx)].fresh &&
+		    (GetJA2Clock() / 400) % 2 == 0)
+		{
+			FillRounded(cardX + CP_CARD_W - 42, CP_CARD_Y + 6, 36, 14,
+					CP_RGB_NOPE, 3, CP_RGB_CARD);
+			PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE,
+					cardX + CP_CARD_W - 24, CP_CARD_Y + 9, "NEW!!");
+		}
 	}
 
 	void RenderAdCard(const Card& card, INT32 cardX)
@@ -2211,6 +2421,33 @@ namespace
 		PrintCentred(FONT10ARIAL, IsGold() ? FONT_DKYELLOW
 				: CanLike() ? FONT_GRAY4 : FONT_DKRED,
 				251, CP_BTN_Y + 14, likes);
+
+		// the popup: a little window with a big claim and one honest pixel
+		if (gfCupidPopupUp)
+		{
+			DropShadow(131, 120, 240, 116);
+			FillRect(131, 120, 240, 116, CP_RGB_INK);
+			FillRect(132, 121, 238, 114, CP_RGB_CARD);
+			// title bar, with the era's most trustworthy filename
+			FillRect(132, 121, 238, 14, CP_RGB_BLUE_DK);
+			PrintAt(FONT10ARIAL, FONT_MCOLOR_WHITE, 137, 124,
+					T(CPS_POPUP_TITLE));
+			FillRect(131 + 240 - 16, 122, 13, 12,
+					Hover(gCupidPopupXRegion) ? CP_RGB_NOPE
+								  : CP_RGB_BLUE);
+			PrintCentred(FONT10ARIALBOLD, FONT_NEARBLACK, 131 + 240 - 10,
+					124, "X");
+
+			PrintCentred(FONT10ARIALBOLD, FONT_DKRED, 251, 142,
+					T(CPS_POPUP_HEAD));
+			DisplayWrappedString(UINT16(CP_X(143)), UINT16(CP_Y(158)), 216, 2,
+					FONT10ARIAL, FONT_NEARBLACK, T(CPS_POPUP_BODY),
+					FONT_MCOLOR_BLACK, CENTER_JUSTIFIED);
+			GelPill(161, 206, 180, 24, CP_RGB_GOLD, CP_RGB_GOLD_LITE,
+					FROMRGB(150, 112, 48), CP_RGB_CARD);
+			PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, 251, 213,
+					T(CPS_POPUP_CTA));
+		}
 	}
 
 	void RenderMatches()
@@ -2253,8 +2490,20 @@ namespace
 		const std::vector<ProfileID> matches = AllMatches();
 		if (matches.empty())
 		{
-			PrintCentred(FONT10ARIAL, FONT_GRAY4, CP_PAGE_W / 2, 160,
+			PrintCentred(FONT10ARIAL, FONT_GRAY4, CP_PAGE_W / 2, 150,
 					T(CPS_MATCHES_NONE));
+			// the hazard-striped promise of the era: content, eventually
+			DropShadow(146, 180, 210, 40);
+			FillCard(146, 180, 210, 40, CP_RGB_CARD, CP_RGB_INK, CP_RGB_BG);
+			for (INT32 sx = 150; sx < 348; sx += 16)
+			{
+				for (int t = 0; t < 8; ++t)
+				{
+					FillRect(sx + t, 184 + t, 8, 1, FROMRGB(224, 186, 60));
+				}
+			}
+			PrintCentred(FONT10ARIAL, FONT_NEARBLACK, 251, 202,
+					T(CPS_UNDER_CONSTRUCTION));
 			return;
 		}
 
@@ -2280,7 +2529,8 @@ namespace
 			const DatingGame::Match match = MatchWith(pid);
 			PrintAt(FONT10ARIAL, dead ? FONT_GRAY5 : MatchColour(match.percent),
 					138, y + 20, MatchLabel(match));
-			PrintAt(FONT10ARIAL, FONT_GRAY5, 240, y + 20, T(MemberStatus(pid)));
+			PrintAt(FONT10ARIAL, FONT_GRAY5, 240, y + 20,
+					T(dead ? CPS_CONDOLENCE_ROW : MemberStatus(pid)));
 			DrawHeart(388, y + 14, 1, dead ? CP_RGB_GREY : CP_RGB_PINK);
 			y += 40;
 			++row;
@@ -2670,8 +2920,27 @@ void EnterCupid()
 		gCupidPersist.usLastVisitDay = today;
 		gCupidPersist.usViews = UINT16(std::min<UINT32>(0xFFFF,
 					gCupidPersist.usViews + 1));
+		// a fresh day earns a fresh congratulations
+		gfCupidPopupUp = PlayerHasProfile() && !IsGold();
 	}
 	gCupidPersist.ubFlags |= CUPID_FLAG_VISITED;
+
+	// a match who died on your contract gets one letter from the management
+	if (!(gCupidPersist.ubFlags & CUPID_FLAG_CONDOLED))
+	{
+		for (const Member& m : gCupidRoster)
+		{
+			if (m.locked || !MemberIsDead(m.pid) || !IsMatched(m.pid))
+			{
+				continue;
+			}
+			gCupidPersist.ubFlags |= CUPID_FLAG_CONDOLED;
+			AddEmailWithSpecialData(CUPID_EMAIL_CONDOLENCE, 0,
+					CUPID_SPECK_SENDER, GetWorldTotalMin(),
+					INT32(m.pid), 0);
+			break;
+		}
+	}
 
 	BuildDeck();
 	gCupidPage = CPP_DECK;
@@ -2744,6 +3013,24 @@ void HandleCupid()
 		{
 			uiLastHover = uiHover;
 			CupidRedraw();
+		}
+	}
+
+	// the photo comes down the wire a few rows at a time
+	if (gCupidPage == CPP_DECK && giCupidPhotoReveal < CP_PHOTO_H)
+	{
+		giCupidPhotoReveal += 9;
+		CupidRedraw();
+	}
+
+	// the NEW!! tag blinks on the era's clock
+	{
+		static UINT32 uiLastBlink = 0;
+		const UINT32 uiBlink = GetJA2Clock() / 400;
+		if (uiBlink != uiLastBlink)
+		{
+			uiLastBlink = uiBlink;
+			if (gCupidPage == CPP_DECK) CupidRedraw();
 		}
 	}
 
