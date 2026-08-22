@@ -245,6 +245,9 @@ namespace
 	// the card photo downloads over a 28.8k line: rows revealed so far
 	INT32 giCupidPhotoReveal = 0;
 
+	// how far the dossier under the photo has been scrolled
+	INT32 giCupidCardScroll = 0;
+
 	// the card on the table: a verdict button flies it off the stage.
 	// No dragging - this is 1999, and pages have buttons.
 	INT32 giCupidCardDx = 0;
@@ -279,7 +282,7 @@ namespace
 	MOUSE_REGION gCupidAnswerRegion[8];
 	MOUSE_REGION gCupidActionRegion[2]; // ME landing / detail / splash slots
 	MOUSE_REGION gCupidMatchRegion[7];  // clickable rows on the matches page
-	MOUSE_REGION gCupidSideAdRegion[2]; // the skyscraper banners, deck page
+	MOUSE_REGION gCupidSideAdRegion[1]; // today's skyscraper, deck page
 	MOUSE_REGION gCupidRingRegion[3];   // the webring: prev, random, next
 	MOUSE_REGION gCupidPopupXRegion;    // the popup's only honest exit
 	MOUSE_REGION gCupidPopupCtaRegion;  // and its entire reason to exist
@@ -821,14 +824,16 @@ namespace
 		FillRect(x, y, w * std::clamp(pct, 0, 100) / 100, 7, fill);
 	}
 
-	// the 1999 censor bar: chunky checkerboard over a face
+	// the 1999 censor bar: chunky checkerboard over a face, clipped to it
 	void BlurOver(INT32 x, INT32 y, INT32 w, INT32 h)
 	{
 		for (INT32 yy = 0; yy < h; yy += 3)
 		{
+			const INT32 bh = std::min<INT32>(3, h - yy);
 			for (INT32 xx = ((yy / 3) % 2) * 3; xx < w; xx += 6)
 			{
-				FillRect(x + xx, y + yy, 3, 3, CP_RGB_BLUE_DK);
+				FillRect(x + xx, y + yy, std::min<INT32>(3, w - xx), bh,
+						CP_RGB_BLUE_DK);
 			}
 		}
 	}
@@ -1506,6 +1511,7 @@ namespace
 	{
 		giCupidCardDx = 0;
 		giCupidFlyDir = 0;
+		giCupidCardScroll = 0;
 		giCupidPhotoReveal = 6; // the next photo arrives at 28.8kbps
 		if (gCupidDeckPos < int(gCupidDeck.size()) - 1) ++gCupidDeckPos;
 	}
@@ -1567,19 +1573,14 @@ namespace
 	}
 
 	// --- regions ------------------------------------------------------------
+	bool BannerIsParlour(); // defined with the renderers below
+
 	void SideAdCallback(MOUSE_REGION* region, UINT32 reason)
 	{
 		if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
 		if (gCupidPage != CPP_DECK) return;
-		// the banners are real 1999 banners: they go somewhere
-		if (MSYS_GetRegionUserData(region, 0) == 0)
-		{
-			GoToWebPage(MAHJONG_BOOKMARK);
-		}
-		else
-		{
-			GoToWebPage(FLORIST_BOOKMARK);
-		}
+		// a real 1999 banner: it goes wherever today's advertiser lives
+		GoToWebPage(BannerIsParlour() ? MAHJONG_BOOKMARK : FLORIST_BOOKMARK);
 	}
 
 	void RemoveAnswerRegions();
@@ -1619,14 +1620,20 @@ namespace
 		}
 		const Card& card = CurrentCard();
 
-		if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
-		if (card.kind != CARD_MEMBER) return;
-
-		// the card is a link: click it and the dossier opens
-		gCupidDetailPid  = card.pid;
-		gCupidDetailFrom = CPP_DECK;
-		gCupidPage = CPP_DETAIL;
-		CupidRedraw();
+		// the dossier scrolls in place; the whole story is on the card
+		if (reason & MSYS_CALLBACK_REASON_WHEEL_UP)
+		{
+			giCupidCardScroll = std::max(0, giCupidCardScroll - 22);
+			CupidRedraw();
+			return;
+		}
+		if (reason & MSYS_CALLBACK_REASON_WHEEL_DOWN)
+		{
+			giCupidCardScroll += 22; // clamped against content in render
+			CupidRedraw();
+			return;
+		}
+		(void)card;
 	}
 
 	void PassCallback(MOUSE_REGION* region, UINT32 reason)
@@ -1878,10 +1885,11 @@ namespace
 
 		for (int i = 0; i < 3; ++i)
 		{
-			const INT32 x = 168 + i * 80;
+			const INT32 y = 40 + i * 34;
 			MSYS_DefineRegion(&gCupidTabRegion[i],
-					UINT16(CP_X(x)), UINT16(CP_Y(2)),
-					UINT16(CP_X(x + 74)), UINT16(CP_Y(CP_TOPBAR_H - 2)),
+					UINT16(CP_X(CP_LCOL_X)), UINT16(CP_Y(y)),
+					UINT16(CP_X(CP_LCOL_X + CP_COL_W)),
+					UINT16(CP_Y(y + 26)),
 					MSYS_PRIORITY_HIGH, CURSOR_WWW, MSYS_NO_CALLBACK,
 					TabCallback);
 			MSYS_SetRegionUserData(&gCupidTabRegion[i], 0, i);
@@ -1925,16 +1933,12 @@ namespace
 			MSYS_SetRegionUserData(&gCupidActionRegion[i], 0, i);
 		}
 
-		for (int i = 0; i < 2; ++i)
-		{
-			const INT32 x = i == 0 ? CP_LCOL_X : CP_RCOL_X;
-			MSYS_DefineRegion(&gCupidSideAdRegion[i],
-					UINT16(CP_X(x)), UINT16(CP_Y(32)),
-					UINT16(CP_X(x + CP_COL_W)), UINT16(CP_Y(32 + 318)),
-					MSYS_PRIORITY_HIGH - 2, CURSOR_WWW, MSYS_NO_CALLBACK,
-					SideAdCallback);
-			MSYS_SetRegionUserData(&gCupidSideAdRegion[i], 0, i);
-		}
+		MSYS_DefineRegion(&gCupidSideAdRegion[0],
+				UINT16(CP_X(CP_RCOL_X)), UINT16(CP_Y(32)),
+				UINT16(CP_X(CP_RCOL_X + CP_COL_W)), UINT16(CP_Y(32 + 318)),
+				MSYS_PRIORITY_HIGH - 2, CURSOR_WWW, MSYS_NO_CALLBACK,
+				SideAdCallback);
+		MSYS_SetRegionUserData(&gCupidSideAdRegion[0], 0, 0);
 
 		for (int i = 0; i < 7; ++i)
 		{
@@ -2058,29 +2062,43 @@ namespace
 			PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, 138, 8, "GOLD");
 		}
 
+		PrintAt(FONT10ARIAL, gfCupidGerman ? FONT_GRAY5 : FONT_NEARBLACK,
+				CP_PAGE_W - 42, 7, "EN");
+		PrintAt(FONT10ARIAL, FONT_GRAY5, CP_PAGE_W - 28, 7, "|");
+		PrintAt(FONT10ARIAL, gfCupidGerman ? FONT_NEARBLACK : FONT_GRAY5,
+				CP_PAGE_W - 22, 7, "DE");
+	}
+
+	// the site menu, running down the left rail like a proper frameset
+	void RenderNavMenu()
+	{
 		static const CupidStr tabs[3] =
 			{ CPS_TAB_DECK, CPS_TAB_MATCHES, CPS_TAB_ME };
 		for (int i = 0; i < 3; ++i)
 		{
-			const INT32 x = 168 + i * 80;
+			const INT32 y = 40 + i * 34;
 			const bool active =
 				(i == 0 && (gCupidPage == CPP_DECK ||
-					(gCupidPage == CPP_DETAIL && gCupidDetailFrom == CPP_DECK))) ||
-				(i == 1 && (gCupidPage == CPP_MATCHES || gCupidPage == CPP_SPLASH ||
-					(gCupidPage == CPP_DETAIL && gCupidDetailFrom == CPP_MATCHES))) ||
+					(gCupidPage == CPP_DETAIL &&
+					 gCupidDetailFrom == CPP_DECK))) ||
+				(i == 1 && (gCupidPage == CPP_MATCHES ||
+					gCupidPage == CPP_SPLASH ||
+					(gCupidPage == CPP_DETAIL &&
+					 gCupidDetailFrom == CPP_MATCHES))) ||
 				(i == 2 && gCupidPage == CPP_ME);
+			DropShadow(CP_LCOL_X, y, CP_COL_W, 26);
 			if (active)
 			{
-				GelPill(x, 3, 74, CP_TOPBAR_H - 6, CP_RGB_PINK,
-						CP_RGB_PINK_LITE, CP_RGB_PINK_DK, CP_RGB_BLUE);
+				GelPill(CP_LCOL_X, y, CP_COL_W, 26, CP_RGB_PINK,
+						CP_RGB_PINK_LITE, CP_RGB_PINK_DK, CP_RGB_BG);
 			}
 			else
 			{
 				const bool hov = Hover(gCupidTabRegion[i]);
-				GelPill(x, 3, 74, CP_TOPBAR_H - 6,
+				GelPill(CP_LCOL_X, y, CP_COL_W, 26,
 						hov ? CP_RGB_CARD : CP_RGB_BLUE_PALE,
 						hov ? CP_RGB_GLOSS : CP_RGB_BLUE_LITE,
-						CP_RGB_BLUE_DK, CP_RGB_BLUE);
+						CP_RGB_BLUE_DK, CP_RGB_BG);
 			}
 			ST::string label = T(tabs[i]);
 			if (i == 1)
@@ -2090,14 +2108,8 @@ namespace
 			}
 			PrintCentred(FONT10ARIALBOLD,
 					active ? FONT_MCOLOR_WHITE : FONT_NEARBLACK,
-					x + 37, 8, label);
+					CP_LCOL_X + CP_COL_W / 2, y + 9, label);
 		}
-
-		PrintAt(FONT10ARIAL, gfCupidGerman ? FONT_GRAY5 : FONT_NEARBLACK,
-				CP_PAGE_W - 42, 7, "EN");
-		PrintAt(FONT10ARIAL, FONT_GRAY5, CP_PAGE_W - 28, 7, "|");
-		PrintAt(FONT10ARIAL, gfCupidGerman ? FONT_NEARBLACK : FONT_GRAY5,
-				CP_PAGE_W - 22, 7, "DE");
 	}
 
 	void RenderFooter()
@@ -2247,100 +2259,233 @@ namespace
 					cardX + CP_CARD_W / 2, CP_BTN_Y + 19,
 					ST::format("{}% MATCH", match.percent));
 		}
-		INT32 y = CP_BTN_Y + CP_BTN_SIZE + 8;
+		// --- the dossier: everything, scrolling under the pinned header ---
+		const INT32 viewTop = CP_BTN_Y + CP_BTN_SIZE + 10;
+		const INT32 viewBot = CP_CARD_Y + CP_CARD_H - 8;
+		const INT32 viewH   = viewBot - viewTop;
+		const INT32 tw      = CP_CARD_W - 30; // text width, scrollbar spared
 
-		// the ad runs under a headline, as personals always did
-		PrintCentred(FONT10ARIAL, FONT_GRAY4, cardX + CP_CARD_W / 2, y,
-				CUPID_HEADLINE[gfCupidGerman ? 1 : 0]
-					[p.bAttitude >= 0 && p.bAttitude < NUM_ATTITUDES
-						? p.bAttitude : 0]);
-		y += 13;
-
-		if (PlayerHasProfile())
-		{
-			const DatingGame::Match match = MatchWith(card.pid);
-			DrawMeter(cardX + (CP_CARD_W - 120) / 2, y, 120, match.percent,
-					match.percent >= 75 ? CP_RGB_LIKE
-					: match.percent >= 50 ? CP_RGB_GOLD : CP_RGB_NOPE);
-			y += 16;
-		}
-		else
-		{
-			y += 5;
-		}
-
-		// the chips: trait, standing, verification - flowed, wrapped
-		{
-			ST::string chips[3];
-			UINT32 edges[3];
-			int n = 0;
-			const int trait = p.bPersonalityTrait >= 0 &&
-						p.bPersonalityTrait < 8
-					? p.bPersonalityTrait : 0;
-			chips[n] = CUPID_TRAIT_SPIN[gfCupidGerman ? 1 : 0][trait];
-			edges[n++] = CP_RGB_PINK;
-			const CupidStr status = MemberStatus(card.pid);
-			chips[n] = status == CPS_STATUS_ONLINE ? "ONLINE"
-					: (gfCupidGerman ? "WEG" : "AWAY");
-			edges[n++] = status == CPS_STATUS_ONLINE
-					? CP_RGB_LIKE : CP_RGB_GREY;
-			chips[n] = merc ? T(CPS_UNVERIFIED)
-					: (gfCupidGerman ? "GEPRUEFT" : "VERIFIED");
-			edges[n++] = merc ? CP_RGB_GREY : CP_RGB_GOLD;
-
-			INT32 cxp = cardX + 12;
-			for (int i = 0; i < n; ++i)
-			{
-				const INT32 w =
-					StringPixLength(chips[i], FONT10ARIAL) + 12;
-				if (cxp + w > cardX + CP_CARD_W - 10)
-				{
-					cxp = cardX + 12;
-					y += 18;
-				}
-				DrawChip(cxp, y, chips[i], edges[i]);
-				cxp += w + 5;
-			}
-			y += 24;
-		}
-
-		// two lines of bio, quoted and clamped; one line of intent
-		const char* flavor = FlavorFor(card.pid);
+		const DatingGame::Match match = MatchWith(card.pid);
 		const int att = p.bAttitude >= 0 && p.bAttitude < NUM_ATTITUDES
 					? p.bAttitude : 0;
+		const char* flavor = FlavorFor(card.pid);
 		const char* bio = flavor ? flavor
 			: (merc ? CUPID_SUMMARY_MERC : CUPID_SUMMARY_AIM)
 				[gfCupidGerman ? 1 : 0][att];
-		y += DisplayWrappedString(UINT16(CP_X(cardX + 12)), UINT16(CP_Y(y)),
-				CP_CARD_W - 24, 2, FONT10ARIAL, FONT_GRAY3,
-				ST::format("\"{}\"",
-					ClampLines(bio, CP_CARD_W - 30, 3)),
-				FONT_MCOLOR_BLACK, LEFT_JUSTIFIED) + 6;
-		PrintAt(FONT10ARIAL, FONT_GRAY4, cardX + 12, y,
-				ClampLines(ST::format(T(CPS_LOOKING_FOR),
-						CUPID_LOOKING[gfCupidGerman ? 1 : 0][att]),
-					CP_CARD_W - 24, 1));
+		const ST::string bioQ = ST::format("\"{}\"", bio);
+		const ST::string looking = ST::format(T(CPS_LOOKING_FOR),
+				CUPID_LOOKING[gfCupidGerman ? 1 : 0][att]);
 
-		// one line at the foot: the warning outranks the vanity plate
-		bool warned = false;
+		ST::string breakers;
 		for (int i = 0; i < 2; ++i)
 		{
 			const INT8 hated = p.bHated[i];
-			if (hated < 0 || !IsMercOnTeam(UINT8(hated))) continue;
-			PrintCentred(FONT10ARIAL, FONT_DKRED, cardX + CP_CARD_W / 2,
-					CP_CARD_Y + CP_CARD_H - 16,
-					ST::format(T(CPS_BLOCKED_WARN),
-						GetProfile(ProfileID(hated)).zNickname));
-			warned = true;
-			break;
+			if (hated < 0) continue;
+			if (!breakers.empty()) breakers += ", ";
+			breakers += GetProfile(ProfileID(hated)).zNickname;
 		}
-		if (!warned)
+		const int blockedBy = CountBlockedBy(card.pid);
+		const CupidStr status = MemberStatus(card.pid);
+
+		// walk the blocks twice: once to measure, once to draw
+		INT32 total = 0;
+		for (int pass = 0; pass < 2; ++pass)
 		{
-			PrintCentred(FONT10ARIAL, FONT_GRAY5, cardX + CP_CARD_W / 2,
-					CP_CARD_Y + CP_CARD_H - 16,
-					ST::format(gfCupidGerman ? "Mitglied Nr. {}"
-								 : "member no. {}",
-							1000 + int(card.pid) * 7));
+			if (pass == 1)
+			{
+				const INT32 maxScroll = std::max<INT32>(0, total - viewH);
+				if (giCupidCardScroll > maxScroll)
+				{
+					giCupidCardScroll = maxScroll;
+				}
+			}
+			INT32 cy = 0;
+			auto place = [&](INT32 h) -> INT32
+			{
+				const INT32 top = cy;
+				cy += h;
+				if (pass == 0) return -1;
+				const INT32 sy = viewTop + top - giCupidCardScroll;
+				if (top - giCupidCardScroll < 0 ||
+				    top - giCupidCardScroll + h > viewH)
+				{
+					return -1;
+				}
+				return sy;
+			};
+			INT32 sy;
+
+			// the headline
+			if ((sy = place(14)) >= 0)
+			{
+				PrintCentred(FONT10ARIAL, FONT_GRAY4,
+						cardX + CP_CARD_W / 2, sy,
+						CUPID_HEADLINE[gfCupidGerman ? 1 : 0][att]);
+			}
+			// the meter and the agreement line
+			if (PlayerHasProfile())
+			{
+				if ((sy = place(13)) >= 0)
+				{
+					DrawMeter(cardX + (CP_CARD_W - 120) / 2, sy + 1, 120,
+							match.percent,
+							match.percent >= 75 ? CP_RGB_LIKE
+							: match.percent >= 50 ? CP_RGB_GOLD
+							: CP_RGB_NOPE);
+				}
+				if (match.answered > 0 && (sy = place(14)) >= 0)
+				{
+					PrintCentred(FONT10ARIAL, FONT_GRAY4,
+							cardX + CP_CARD_W / 2, sy,
+							ST::format(T(CPS_AGREE_ON), match.agree,
+									match.answered));
+				}
+			}
+			// the chips
+			{
+				ST::string chips[3];
+				UINT32 edges[3];
+				const int trait = p.bPersonalityTrait >= 0 &&
+							p.bPersonalityTrait < 8
+						? p.bPersonalityTrait : 0;
+				chips[0] = CUPID_TRAIT_SPIN[gfCupidGerman ? 1 : 0][trait];
+				edges[0] = CP_RGB_PINK;
+				chips[1] = status == CPS_STATUS_ONLINE ? "ONLINE"
+						: (gfCupidGerman ? "WEG" : "AWAY");
+				edges[1] = status == CPS_STATUS_ONLINE
+						? CP_RGB_LIKE : CP_RGB_GREY;
+				chips[2] = merc ? T(CPS_UNVERIFIED)
+						: (gfCupidGerman ? "GEPRUEFT" : "VERIFIED");
+				edges[2] = merc ? CP_RGB_GREY : CP_RGB_GOLD;
+				INT32 w01 = StringPixLength(chips[0], FONT10ARIAL) +
+						StringPixLength(chips[1], FONT10ARIAL) + 29;
+				const bool wraps = w01 +
+					StringPixLength(chips[2], FONT10ARIAL) + 17 > tw;
+				if ((sy = place(wraps ? 40 : 22)) >= 0)
+				{
+					INT32 cxp = cardX + 12;
+					for (int i = 0; i < 3; ++i)
+					{
+						const INT32 w = StringPixLength(chips[i],
+								FONT10ARIAL) + 12;
+						INT32 row = sy;
+						if (wraps && i == 2)
+						{
+							cxp = cardX + 12;
+							row = sy + 18;
+						}
+						DrawChip(cxp, row, chips[i], edges[i]);
+						cxp += w + 5;
+					}
+				}
+			}
+			cy += 4;
+			// the whole bio, uncut - that is what the scroll is for
+			{
+				const INT32 h = IanWrappedStringHeight(UINT16(tw), 2,
+						FONT10ARIAL, bioQ);
+				if ((sy = place(h + 5)) >= 0)
+				{
+					DisplayWrappedString(UINT16(CP_X(cardX + 12)),
+							UINT16(CP_Y(sy)), UINT16(tw), 2, FONT10ARIAL,
+							FONT_GRAY3, bioQ, FONT_MCOLOR_BLACK,
+							LEFT_JUSTIFIED);
+				}
+			}
+			// intent
+			{
+				const INT32 h = IanWrappedStringHeight(UINT16(tw), 2,
+						FONT10ARIAL, looking);
+				if ((sy = place(h + 4)) >= 0)
+				{
+					DisplayWrappedString(UINT16(CP_X(cardX + 12)),
+							UINT16(CP_Y(sy)), UINT16(tw), 2, FONT10ARIAL,
+							FONT_GRAY4, looking, FONT_MCOLOR_BLACK,
+							LEFT_JUSTIFIED);
+				}
+			}
+			// the record, published without euphemism
+			if (!breakers.empty() && (sy = place(14)) >= 0)
+			{
+				PrintAt(FONT10ARIAL, FONT_DKRED, cardX + 12, sy,
+						ST::format(T(CPS_DEAL_BREAKERS), breakers));
+			}
+			if (blockedBy > 0 && (sy = place(14)) >= 0)
+			{
+				PrintAt(FONT10ARIAL, FONT_GRAY5, cardX + 12, sy,
+						ST::format(T(CPS_BLOCKED_BY), blockedBy));
+			}
+			// what you agree and differ on, quoted from the questionnaire
+			if (PlayerHasProfile() && match.bestQ >= 0)
+			{
+				const ST::string q = QuizAnswer(match.bestQ,
+						GetAnswer(match.bestQ));
+				const INT32 h = IanWrappedStringHeight(UINT16(tw - 8), 2,
+						FONT10ARIAL, q);
+				if ((sy = place(12)) >= 0)
+				{
+					PrintAt(FONT10ARIAL, FONT_DKGREEN, cardX + 12, sy,
+							T(CPS_YOU_AGREED));
+				}
+				if ((sy = place(h + 4)) >= 0)
+				{
+					DisplayWrappedString(UINT16(CP_X(cardX + 18)),
+							UINT16(CP_Y(sy)), UINT16(tw - 8), 2,
+							FONT10ARIAL, FONT_GRAY3, q,
+							FONT_MCOLOR_BLACK, LEFT_JUSTIFIED);
+				}
+			}
+			if (PlayerHasProfile() && match.worstQ >= 0)
+			{
+				const ST::string q = QuizQuestion(match.worstQ);
+				const INT32 h = IanWrappedStringHeight(UINT16(tw - 8), 2,
+						FONT10ARIAL, q);
+				if ((sy = place(12)) >= 0)
+				{
+					PrintAt(FONT10ARIAL, FONT_DKRED, cardX + 12, sy,
+							T(CPS_YOU_DIFFER));
+				}
+				if ((sy = place(h + 4)) >= 0)
+				{
+					DisplayWrappedString(UINT16(CP_X(cardX + 18)),
+							UINT16(CP_Y(sy)), UINT16(tw - 8), 2,
+							FONT10ARIAL, FONT_GRAY3, q,
+							FONT_MCOLOR_BLACK, LEFT_JUSTIFIED);
+				}
+			}
+			// when they were last seen, and who they are to the ledger
+			if ((sy = place(13)) >= 0)
+			{
+				const ST::string act =
+					status == CPS_STATUS_GONE ? ST::string(T(CPS_ACTIVE_LONG))
+					: status == CPS_STATUS_ONLINE ||
+					  status == CPS_STATUS_PAYROLL
+						? ST::string(T(CPS_ACTIVE_24))
+						: ST::format(T(CPS_ACTIVE_DAYS),
+								2 + (card.pid * 7) % 5);
+				PrintAt(FONT10ARIAL, FONT_GRAY5, cardX + 12, sy, act);
+			}
+			if ((sy = place(13)) >= 0)
+			{
+				PrintCentred(FONT10ARIAL, FONT_GRAY5,
+						cardX + CP_CARD_W / 2, sy,
+						ST::format(gfCupidGerman ? "Mitglied Nr. {}"
+									 : "member no. {}",
+								1000 + int(card.pid) * 7));
+			}
+			if (pass == 0) total = cy;
+		}
+
+		// the scrollbar, when there is more member than window
+		if (total > viewH)
+		{
+			FillRect(cardX + CP_CARD_W - 10, viewTop, 3, viewH,
+					CP_RGB_CARD_DIM);
+			const INT32 th = std::max<INT32>(12, viewH * viewH / total);
+			const INT32 to = (viewH - th) * giCupidCardScroll /
+					std::max<INT32>(1, total - viewH);
+			FillRect(cardX + CP_CARD_W - 10, viewTop + to, 3, th,
+					CP_RGB_BLUE_DK);
 		}
 
 		// the NEW!! tag: applied on unlock, removed never
@@ -2410,58 +2555,67 @@ namespace
 		}
 	}
 
-	// The flanks: two tall skyscraper banners, as the era intended.
+	// One tall skyscraper on the right; the advertisers alternate by the
+	// day, as rotation contracts demanded.
+	bool BannerIsParlour() { return GetWorldDay() % 2 == 0; }
+
 	void RenderSideAds()
 	{
-		// left: the Parlour, house green, a rival Kingpin property
-		const INT32 lx = CP_LCOL_X, lc = CP_LCOL_X + CP_COL_W / 2;
-		DropShadow(lx, 32, CP_COL_W, 318);
-		FillCard(lx, 32, CP_COL_W, 318, FROMRGB(24, 82, 50),
-				FROMRGB(16, 56, 34), CP_RGB_BG);
-		PrintCentred(FONT10ARIAL, FONT_GRAY6, lx + CP_COL_W - 12, 36, "AD");
-		PrintCentred(FONT12ARIAL, FONT_MCOLOR_WHITE, lc, 64, "TIRED");
-		PrintCentred(FONT12ARIAL, FONT_MCOLOR_WHITE, lc, 82, "OF");
-		PrintCentred(FONT12ARIAL, FONT_MCOLOR_WHITE, lc, 100, "LOVE?");
-		FillRect(lc - 28, 124, 56, 1, FROMRGB(120, 180, 140));
-		for (int i = 0; i < 3; ++i)
-		{
-			FillRounded(lc - 27 + i * 19, 140, 15, 24, CP_RGB_CARD, 2,
-					FROMRGB(24, 82, 50));
-			FillRect(lc - 23 + i * 19, 146 + (i % 2) * 7, 8, 7,
-					i == 1 ? CP_RGB_NOPE : FROMRGB(24, 82, 50));
-		}
-		PrintCentred(FONT10ARIAL, FONT_MCOLOR_LTGREEN, lc, 182, "TRY");
-		PrintCentred(FONT10ARIAL, FONT_MCOLOR_LTGREEN, lc, 196, "LUCK");
-		FillRect(lc - 28, 218, 56, 1, FROMRGB(120, 180, 140));
-		PrintCentred(FONT10ARIAL, FONT_MCOLOR_WHITE, lc, 234, "SAN MONA");
-		PrintCentred(FONT10ARIAL, FONT_MCOLOR_WHITE, lc, 248, "MAHJONG");
-		PrintCentred(FONT10ARIAL, FONT_MCOLOR_WHITE, lc, 262, "PARLOUR");
-		GelPill(lc - 34, 306, 68, 22, FROMRGB(120, 180, 140),
-				FROMRGB(168, 214, 182), FROMRGB(16, 56, 34),
-				FROMRGB(24, 82, 50));
-		PrintCentred(FONT10ARIALBOLD, FONT_NEARBLACK, lc, 312, "VISIT");
-
-		// right: the florist, because the funnel has a next step
 		const INT32 rx = CP_RCOL_X, rc = CP_RCOL_X + CP_COL_W / 2;
-		DropShadow(rx, 32, CP_COL_W, 318);
-		FillCard(rx, 32, CP_COL_W, 318, CP_RGB_PINK_PALE, CP_RGB_PINK,
-				CP_RGB_BG);
-		PrintCentred(FONT10ARIAL, FONT_GRAY5, rx + CP_COL_W - 12, 36, "AD");
-		PrintCentred(FONT12ARIAL, FONT_DKRED, rc, 64, "SAY IT");
-		PrintCentred(FONT12ARIAL, FONT_DKRED, rc, 82, "WITH");
-		PrintCentred(FONT12ARIAL, FONT_DKRED, rc, 100, "FLOWERS");
-		DrawHeart(rc - 11, 128, 3, CP_RGB_PINK);
-		FillRect(rc - 2, 148, 3, 40, FROMRGB(88, 138, 74));
-		FillRect(rc - 9, 160, 8, 3, FROMRGB(88, 138, 74));
-		FillRect(rc + 2, 172, 8, 3, FROMRGB(88, 138, 74));
-		PrintCentred(FONT10ARIAL, FONT_GRAY3, rc, 210, "matched?");
-		PrintCentred(FONT10ARIAL, FONT_GRAY3, rc, 224, "don't just");
-		PrintCentred(FONT10ARIAL, FONT_GRAY3, rc, 238, "sit there.");
-		PrintCentred(FONT10ARIAL, FONT_NEARBLACK, rc, 262, "UNITED");
-		PrintCentred(FONT10ARIAL, FONT_NEARBLACK, rc, 276, "FLORAL SERVICE");
-		GelPill(rc - 34, 306, 68, 22, CP_RGB_PINK, CP_RGB_PINK_LITE,
-				CP_RGB_PINK_DK, CP_RGB_PINK_PALE);
-		PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, rc, 312, "ORDER");
+		if (BannerIsParlour())
+		{
+			DropShadow(rx, 32, CP_COL_W, 318);
+			FillCard(rx, 32, CP_COL_W, 318, FROMRGB(24, 82, 50),
+					FROMRGB(16, 56, 34), CP_RGB_BG);
+			PrintCentred(FONT10ARIAL, FONT_GRAY6, rx + CP_COL_W - 12, 36,
+					"AD");
+			PrintCentred(FONT12ARIAL, FONT_MCOLOR_WHITE, rc, 64, "TIRED");
+			PrintCentred(FONT12ARIAL, FONT_MCOLOR_WHITE, rc, 82, "OF");
+			PrintCentred(FONT12ARIAL, FONT_MCOLOR_WHITE, rc, 100, "LOVE?");
+			FillRect(rc - 28, 124, 56, 1, FROMRGB(120, 180, 140));
+			for (int i = 0; i < 3; ++i)
+			{
+				FillRounded(rc - 27 + i * 19, 140, 15, 24, CP_RGB_CARD, 2,
+						FROMRGB(24, 82, 50));
+				FillRect(rc - 23 + i * 19, 146 + (i % 2) * 7, 8, 7,
+						i == 1 ? CP_RGB_NOPE : FROMRGB(24, 82, 50));
+			}
+			PrintCentred(FONT10ARIAL, FONT_MCOLOR_LTGREEN, rc, 182, "TRY");
+			PrintCentred(FONT10ARIAL, FONT_MCOLOR_LTGREEN, rc, 196, "LUCK");
+			FillRect(rc - 28, 218, 56, 1, FROMRGB(120, 180, 140));
+			PrintCentred(FONT10ARIAL, FONT_MCOLOR_WHITE, rc, 234, "SAN MONA");
+			PrintCentred(FONT10ARIAL, FONT_MCOLOR_WHITE, rc, 248, "MAHJONG");
+			PrintCentred(FONT10ARIAL, FONT_MCOLOR_WHITE, rc, 262, "PARLOUR");
+			GelPill(rc - 34, 306, 68, 22, FROMRGB(120, 180, 140),
+					FROMRGB(168, 214, 182), FROMRGB(16, 56, 34),
+					FROMRGB(24, 82, 50));
+			PrintCentred(FONT10ARIALBOLD, FONT_NEARBLACK, rc, 312, "VISIT");
+		}
+		else
+		{
+			DropShadow(rx, 32, CP_COL_W, 318);
+			FillCard(rx, 32, CP_COL_W, 318, CP_RGB_PINK_PALE, CP_RGB_PINK,
+					CP_RGB_BG);
+			PrintCentred(FONT10ARIAL, FONT_GRAY5, rx + CP_COL_W - 12, 36,
+					"AD");
+			PrintCentred(FONT12ARIAL, FONT_DKRED, rc, 64, "SAY IT");
+			PrintCentred(FONT12ARIAL, FONT_DKRED, rc, 82, "WITH");
+			PrintCentred(FONT12ARIAL, FONT_DKRED, rc, 100, "FLOWERS");
+			DrawHeart(rc - 11, 128, 3, CP_RGB_PINK);
+			FillRect(rc - 2, 148, 3, 40, FROMRGB(88, 138, 74));
+			FillRect(rc - 9, 160, 8, 3, FROMRGB(88, 138, 74));
+			FillRect(rc + 2, 172, 8, 3, FROMRGB(88, 138, 74));
+			PrintCentred(FONT10ARIAL, FONT_GRAY3, rc, 210, "matched?");
+			PrintCentred(FONT10ARIAL, FONT_GRAY3, rc, 224, "don't just");
+			PrintCentred(FONT10ARIAL, FONT_GRAY3, rc, 238, "sit there.");
+			PrintCentred(FONT10ARIAL, FONT_NEARBLACK, rc, 262, "UNITED");
+			PrintCentred(FONT10ARIAL, FONT_NEARBLACK, rc, 276,
+					"FLORAL SERVICE");
+			GelPill(rc - 34, 306, 68, 22, CP_RGB_PINK, CP_RGB_PINK_LITE,
+					CP_RGB_PINK_DK, CP_RGB_PINK_PALE);
+			PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, rc, 312,
+					"ORDER");
+		}
 	}
 
 	void RenderDeck()
@@ -2737,6 +2891,80 @@ namespace
 		PrintCentred(FONT12ARIAL, FONT_NEARBLACK, CP_PAGE_W / 2, 32,
 				T(member ? CPS_ME_TITLE_MINE : CPS_ME_TITLE));
 
+		if (member)
+		{
+			// your ad, rendered exactly as the deck deals it
+			MERCPROFILESTRUCT const& imp = GetProfile(PlayerImpPid());
+			const DatingGame::Profile self = BuildPlayerProfile();
+			const int att = self.attitude >= 0 &&
+						self.attitude < NUM_ATTITUDES
+					? self.attitude : 0;
+
+			// the seeking widget above the card
+			PrintCentred(FONT10ARIAL,
+					Hover(gCupidSeekRegion) ? FONT_DKRED : FONT_GRAY3, 251,
+					48, ST::format(T(CPS_SEEK_LINE),
+						T(giCupidSeek == SEEK_MEN ? CPS_SEEK_MEN
+						: giCupidSeek == SEEK_WOMEN ? CPS_SEEK_WOMEN
+						: CPS_SEEK_ALL)));
+
+			const INT32 cx0 = CP_CARD_X;
+			const INT32 cy0 = 64;
+			DropShadow(cx0, cy0, CP_CARD_W, 244);
+			FillCard(cx0, cy0, CP_CARD_W, 244, CP_RGB_CARD, CP_RGB_BLUE_DK,
+					CP_RGB_BG);
+			FillRounded(cx0 + 3, cy0 + 4, CP_CARD_W - 6, CP_PHOTO_H + 8,
+					CP_RGB_INK, CP_RADIUS, CP_RGB_CARD);
+			if (guiCupidSelfBig)
+			{
+				BltVideoObject(FRAME_BUFFER, guiCupidSelfBig, 0,
+						CP_X(cx0 + (CP_CARD_W - CP_PHOTO_W) / 2),
+						CP_Y(cy0 + 8));
+			}
+			else
+			{
+				PrintCentred(FONT10ARIAL, FONT_GRAY5, cx0 + CP_CARD_W / 2,
+						cy0 + 60, T(CPS_NO_PHOTO));
+			}
+			INT32 y = cy0 + CP_PHOTO_H + 17;
+			PrintCentred(FONT14ARIAL, FONT_NEARBLACK, cx0 + CP_CARD_W / 2,
+					y, imp.zNickname);
+			y += 17;
+			PrintCentred(FONT10ARIAL, FONT_GRAY4, cx0 + CP_CARD_W / 2, y,
+					CUPID_HEADLINE[gfCupidGerman ? 1 : 0][att]);
+			y += 16;
+			{
+				INT32 cxp = cx0 + 12;
+				cxp += DrawChip(cxp, y,
+						CUPID_TRAIT_SPIN[gfCupidGerman ? 1 : 0]
+							[self.trait >= 0 && self.trait < 8
+								? self.trait : 0],
+						CP_RGB_PINK) + 5;
+				DrawChip(cxp, y, gfCupidGerman ? "I.M.P.-GEPRUEFT"
+							       : "I.M.P. VERIFIED",
+						CP_RGB_GOLD);
+			}
+			y += 22;
+			PrintAt(FONT10ARIAL, FONT_GRAY4, cx0 + 12, y,
+					ClampLines(ST::format(T(CPS_LOOKING_FOR),
+							CUPID_LOOKING[gfCupidGerman ? 1 : 0][att]),
+						CP_CARD_W - 24, 1));
+			PrintCentred(FONT10ARIAL, FONT_GRAY5, cx0 + CP_CARD_W / 2,
+					cy0 + 244 - 16,
+					ST::format(gfCupidGerman ? "Mitglied Nr. {}"
+								 : "member no. {}",
+							1000 + int(PlayerImpPid()) * 7));
+
+			PrintCentred(FONT10ARIAL, FONT_GRAY4, 251, 318,
+					ST::format(T(CPS_ME_STATS), gCupidPersist.ubStreak,
+						IsGold() ? 99 : gCupidPersist.ubLikesLeft));
+
+			ST::string second =
+				ST::format(T(CPS_ME_RETAKE), CP_RETAKE_PRICE);
+			RenderWideButton(1, second, true);
+			return;
+		}
+
 		// the status row: your photo beside the truth about your profile
 		DropShadow(96, 52, 310, 76);
 		FillCard(96, 52, 310, 76, CP_RGB_CARD, CP_RGB_BLUE_DK, CP_RGB_BG);
@@ -2779,60 +3007,6 @@ namespace
 					: giCupidSeek == SEEK_WOMEN ? CPS_SEEK_WOMEN
 					: CPS_SEEK_ALL)));
 
-		if (member)
-		{
-			// the account view: your own ad, as the deck deals it
-			PrintCentred(FONT10ARIALBOLD, FONT_DKRED, 251, 158,
-					T(CPS_ME_PREVIEW));
-			const DatingGame::Profile self = BuildPlayerProfile();
-			MERCPROFILESTRUCT const& imp = GetProfile(PlayerImpPid());
-			DropShadow(126, 172, 250, 96);
-			FillCard(126, 172, 250, 96, CP_RGB_CARD, CP_RGB_PINK, CP_RGB_BG);
-			FillRect(135, 181, CP_FACE_SM_W + 4, CP_FACE_SM_H + 4,
-					CP_RGB_INK);
-			FillRect(136, 182, CP_FACE_SM_W + 2, CP_FACE_SM_H + 2,
-					CP_RGB_MAT);
-			if (guiCupidSelf)
-			{
-				BltVideoObject(FRAME_BUFFER, guiCupidSelf, 0, CP_X(137),
-						CP_Y(183));
-			}
-			const INT32 px = 194;
-			PrintAt(FONT10ARIALBOLD, FONT_NEARBLACK, px, 182, imp.zNickname);
-			PrintAt(FONT10ARIAL, FONT_GRAY4, px, 196,
-					CUPID_HEADLINE[gfCupidGerman ? 1 : 0]
-						[self.attitude >= 0 &&
-						 self.attitude < NUM_ATTITUDES
-							? self.attitude : 0]);
-			INT32 cxp = px;
-			cxp += DrawChip(cxp, 212,
-					CUPID_TRAIT_SPIN[gfCupidGerman ? 1 : 0]
-						[self.trait >= 0 && self.trait < 8
-							? self.trait : 0],
-					CP_RGB_PINK) + 5;
-			DrawChip(cxp, 212, gfCupidGerman ? "I.M.P.-GEPRUEFT"
-							 : "I.M.P. VERIFIED",
-					CP_RGB_GOLD);
-			PrintAt(FONT10ARIAL, FONT_GRAY4, 136, 240,
-					ClampLines(ST::format(T(CPS_LOOKING_FOR),
-							CUPID_LOOKING[gfCupidGerman ? 1 : 0]
-								[self.attitude >= 0 &&
-								 self.attitude < NUM_ATTITUDES
-									? self.attitude : 0]),
-						230, 1));
-
-			// the vitals, and the one line of legal the lawyers insisted on
-			PrintCentred(FONT10ARIAL, FONT_GRAY4, 251, 282,
-					ST::format(T(CPS_ME_STATS), gCupidPersist.ubStreak,
-						IsGold() ? 99 : gCupidPersist.ubLikesLeft));
-			PrintCentred(FONT10ARIAL, FONT_GRAY5, 251, 298,
-					gfCupidGerman ? "Instrument: Speck-o-metrisch(tm), "
-							"unverklagt"
-						      : "instrument: Speck-o-metric(tm), "
-							"unlitigated");
-		}
-		else
-		{
 		// POWERED BY I.M.P., 88x31 in spirit, with the fine print below
 		DropShadow(176, 148, 150, 38);
 		FillCard(176, 148, 150, 38, CP_RGB_BLUE_PALE, CP_RGB_BLUE_DK,
@@ -2858,15 +3032,11 @@ namespace
 				ST::format("{} {}", T(CPS_AD_TESTI_HEAD), T(CPS_AD_TESTI_BODY)),
 				FONT_MCOLOR_BLACK, LEFT_JUSTIFIED);
 		PrintAt(FONT10ARIAL, FONT_GRAY5, 162, 286, T(CPS_AD_TESTI_BY));
-		}
 
 		const bool imp     = LaptopSaveInfo.fIMPCompletedFlag;
 		const bool banked  = HaveStoredAnswers();
 		const bool profile = PlayerHasProfile();
-		if (!member)
-		{
-			RenderWideButton(0, T(CPS_ME_IMPORT), imp && banked && !profile);
-		}
+		RenderWideButton(0, T(CPS_ME_IMPORT), imp && banked && !profile);
 
 		ST::string second;
 		if (!profile && !banked) second = T(CPS_ME_TAKE);
@@ -3262,6 +3432,7 @@ void RenderCupid()
 	FillRect(0, 0, CP_PAGE_W, CP_PAGE_H, CP_RGB_BG);
 	if (gCupidPage != CPP_SPLASH) RenderWallpaper();
 	RenderTopBar();
+	RenderNavMenu();
 	switch (gCupidPage)
 	{
 		case CPP_DECK:    RenderDeck();    break;
@@ -3344,6 +3515,14 @@ bool CupidHandleTypedKey(UINT32 usParam, UINT16 usKeyState)
 	{
 		case SDLK_LEFT:  StartFly(-1); return true;
 		case SDLK_RIGHT: StartFly(1);  return true;
+		case SDLK_UP:
+			giCupidCardScroll = std::max(0, giCupidCardScroll - 22);
+			CupidRedraw();
+			return true;
+		case SDLK_DOWN:
+			giCupidCardScroll += 22;
+			CupidRedraw();
+			return true;
 		default: return false;
 	}
 }
