@@ -1758,7 +1758,11 @@ namespace
 			}
 			if (action == CB_ACTION_SECONDARY)
 			{
-				const bool paid = PlayerHasProfile() || HaveStoredAnswers();
+				// only a genuinely blank slate takes the questionnaire for
+				// free; retakes and the old-save upgrade cost what the
+				// button says they cost
+				const bool paid = PlayerHasProfile() || HaveStoredAnswers() ||
+						LaptopSaveInfo.fIMPCompletedFlag;
 				if (paid && !ChargeSpeck(CP_RETAKE_PRICE))
 				{
 					CupidRedraw();
@@ -1988,6 +1992,12 @@ namespace
 		PrintAt(FONT10ARIALBOLD, FONT_NEARBLACK, 24, 7, "MERCS");
 		DrawHeart(60, 8, 1, CP_RGB_PINK);
 		PrintAt(FONT10ARIALBOLD, FONT_NEARBLACK, 70, 7, "KISSES");
+		if (IsGold())
+		{
+			// the prestige beyond measure, measured: one small chip
+			FillRounded(118, 5, 40, 14, CP_RGB_GOLD, 3, CP_RGB_BLUE);
+			PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, 138, 8, "GOLD");
+		}
 
 		static const CupidStr tabs[3] =
 			{ CPS_TAB_DECK, CPS_TAB_MATCHES, CPS_TAB_ME };
@@ -2943,6 +2953,7 @@ void EnterCupid()
 	}
 
 	BuildDeck();
+	giCupidPhotoReveal = 6; // the first photo downloads like all the others
 	gCupidPage = CPP_DECK;
 	gfCupidQuizLive = false;
 	giCupidQuizQ = -1;
@@ -3059,6 +3070,7 @@ void HandleCupid()
 bool CupidHandleTypedKey(UINT32 usParam, UINT16 usKeyState)
 {
 	if (gCupidPage != CPP_DECK || !PlayerHasProfile()) return false;
+	if (gfCupidPopupUp) return false; // the popup owns the moment
 	switch (usParam)
 	{
 		case SDLK_LEFT:  StartFly(-1); return true;
