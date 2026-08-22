@@ -97,6 +97,19 @@ public:
 	bool IsInCheck(Color c) const;
 	bool IsSquareAttacked(std::uint8_t sq, Color by) const;
 
+	// Static exchange evaluation, in centipawns: what the side to move nets by
+	// playing this capture and letting both sides trade off on the square until
+	// neither wants to continue. Negative means the capture loses material -
+	// queen takes defended pawn is roughly -800. Quiet moves score 0.
+	int See(const Move& m) const;
+
+	// True when the move gives material away, either because the capture
+	// itself loses the exchange or because it parks a piece where the reply
+	// wins it. `threshold` is how many centipawns of loss to tolerate, so 90
+	// permits a pawn sacrifice and refuses anything larger.
+	// Not const: it makes and unmakes the move to look at the reply.
+	bool LosesMaterial(const Move& m, int threshold);
+
 	Result GetResult();
 	static bool IsDraw(Result r)
 	{
@@ -113,6 +126,9 @@ public:
 	Move Search(int depth, int errorPercent, std::uint32_t& seed);
 	// Static evaluation in centipawns, positive meaning good for White.
 	int Evaluate() const;
+	// The endgame half of it, exposed for the tests: zero in any position
+	// that is not "one side is bare, the other can mate".
+	int MopUp() const;
 
 	// notation
 	std::string San(const Move& m);              // needs the move to be legal here
@@ -165,6 +181,10 @@ private:
 
 	int  GeneratePseudo(Move* out, bool capturesOnly) const;
 	void AddPawnMoves(Move* out, int& n, std::uint8_t from, std::uint8_t to, std::uint8_t flags) const;
+
+	// true when this exact position already stood on the board in the
+	// current irreversible span
+	bool IsRepetition() const;
 
 	int  Quiesce(int alpha, int beta);
 	int  Negamax(int depth, int alpha, int beta);

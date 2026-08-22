@@ -399,6 +399,149 @@ bool ChessGame::IsInCheck(Color c) const
 	return mKingSq[c] != NO_SQUARE && IsSquareAttacked(mKingSq[c], Color(c ^ 1));
 }
 
+namespace
+{
+	// The cheapest piece of `by` that attacks `sq` on this board, or -1.
+	// Works off a scratch board so the exchange can strip attackers one at a
+	// time; a slider behind a removed slider is found on the next pass, which
+	// is what gives the swap x-ray attackers for free.
+	int LeastValuableAttacker(const std::uint8_t* board, int sq, int by)
+	{
+		const int pawnDir = by == ChessGame::White ? 16 : -16;
+		for (const int side : { -1, 1 })
+		{
+			const int from = sq - pawnDir + side;
+			if (!ChessGame::OnBoard(from)) continue;
+			const std::uint8_t p = board[from];
+			if (p && ((p >> 3) & 1) == by && (p & 0x07) == ChessGame::Pawn) return from;
+		}
+
+		for (const int off : KNIGHT_OFFSETS)
+		{
+			const int from = sq + off;
+			if (!ChessGame::OnBoard(from)) continue;
+			const std::uint8_t p = board[from];
+			if (p && ((p >> 3) & 1) == by && (p & 0x07) == ChessGame::Knight) return from;
+		}
+
+		// bishops before rooks before queens: the swap wants them in value order
+		for (const std::uint8_t want : { ChessGame::Bishop, ChessGame::Rook, ChessGame::Queen })
+		{
+			const bool diagonal = want != ChessGame::Rook;
+			const bool straight  = want != ChessGame::Bishop;
+			for (int dir = 0; dir < 8; ++dir)
+			{
+				const bool isDiagonal = dir < 4;
+				if (isDiagonal ? !diagonal : !straight) continue;
+				const int off = isDiagonal ? BISHOP_OFFSETS[dir] : ROOK_OFFSETS[dir - 4];
+				for (int from = sq + off; ChessGame::OnBoard(from); from += off)
+				{
+					const std::uint8_t p = board[from];
+					if (!p) continue;
+					if (((p >> 3) & 1) == by && (p & 0x07) == want) return from;
+					break;
+				}
+			}
+		}
+
+		for (const int off : KING_OFFSETS)
+		{
+			const int from = sq + off;
+			if (!ChessGame::OnBoard(from)) continue;
+			const std::uint8_t p = board[from];
+			if (p && ((p >> 3) & 1) == by && (p & 0x07) == ChessGame::King) return from;
+		}
+
+		return -1;
+	}
+
+	bool AnyAttacker(const std::uint8_t* board, int sq, int by)
+	{
+		return LeastValuableAttacker(board, sq, by) >= 0;
+	}
+}
+
+int ChessGame::See(const Move& m) const
+{
+	if (m.IsNull()) return 0;
+
+	std::uint8_t board[128];
+	std::memcpy(board, mBoard, sizeof(board));
+
+	const int target = m.to;
+	int gain[34];
+
+	// what the first capture wins. En passant takes the pawn beside the
+	// square, not the one on it.
+	if (m.flags & MF_EN_PASSANT)
+	{
+		const int victim = target + (mSide == White ? -16 : 16);
+		board[victim] = 0;
+		gain[0] = PIECE_VALUE[Pawn];
+	}
+	else
+	{
+		gain[0] = PIECE_VALUE[board[target] & 0x07];
+	}
+
+	// the piece that will be standing on the square once the dust settles
+	int onSquare = PIECE_VALUE[board[m.from] & 0x07];
+	if (m.promo != NoPiece)
+	{
+		gain[0] += PIECE_VALUE[m.promo] - PIECE_VALUE[Pawn];
+		onSquare = PIECE_VALUE[m.promo];
+	}
+	board[m.from] = 0;
+
+	// then the two sides take turns on the square, cheapest piece first,
+	// until one of them has nothing left to gain by continuing
+	int side = mSide ^ 1;
+	int d = 0;
+	while (d + 1 < int(sizeof(gain) / sizeof(gain[0])))
+	{
+		const int from = LeastValuableAttacker(board, target, side);
+		if (from < 0) break;
+		const int attacker = board[from] & 0x07;
+		board[from] = 0;
+		if (attacker == King && AnyAttacker(board, target, side ^ 1)) break;
+
+		++d;
+		gain[d] = onSquare - gain[d - 1];
+		// a pawn reaching the last rank recaptures as a queen
+		const bool promotes = attacker == Pawn &&
+			(RankOf(std::uint8_t(target)) == 7 || RankOf(std::uint8_t(target)) == 0);
+		onSquare = promotes ? PIECE_VALUE[Queen] : PIECE_VALUE[attacker];
+		if (promotes) gain[d] += PIECE_VALUE[Queen] - PIECE_VALUE[Pawn];
+		// neither side is forced to continue a losing exchange
+		if (std::max(-gain[d - 1], gain[d]) < 0) break;
+		side ^= 1;
+	}
+
+	while (d > 0)
+	{
+		gain[d - 1] = -std::max(-gain[d - 1], gain[d]);
+		--d;
+	}
+	return gain[0];
+}
+
+bool ChessGame::LosesMaterial(const Move& m, int threshold)
+{
+	if (m.IsNull()) return false;
+	if ((m.flags & MF_CAPTURE) && See(m) < -threshold) return true;
+
+	if (!MakeMove(m)) return false;   // illegal moves are not our problem here
+	Move replies[MAX_MOVES];
+	const int n = GenerateLegalCaptures(replies);
+	int worst = 0;
+	for (int i = 0; i < n; ++i)
+	{
+		worst = std::max(worst, See(replies[i]));
+	}
+	Unmake();
+	return worst > threshold;
+}
+
 void ChessGame::AddPawnMoves(Move* out, int& n, std::uint8_t from, std::uint8_t to,
                              std::uint8_t flags) const
 {
@@ -785,7 +928,74 @@ int ChessGame::Evaluate() const
 
 		score += c == White ? value : -value;
 	}
+
+	score += MopUp();
 	return score;
+}
+
+// Material and piece-square tables say nothing about how to finish a won
+// endgame: with a rook up and the board otherwise bare, every legal move
+// scores the same and the rook shuffles until the fifty-move rule saves the
+// defender. This is the standard mop-up term - drive the bare king to the
+// edge, and walk your own king in to take the squares away from him - which
+// is what turns "winning" into a ladder mate.
+int ChessGame::MopUp() const
+{
+	int material[2] = { 0, 0 };
+	int pieces[2]   = { 0, 0 };   // anything that is not a king
+	int pawns[2]    = { 0, 0 };
+	for (int sq = 0; sq < 128; ++sq)
+	{
+		if (sq & 0x88) continue;
+		const std::uint8_t p = mBoard[sq];
+		if (!p) continue;
+		const std::uint8_t type = p & 0x07;
+		if (type == King) continue;
+		const int c = (p >> 3) & 1;
+		material[c] += PIECE_VALUE[type];
+		++pieces[c];
+		if (type == Pawn) ++pawns[c];
+	}
+
+	// the winner needs enough to mate with, the loser has to be down to a
+	// bare king - with a pawn on the board this is an endgame, not a mate net
+	const int strong = material[White] > material[Black] ? White : Black;
+	const int weak   = strong ^ 1;
+	if (pieces[weak] != 0) return 0;
+	if (pawns[strong] != 0) return 0;
+	if (material[strong] - material[weak] < PIECE_VALUE[Rook]) return 0;
+
+	const std::uint8_t wk = mKingSq[weak];
+	const std::uint8_t sk = mKingSq[strong];
+	if (wk == NO_SQUARE || sk == NO_SQUARE) return 0;
+
+	// how far the bare king is from the middle, and how close the other king
+	// has walked: the two halves of every mating technique there is. The
+	// weights are the usual ones, and they are deliberately large - the
+	// king's middlegame table wants him home, and in this position it is
+	// wrong, so the mop-up has to outvote it.
+	const int wf = FileOf(wk), wr = RankOf(wk);
+	const int centre = (wf < 3 ? 3 - wf : wf > 4 ? wf - 4 : 0) +
+	                   (wr < 3 ? 3 - wr : wr > 4 ? wr - 4 : 0);
+	const int between = std::abs(wf - FileOf(sk)) + std::abs(wr - RankOf(sk));
+
+	// and the part a three-ply search cannot see for itself: how much room
+	// the bare king has left. Rewarding the shrinking box is what a rook
+	// cutting off a rank amounts to, and without it the mate does not arrive
+	// inside fifty moves.
+	int room = 0;
+	for (const int off : KING_OFFSETS)
+	{
+		const int to = wk + off;
+		if (!OnBoard(to)) continue;
+		const std::uint8_t occupant = mBoard[to];
+		if (occupant && ((occupant >> 3) & 1) == weak) continue;
+		if (IsSquareAttacked(std::uint8_t(to), Color(strong))) continue;
+		++room;
+	}
+
+	const int bonus = 47 * centre + 16 * (14 - between) - 30 * room;
+	return strong == White ? bonus : -bonus;
 }
 
 int ChessGame::Quiesce(int alpha, int beta)
@@ -812,8 +1022,24 @@ int ChessGame::Quiesce(int alpha, int beta)
 	return alpha;
 }
 
+// Has this position stood on the board before, within the current
+// irreversible span? One earlier occurrence is enough for the search: a side
+// that is winning must not be allowed to think a repetition costs nothing,
+// which is how a rook ending turns into a shuffle.
+bool ChessGame::IsRepetition() const
+{
+	if (mKeyHistory.empty()) return false;
+	const int span = std::min<int>(mHalfmove, int(mKeyHistory.size()) - 1);
+	for (int back = 2; back <= span; back += 2)
+	{
+		if (mKeyHistory[mKeyHistory.size() - 1 - back] == mKey) return true;
+	}
+	return false;
+}
+
 int ChessGame::Negamax(int depth, int alpha, int beta)
 {
+	if (IsRepetition()) return 0;
 	if (depth <= 0) return Quiesce(alpha, beta);
 
 	Move moves[MAX_MOVES];

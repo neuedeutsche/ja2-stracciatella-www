@@ -77,6 +77,14 @@ PALETTE = [
     ( 36,  34,  31),  # 42 dim black outline
     (250, 190,  70),  # 43 flame core
     (230, 110,  40),  # 38 flame edge
+    # national colours for the roster flags, kept flat and few
+    (232, 232, 228),  # 45 flag white
+    (200,  40,  40),  # 46 flag red
+    ( 40,  70, 150),  # 47 flag blue
+    ( 30,  30,  30),  # 48 flag black
+    (240, 200,  60),  # 49 flag gold
+    ( 60, 130,  70),  # 50 flag green
+    ( 20,  18,  16),  # 51 flag edge
 ]
 (TRANSPARENT, W_FILL, W_SHADE, W_LINE, B_FILL, B_SHADE, B_LINE,
  SQ_LIGHT, SQ_DARK, HL_LIGHT, HL_DARK,
@@ -86,7 +94,8 @@ PALETTE = [
  WATCH_L, WATCH_D, COMM_L, COMM_D, CAL_L, CAL_D, PUZG_D,
  BAN_PAPER, BAN_INK, BAN_RED, BAN_GOLD,
  DW_FILL, DW_SHADE, DW_LINE, DB_FILL, DB_SHADE, DB_LINE,
- FLAME_L, FLAME_D) = range(45)
+ FLAME_L, FLAME_D,
+ FL_WHITE, FL_RED, FL_BLUE, FL_BLACK, FL_GOLD, FL_GREEN, FL_EDGE) = range(52)
 
 WHITE_INKS = (W_FILL, W_SHADE, W_LINE)
 BLACK_INKS = (B_FILL, B_SHADE, B_LINE)
@@ -132,7 +141,7 @@ PIECES = {
         ("rect", 18.75, 12.5, 81.25, 37.5, 0),
         ("rect", 25, 28.125, 75, 40.625, 0),
         ("poly", [(28.125, 40.625), (71.875, 40.625), (75.5, 80), (24.5, 80)]),
-        ("rect", 15.625, 72, 84.375, 95, 8),
+        ("rect", 15.625, 76, 84.375, 95, 8),
     ],
     # Constructed, not organic: the body is an elongated octagon - straight
     # segments only - with a ball on top and the slot cut into the upper
@@ -140,7 +149,7 @@ PIECES = {
     "bishop": [
         ("poly", [(38, 22), (62, 22), (75, 41), (75, 61), (62, 85),
                   (38, 85), (25, 61), (25, 41)]),
-        ("rect", 19, 78, 81, 95, 8),
+        ("rect", 19, 76, 81, 95, 8),
     ],
     "queen": [
         # the whole crown is squeezed 10% toward the centreline - a few
@@ -168,13 +177,15 @@ PIECES = {
         # balls rasterise to the same diameter at cell size
         ("circle", 13.4, 31.65, 11),
         ("circle", 86.6, 31.65, 11),
-        ("rect", 15.8, 78, 84.2, 95, 8),
+        ("rect", 15.8, 76, 84.2, 95, 8),
     ],
     # An even cross over a crown: straight column up the middle, two bows
     # arching outward to the sides. Built solid, then the teardrop hollows
     # between column and bows are cut out.
     "king": [
         ("rect", 43.5187, 3, 56.4813, 36, 0),
+        # the bar sits one pixel thinner than the column and on the 3.125
+        # grid, or it rasterises a row fat at cell size
         ("rect", 37.0375, 9.375, 62.9625, 18.75, 0),
         # widest through the lobes, tapering as it falls so it sits back from
         # the base instead of thickening into it
@@ -182,7 +193,7 @@ PIECES = {
                   (8.52, 38), (9.557, 54), (16.816, 68), (29.26, 78),
                   (70.74, 78), (83.184, 68), (90.443, 54), (91.48, 38),
                   (84.221, 26), (72.814, 20), (62.444, 24), (54.148, 30)]),
-        ("rect", 18.89, 78, 81.11, 95, 8),
+        ("rect", 18.89, 76, 81.11, 95, 8),
     ],
     # The knight is composed, not traced: a neck trapezoid, a head dome, a
     # muzzle bar and an ear - then one big circle carved out at the throat,
@@ -415,8 +426,64 @@ def _dot_mask(name, size, margin):
     return mask.resize((size, size), Image.BOX).point(lambda v: 255 if v >= 128 else 0)
 
 
+def _widths(sil_px, size):
+    return [sum(1 for x in range(size) if sil_px[x, y]) for y in range(size)]
+
+
+def _foot_row(widths, size):
+    """The row where the body stops and the plinth flares out.
+
+    Every Neo piece separates here and only here, bar the rook - so this is
+    found rather than hand-placed, and it survives an svg/ override replacing
+    the shape underneath it.
+    """
+    filled = [y for y, w in enumerate(widths) if w > 0]
+    if not filled:
+        return None
+    bottom = filled[-1]
+    plinth = max(widths[max(0, bottom - size // 5):bottom + 1])
+    if plinth < 2:
+        return None
+    # walk up out of the plinth: the first row appreciably narrower than it
+    # is the body, and the join sits on the row below that
+    y = bottom
+    while y > 1 and widths[y] >= plinth * 0.8:
+        y -= 1
+    return y if y > size // 2 else None
+
+
+def _head_row(widths, size):
+    """The waist under a head that is a mass of its own - the rook's
+    crenellations. The narrowest row in the piece's upper third."""
+    lo, hi = max(1, size // 6), size // 2
+    band = widths[lo:hi]
+    if not band:
+        return None
+    narrow = min(w for w in band if w >= 2)
+    for y in range(hi - 1, lo - 1, -1):
+        if widths[y] == narrow:
+            return y
+    return None
+
+
+# Where each piece takes its joins. Everything separates at the foot; only
+# the rook wears a second line, because only the rook's head is a block
+# sitting on the body rather than growing out of it.
+HEAD_BAND = {"rook"}
+
+# Detail marked in shade rather than outline ink - x, y and diameter in the
+# 0-100 primitive space. The knight's eye was tried once in outline colour
+# and cut for reading as a smudge; the softer tone reads as an eye. The
+# queen's four get one apiece under the ball, which is where the crown would
+# actually catch a shadow.
+SHADE_MARKS = {
+    "knight": [(44, 27, 5)],
+    "queen":  [(34, 24, 7), (66, 24, 7), (13.4, 41, 7), (86.6, 41, 7)],
+}
+
+
 def render_piece(name, inks, size, margin=1, directional=False):
-    """One indexed frame: flat fill, 1px inner outline, shade band on the base.
+    """One indexed frame: flat fill, 1px inner outline, shade at every join.
 
     With directional=True the outline stops being uniform: edges that face left
     catch the light and take the lit ink, everything else takes the shade. That
@@ -433,6 +500,23 @@ def render_piece(name, inks, size, margin=1, directional=False):
     sil_px, inner_px, out_px = sil.load(), inner.load(), img.load()
     # base shade: the bottom rows of the plinth read as one darker plane
     shade_from = size - max(2, size // 12)
+    # and a shaded row at every join, so the piece reads as parts stacked
+    band_h = max(1, size // 17)
+    rows = _widths(sil_px, size)
+    head = _head_row(rows, size) if name in HEAD_BAND else None
+    shaded = set()
+    # the pawn joins at its collar, not its foot: two bands hug the collar
+    # bar, one above it under the head, one below it on the bell
+    foot = _foot_row(rows, size) if name != "pawn" else None
+    for y in (foot, head - 2 if head else None):
+        if y is not None:
+            shaded.update(range(y, min(size, y + band_h)))
+    if name == "pawn":
+        scale = (size - 2 * margin) / 100.0
+        top = int(margin + 43 * scale) + 2
+        bot = int(margin + 55 * scale + 0.5) - 1
+        shaded.update(range(max(0, top - band_h), top))
+        shaded.update(range(bot, min(size, bot + band_h)))
     for y in range(size):
         for x in range(size):
             if not sil_px[x, y]:
@@ -441,10 +525,22 @@ def render_piece(name, inks, size, margin=1, directional=False):
                 # a left-facing edge is one with nothing filled to its left
                 lit = directional and (x == 0 or not sil_px[x - 1, y])
                 out_px[x, y] = fill_ink if lit else line_ink
-            elif y >= shade_from:
+            elif y >= shade_from or y in shaded:
                 out_px[x, y] = shade_ink
             else:
                 out_px[x, y] = fill_ink
+
+    for ex, ey, ed in SHADE_MARKS.get(name, ()):
+        scale = (size - 2 * margin) / 100.0
+        cx = margin + ex * scale
+        cy = margin + ey * scale
+        r = max(0.5, ed * scale / 2.0)
+        for y in range(size):
+            for x in range(size):
+                if not inner_px[x, y]:
+                    continue    # never eat into the outline
+                if (x + 0.5 - cx) ** 2 + (y + 0.5 - cy) ** 2 <= r * r:
+                    out_px[x, y] = shade_ink
 
     dots = _dot_mask(name, size, margin)
     if dots is not None:
@@ -633,6 +729,75 @@ def make_icons(size=14):
     return [render_icon(name, size) for name in ICON_ORDER]
 
 
+# Roster flags, chess.com's little national badge next to a rating. Eleven by
+# seven with a dark edge, which is all the room there is and all 1999 ever
+# gave them anyway - the drawing is per-flag rectangles, since a stripe is a
+# stripe at this size and anything finer would only turn to mud.
+FLAG_W, FLAG_H = 11, 7
+
+def _bands(inks, horizontal=True):
+    """Equal bands across the flag, the remainder going to the last one."""
+    ops = []
+    n = len(inks)
+    span = FLAG_H if horizontal else FLAG_W
+    for i, ink in enumerate(inks):
+        start = i * span // n
+        end = (i + 1) * span // n
+        ops.append((0, start, FLAG_W, end - start, ink) if horizontal
+                   else (start, 0, end - start, FLAG_H, ink))
+    return ops
+
+
+FLAGS = {
+    # Ivan and Igor Dolvich, Red Army as was
+    "ru": _bands([FL_WHITE, FL_BLUE, FL_RED]),
+    # Buns: Monica Sonderguard, Danish sharpshooter at the Atlanta games
+    "dk": [(0, 0, FLAG_W, FLAG_H, FL_RED),
+           (3, 0, 2, FLAG_H, FL_WHITE),
+           (0, 3, FLAG_W, 1, FL_WHITE)],
+    # Scope: the S.A.S., once A.I.M. had printed the correction. The saltires
+    # are what stop eleven pixels of blue and white reading as Iceland.
+    "gb": [(0, 0, FLAG_W, FLAG_H, FL_BLUE)] +
+          [(x, y, 1, 1, FL_WHITE) for y in range(FLAG_H)
+           for x in (y * (FLAG_W - 1) // (FLAG_H - 1),
+                     FLAG_W - 1 - y * (FLAG_W - 1) // (FLAG_H - 1))] +
+          [(4, 0, 3, FLAG_H, FL_WHITE),
+           (0, 2, FLAG_W, 3, FL_WHITE),
+           (5, 0, 1, FLAG_H, FL_RED),
+           (0, 3, FLAG_W, 1, FL_RED)],
+    # Fox, Spider: unstated in their bios, which in 1999 meant American
+    "us": [(0, 0, FLAG_W, FLAG_H, FL_WHITE),
+           (0, 0, FLAG_W, 1, FL_RED), (0, 2, FLAG_W, 1, FL_RED),
+           (0, 4, FLAG_W, 1, FL_RED), (0, 6, FLAG_W, 1, FL_RED),
+           (0, 0, 5, 4, FL_BLUE),
+           (1, 1, 1, 1, FL_WHITE), (3, 1, 1, 1, FL_WHITE),
+           (2, 2, 1, 1, FL_WHITE)],
+    # Grunty, who owns the site and keeps the German column in it
+    "de": _bands([FL_BLACK, FL_RED, FL_GOLD]),
+    # and Arulco, flown by the man trying to get it back
+    "ar": [(0, 0, FLAG_W, FLAG_H, FL_GREEN),
+           (0, 3, FLAG_W, 1, FL_WHITE),
+           (4, 2, 3, 1, FL_GOLD), (5, 1, 1, 3, FL_GOLD),
+           (0, 0, 3, FLAG_H, FL_RED)],
+}
+FLAG_ORDER = ["ru", "dk", "gb", "us", "de", "ar"]
+
+
+def render_flag(name):
+    """Bare colour, no border: the reference's flags have no keyline and a
+    black box around eleven pixels only makes them read as a button."""
+    img = Image.new("P", (FLAG_W, FLAG_H), TRANSPARENT)
+    img.putpalette([v for rgb in PALETTE for v in rgb] + [0] * (768 - 3 * len(PALETTE)))
+    d = ImageDraw.Draw(img)
+    for x, y, w, h, ink in FLAGS[name]:
+        d.rectangle([x, y, x + w - 1, y + h - 1], fill=ink)
+    return img
+
+
+def make_flags():
+    return [render_flag(name) for name in FLAG_ORDER]
+
+
 def _banner_font(size):
     """Any bold system face will do - these are 468x60 ad banners at heart."""
     from PIL import ImageFont
@@ -689,6 +854,7 @@ def main():
     write_sti(OUT_DIR / "chesspiecessmall.sti", small)
     write_sti(OUT_DIR / "chesslogo.sti", make_logo())
     write_sti(OUT_DIR / "chessicons.sti", make_icons())
+    write_sti(OUT_DIR / "chessflags.sti", make_flags())
     write_sti(OUT_DIR / "chessbanner.sti", make_banners())
     if "--preview" in sys.argv:
         write_preview(big, 34, Path("/tmp/chess_pieces_preview.png"))

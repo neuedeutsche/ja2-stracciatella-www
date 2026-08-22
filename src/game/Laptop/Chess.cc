@@ -160,6 +160,9 @@
 #define CH_RGB_PANEL_SUNK  FROMRGB( 29,  26,  24)
 // the guestbook's row separator: a hairline, read more than seen
 #define CH_RGB_ROW_SEP     FROMRGB( 48,  44,  40)
+// the move list's zebra: the one band that goes up rather than down, because
+// the reference's alternating rows sit a shade above their panel
+#define CH_RGB_ROW_ALT     FROMRGB( 47,  43,  39)
 #define CH_RGB_CTA         FROMRGB(129, 182,  76)
 #define CH_RGB_HEART_SPENT FROMRGB( 70,  68,  65)
 // the account row: the nickname is suggested rather than set, two grey bars
@@ -222,6 +225,10 @@ namespace
 	// Each regular plays at their own strength: search depth, blunder rate,
 	// and how often they grab a capture just because it is there. The ratings
 	// are invented, but they rank the same way the parameters do.
+	// frames in chessflags.sti, in the order the generator writes them
+	enum ChessFlag { CH_FLAG_NONE = -1, CH_FLAG_RU = 0, CH_FLAG_DK, CH_FLAG_GB,
+	                 CH_FLAG_US, CH_FLAG_DE, CH_FLAG_AR };
+
 	struct ChessSeat
 	{
 		ProfileID   pid;
@@ -231,21 +238,26 @@ namespace
 		int         depth;
 		int         err;    // percent of moves played at random
 		int         greed;  // percent chance any available capture is taken
+		int         flag;   // where their A.I.M. bio puts them
 	};
+	// Flags follow the bios, not guesswork: Ivan and Igor Dolvich are Red Army,
+	// Monica "Buns" Sonderguard shot for Denmark at the Atlanta games, and
+	// A.I.M. printed a correction to say Scope's service was the S.A.S. Fox and
+	// Spider have no nationality on file, which in 1999 meant American.
 	static const ChessSeat CHESS_SEATS[6] =
 	{
-		{ IVAN,   "@ivan_d",  "IM", 2145, 3,  4, 25 },
-		{ BUNS,   "@buns",    "FM", 1994, 3, 10, 40 },
-		{ SCOPE,  "@scope",   "CM", 1873, 2,  8, 50 },
-		{ FOX,    "@foxtrot", "",   1731, 2, 16, 65 },
-		{ IGOR,   "@igor_k",  "",   1677, 2, 24, 70 },
-		{ SPIDER, "@spider",  "",   1512, 1, 30, 80 },
+		{ IVAN,   "@ivan_d",  "IM", 2145, 3,  4, 25, CH_FLAG_RU },
+		{ BUNS,   "@buns",    "FM", 1994, 3, 10, 40, CH_FLAG_DK },
+		{ SCOPE,  "@scope",   "CM", 1873, 2,  8, 50, CH_FLAG_GB },
+		{ FOX,    "@foxtrot", "",   1731, 2, 16, 65, CH_FLAG_US },
+		{ IGOR,   "@igor_k",  "",   1677, 2, 24, 70, CH_FLAG_RU },
+		{ SPIDER, "@spider",  "",   1512, 1, 30, 80, CH_FLAG_US },
 	};
 
 	// daily chess is played against one man, by letter, one move a day. He
-	// signs the guestbook the same way.
+	// signs the guestbook the same way, under the flag he is fighting for.
 	static const ChessSeat CHESS_SEAT_ENRICO =
-		{ ENRICO, "@a_free_arulco", "", 1899, 3, 6, 15 };
+		{ ENRICO, "@a_free_arulco", "", 1899, 3, 6, 15, CH_FLAG_AR };
 
 	// the guestbook looks a signer's title up by their handle
 	const char* ChessTitleForHandle(const ST::string& handle)
@@ -256,6 +268,23 @@ namespace
 		}
 		return nullptr;
 	}
+
+	// and their flag the same way. The proprietor is German, which is why the
+	// site has a German column at all.
+	int ChessFlagForHandle(const ST::string& handle)
+	{
+		for (const ChessSeat& seat : CHESS_SEATS)
+		{
+			if (handle == seat.handle) return seat.flag;
+		}
+		if (handle == CHESS_SEAT_ENRICO.handle) return CHESS_SEAT_ENRICO.flag;
+		if (handle == "@grunty" || handle == "@sirFER") return CH_FLAG_DE;
+		return CH_FLAG_NONE;
+	}
+
+	// The badge itself: thirteen by nine, drawn where chess.com puts it -
+	// after the rating, before whatever the account is boasting about.
+	INT32 ChessDrawFlag(INT32 x, INT32 y, int flag);
 	int gWatchSeat[2] = { 0, 1 };            // [0] plays White, [1] Black
 	// both live sidebars carry two tabs, like the reference: moves and chat.
 	// Watch is a public room; Play is just the two of you at the table.
@@ -337,6 +366,7 @@ namespace
 	SGPVObject* guiChessPiecesSmall = nullptr; // 24 frames, 20x20, for diagrams
 	SGPVObject* guiChessCoach  = nullptr;  // Grunty, 29x33
 	SGPVObject* guiChessIcons  = nullptr;  // 7 nav and panel icons, 14x14
+	SGPVObject* guiChessFlags  = nullptr;  // 6 roster flags, 11x7
 	SGPVObject* guiChessLogo   = nullptr;  // green pawn, 22 and 14
 	SGPVObject* guiChessAdDragon = nullptr; // the Parlour's medallion, borrowed for its ad
 	SGPVObject* guiChessAdTiles  = nullptr; // and two of its tiles: the ring and the bird
@@ -865,20 +895,65 @@ namespace
 		return surf;
 	}
 
-	// How the regulars actually play: if something can be taken, it usually
-	// is, whether or not taking it is any good. Greed first, thought second.
+	// How the regulars actually play. Greed makes them grab a capture just
+	// because it is there - but a rated player still sees that the pawn is
+	// defended, so the grab comes from the captures that survive the
+	// recapture, best first. Blunders are a separate habit: `err` plays a
+	// move the search did not choose, drawn from moves that do not simply
+	// hand material over. How much material a seat will overlook scales with
+	// its rating, which is what stops a 1994 from playing Qxb7??.
+	ChessGame::Move ChessPickMoveFor(ChessGame& game, const ChessSeat& seat, UINT32& seed)
+	{
+		const auto roll = [&seed]() -> UINT32
+		{
+			seed = seed * 1103515245u + 12345u;
+			return seed;
+		};
+
+		if (int((roll() >> 16) % 100) < seat.greed)
+		{
+			ChessGame::Move captures[ChessGame::MAX_MOVES];
+			const int nCaps = game.GenerateLegalCaptures(captures);
+			ChessGame::Move best;
+			int bestSee = 0;
+			for (int i = 0; i < nCaps; ++i)
+			{
+				const int see = game.See(captures[i]);
+				if (see < 0) continue;   // the pawn was defended after all
+				if (best.IsNull() || see > bestSee) { best = captures[i]; bestSee = see; }
+			}
+			if (!best.IsNull()) return best;
+		}
+
+		const ChessGame::Move thought = game.Search(seat.depth, 0, seed);
+		if (seat.err > 0 && int((roll() >> 16) % 100) < seat.err)
+		{
+			// a pawn to the titled seats, a whole knight to the bottom of
+			// the ladder: what the seat is capable of not noticing
+			const int tolerance = seat.rating >= 2000 ? 90
+			                    : seat.rating >= 1800 ? 150
+			                    : seat.rating >= 1600 ? 250
+			                                          : 330;
+			ChessGame::Move moves[ChessGame::MAX_MOVES];
+			const int n = game.GenerateLegal(moves);
+			ChessGame::Move pool[ChessGame::MAX_MOVES];
+			int nPool = 0;
+			for (int i = 0; i < n; ++i)
+			{
+				if (moves[i] == thought) continue;
+				if (game.LosesMaterial(moves[i], tolerance)) continue;
+				pool[nPool++] = moves[i];
+			}
+			if (nPool > 0) return pool[(roll() >> 8) % unsigned(nPool)];
+		}
+		return thought;
+	}
+
 	ChessGame::Move ChessWatchPickMove()
 	{
 		const ChessSeat& seat = CHESS_SEATS[
 			gWatchSeat[gWatchGame.SideToMove() == ChessGame::White ? 0 : 1]];
-		guiWatchSeed = guiWatchSeed * 1103515245u + 12345u;
-		ChessGame::Move captures[ChessGame::MAX_MOVES];
-		const int nCaps = gWatchGame.GenerateLegalCaptures(captures);
-		if (nCaps > 0 && int((guiWatchSeed >> 16) % 100) < seat.greed)
-		{
-			return captures[(guiWatchSeed >> 8) % unsigned(nCaps)];
-		}
-		return gWatchGame.Search(seat.depth, seat.err, guiWatchSeed);
+		return ChessPickMoveFor(gWatchGame, seat, guiWatchSeed);
 	}
 
 	// the peanut gallery: watchers pulled from the site's cast
@@ -1161,6 +1236,45 @@ namespace
 			FillRect(x + inset, y + h - 1 - row, w - 2 * inset, 1, rgb);
 		}
 		FillRect(x, y + radius, w, h - 2 * radius, rgb);
+	}
+
+	// A disc and its hollow twin, drawn a scanline at a time off the circle
+	// equation. The half-pixel offsets put the centre between pixels, which is
+	// what keeps a small disc from coming out square-shouldered.
+	void FillDisc(INT32 cx, INT32 cy, double radius, UINT32 rgb)
+	{
+		const INT32 r = INT32(std::ceil(radius));
+		for (INT32 dy = -r; dy < r; ++dy)
+		{
+			const double y = dy + 0.5;
+			if (std::fabs(y) > radius) continue;
+			const INT32 half = INT32(std::sqrt(radius * radius - y * y) + 0.5);
+			if (half <= 0) continue;
+			FillRect(cx - half, cy + dy, half * 2, 1, rgb);
+		}
+	}
+
+	// The ring chess.com puts around a piece you can take: same circle, with
+	// the middle left alone so the piece still reads through it.
+	void FillRing(INT32 cx, INT32 cy, double outer, double inner, UINT32 rgb)
+	{
+		const INT32 r = INT32(std::ceil(outer));
+		for (INT32 dy = -r; dy < r; ++dy)
+		{
+			const double y = dy + 0.5;
+			if (std::fabs(y) > outer) continue;
+			const INT32 half = INT32(std::sqrt(outer * outer - y * y) + 0.5);
+			if (half <= 0) continue;
+			const INT32 hole = std::fabs(y) > inner
+				? 0 : INT32(std::sqrt(inner * inner - y * y) + 0.5);
+			if (hole <= 0)
+			{
+				FillRect(cx - half, cy + dy, half * 2, 1, rgb);
+				continue;
+			}
+			FillRect(cx - half, cy + dy, half - hole, 1, rgb);
+			FillRect(cx + hole, cy + dy, half - hole, 1, rgb);
+		}
 	}
 
 	void PrintAt(SGPFont font, UINT8 colour, INT32 x, INT32 y, const ST::string& text)
@@ -1559,15 +1673,7 @@ namespace
 	// greed - the same triple the exhibition seats use.
 	ChessGame::Move ChessPlayPickMove()
 	{
-		const ChessSeat& seat = ChessOpponent();
-		guiPlaySeed = guiPlaySeed * 1103515245u + 12345u;
-		ChessGame::Move captures[ChessGame::MAX_MOVES];
-		const int nCaps = gPlayGame.GenerateLegalCaptures(captures);
-		if (nCaps > 0 && int((guiPlaySeed >> 16) % 100) < seat.greed)
-		{
-			return captures[(guiPlaySeed >> 8) % unsigned(nCaps)];
-		}
-		return gPlayGame.Search(seat.depth, seat.err, guiPlaySeed);
+		return ChessPickMoveFor(gPlayGame, ChessOpponent(), guiPlaySeed);
 	}
 
 	void ChessSquareCallback(MOUSE_REGION* region, UINT32 reason)
@@ -2377,6 +2483,37 @@ namespace
 				FillRect(CH_BOARD_X + col * CH_SQ, CH_BOARD_Y + row * CH_SQ, CH_SQ, CH_SQ, rgb);
 			}
 		}
+
+		// the men with a move to make wear a quiet inset ring: the
+		// affordance that says these are yours to pick up
+		if (&game == &ChessActiveGame() && !gfChessModal &&
+		    !ChessPlayReviewing() &&
+		    game.SideToMove() == ChessActiveSolver() &&
+		    (gChessState != CHUI_PUZZLE || guiChessReplyDue == 0))
+		{
+			ChessGame::Move moves[256];
+			const int n = const_cast<ChessGame&>(game).GenerateLegal(moves);
+			bool movable[64] = {};
+			for (int i = 0; i < n; ++i)
+			{
+				if (moves[i].from < 64) movable[moves[i].from] = true;
+			}
+			for (int row = 0; row < 8; ++row)
+			{
+				for (int col = 0; col < 8; ++col)
+				{
+					const UINT8 sq = ScreenToSquare(col, row);
+					if (!movable[sq]) continue;
+					const INT32 x = CH_BOARD_X + col * CH_SQ + 1;
+					const INT32 y = CH_BOARD_Y + row * CH_SQ + 1;
+					const UINT32 ring = FROMRGB(252, 252, 250);
+					FillRect(x, y, CH_SQ - 2, 1, ring);
+					FillRect(x, y + CH_SQ - 3, CH_SQ - 2, 1, ring);
+					FillRect(x, y, 1, CH_SQ - 2, ring);
+					FillRect(x + CH_SQ - 3, y, 1, CH_SQ - 2, ring);
+				}
+			}
+		}
 	}
 
 	void ChessRenderAnimPiece(const ChessGame& game)
@@ -2462,17 +2599,17 @@ namespace
 				INT32 x, y;
 				SquareToScreen(moves[i].to, x, y);
 				const UINT32 dot = IsLightSquare(moves[i].to) ? CH_RGB_DOT_LIGHT : CH_RGB_DOT_DARK;
+				const INT32 cx = x + CH_SQ / 2;
+				const INT32 cy = y + CH_SQ / 2;
 				if (game.IsEmpty(moves[i].to))
 				{
-					FillRect(x + CH_SQ / 2 - 5, y + CH_SQ / 2 - 5, 10, 10, dot);
+					// an empty square takes the dot, a sixth of the square wide
+					FillDisc(cx, cy, CH_SQ / 6.0, dot);
 				}
 				else
 				{
-					// a ring around an occupied square, drawn as four edges
-					FillRect(x, y, CH_SQ, 3, dot);
-					FillRect(x, y + CH_SQ - 3, CH_SQ, 3, dot);
-					FillRect(x, y, 3, CH_SQ, dot);
-					FillRect(x + CH_SQ - 3, y, 3, CH_SQ, dot);
+					// an occupied one takes the ring, hugging the square edge
+					FillRing(cx, cy, CH_SQ / 2.0, CH_SQ / 2.0 - 3.0, dot);
 				}
 			}
 		}
@@ -2530,7 +2667,7 @@ namespace
 	}
 
 	void ChessRenderMoveList(const std::vector<ST::string>& san, INT32 y0, INT32 y1,
-	                         int* scroll);
+	                         int* scroll, int view = -1);
 	void ChessDrawCTAButton(INT32 x, INT32 y, INT32 w, INT32 h, UINT32 bg);
 	INT32 ChessRenderSectionPanel(UINT16 icon, ChessStr title);
 	void ChessDrawPagerButton(INT32 x, INT32 y, INT32 s, bool lit);
@@ -2659,7 +2796,7 @@ namespace
 			ChessRenderPanelTabs(giPlayTab);
 			if (giPlayTab == 0)
 			{
-				ChessRenderMoveList(gPlaySan, 58, CH_FOOT_Y - 4, &giMoveScroll);
+				ChessRenderMoveList(gPlaySan, 58, CH_FOOT_Y - 4, &giMoveScroll, giPlayView);
 			}
 			else
 			{
@@ -2955,13 +3092,6 @@ namespace
 		{
 			case 0:  // Bobby Ray's: his own creative, from his own homepage
 			{
-				if (tall && gAdArtBobby)
-				{
-					BltVideoSurface(FRAME_BUFFER, gAdArtBobby,
-					                CH_X(bx + (bw - gAdArtBobby->Width()) / 2),
-					                CH_Y(by + (bh - gAdArtBobby->Height()) / 2), NULL);
-					break;
-				}
 				FillRect(bx + 1, by + 1, bw - 2, bh - 2, FROMRGB(214, 213, 206));
 				FillRect(bx + 1, by + 1, 96, bh - 2, FROMRGB(178, 24, 24));
 				PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, bx + 49, by + (tall ? 12 : 8), "BOBBY");
@@ -3078,13 +3208,6 @@ namespace
 			}
 			case 6:  // United Floral: their own creative, else the drawn card
 			{
-				if (tall && gAdArtFlower)
-				{
-					BltVideoSurface(FRAME_BUFFER, gAdArtFlower,
-					                CH_X(bx + (bw - gAdArtFlower->Width()) / 2),
-					                CH_Y(by + (bh - gAdArtFlower->Height()) / 2), NULL);
-					break;
-				}
 				FillRect(bx + 1, by + 1, bw - 2, bh - 2, FROMRGB(240, 242, 232));
 				for (const INT32 fxp : { bx + 18, bx + bw - 18 })
 				{
@@ -3108,13 +3231,6 @@ namespace
 			}
 			case 7: // McGillicutty's: their own creative, else the drawn card
 			{
-				if (tall && gAdArtFuneral)
-				{
-					BltVideoSurface(FRAME_BUFFER, gAdArtFuneral,
-					                CH_X(bx + (bw - gAdArtFuneral->Width()) / 2),
-					                CH_Y(by + (bh - gAdArtFuneral->Height()) / 2), NULL);
-					break;
-				}
 				FillRect(bx + 1, by + 1, bw - 2, bh - 2, FROMRGB(22, 22, 24));
 				const INT32 ix = bx + 5, iy = by + 4, iw = bw - 10, ih = bh - 8;
 				FillRect(ix, iy, iw, 1, FROMRGB(96, 96, 100));
@@ -3132,17 +3248,23 @@ namespace
 				if (tall) PrintCentred(FONT10ARIAL, FONT_GRAY7, cx, by + 33, "discreet. experienced. open late.");
 				break;
 			}
-			default: // Malleus, Incus & Stapes: their own creative, else copy
+			default: // Malleus, Incus & Stapes: umbrella drawn by hand,
+			         // like every other site carries this advertiser
 			{
-				if (tall && gAdArtIns)
-				{
-					FillRect(bx + 1, by + 1, bw - 2, bh - 2, FROMRGB(0, 0, 0));
-					BltVideoSurface(FRAME_BUFFER, gAdArtIns,
-					                CH_X(bx + (bw - gAdArtIns->Width()) / 2),
-					                CH_Y(by + (bh - gAdArtIns->Height()) / 2), NULL);
-					break;
-				}
 				FillRect(bx + 1, by + 1, bw - 2, bh - 2, FROMRGB(30, 38, 34));
+				// the umbrellas flank the copy: canopy, stem, hook
+				for (const INT32 ux : { bx + 18, bx + bw - 34 })
+				{
+					const INT32 uy = by + (tall ? 12 : 8);
+					const UINT32 pale = FROMRGB(148, 178, 196);
+					for (int r = 0; r < 5; ++r)
+					{
+						const INT32 half = 2 + 2 * r;
+						FillRect(ux + 8 - half, uy + r, 2 * half, 1, pale);
+					}
+					FillRect(ux + 7, uy + 5, 2, 12, pale);
+					FillRect(ux + 5, uy + 16, 3, 2, pale);
+				}
 				PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, cx, by + (tall ? 8 : 7),
 				             "MALLEUS, INCUS & STAPES");
 				PrintCentred(FONT10ARIAL, FONT_GRAY2, cx, by + (tall ? 21 : 19),
@@ -3211,6 +3333,13 @@ namespace
 
 	// A chess title, chess.com style: a small crimson chip, white letters.
 	// Returns the width it consumed, zero for the untitled.
+	INT32 ChessDrawFlag(INT32 x, INT32 y, int flag)
+	{
+		if (flag < 0 || !guiChessFlags) return 0;
+		BltVideoObject(FRAME_BUFFER, guiChessFlags, UINT16(flag), CH_X(x), CH_Y(y));
+		return 11 + 4;
+	}
+
 	INT32 ChessDrawTitleBadge(INT32 x, INT32 y, const char* title, UINT32 bg)
 	{
 		if (!title || !*title) return 0;
@@ -3278,6 +3407,14 @@ namespace
 				FillRect(x,     y + 3, 7, 2, rgb);
 				FillRect(x + 1, y + 5, 5, 2, rgb);
 				break;
+			case ChessGame::King:
+				// never captured, but the move list needs him: cross, then
+				// the crown, then the same foot as everyone else
+				FillRect(x + 3, y, 1, 3, rgb);
+				FillRect(x + 2, y + 1, 3, 1, rgb);
+				FillRect(x + 1, y + 3, 5, 2, rgb);
+				FillRect(x,     y + 5, 7, 2, rgb);
+				break;
 			default:  // pawn
 				FillRect(x + 2, y, 3, 3, rgb);
 				FillRect(x + 1, y + 4, 5, 1, rgb);
@@ -3304,11 +3441,15 @@ namespace
 		const INT32 dotX = nameX;  // captures stay left-aligned under the name
 		nameX += ChessDrawTitleBadge(nameX, y + 3, title, CH_RGB_CHROME);
 		PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, nameX, y + 3, handle);
+		INT32 tailX = nameX + StringPixLength(handle, FONT10ARIALBOLD) + 6;
 		if (!rating.empty())
 		{
-			PrintAt(FONT10ARIAL, FONT_GRAY4,
-			        nameX + StringPixLength(handle, FONT10ARIALBOLD) + 6, y + 3, rating);
+			PrintAt(FONT10ARIAL, FONT_GRAY4, tailX, y + 3, rating);
+			tailX += StringPixLength(rating, FONT10ARIAL) + 2;
 		}
+		// the flag rides after the rating, as it does on the reference site,
+		// sitting on the cap line rather than the baseline
+		ChessDrawFlag(tailX, y + 3, ChessFlagForHandle(handle));
 
 		if (game)
 		{
@@ -3382,32 +3523,110 @@ namespace
 
 	// The visible stretch of a move list, numbered SAN pairs, newest at the
 	// foot; the scroll offset counts pairs back from the live end.
+	// How wide ChessPrintSan will draw a move: the glyph stands in for the
+	// piece letter, everything else is text.
+	INT32 ChessMoveWidth(const ST::string& san)
+	{
+		switch (san.empty() ? '\0' : san.c_str()[0])
+		{
+			case 'N': case 'B': case 'R': case 'Q': case 'K':
+				return 10 + StringPixLength(san.substr(1), FONT10ARIAL);
+			default:
+				return StringPixLength(san, FONT10ARIAL);
+		}
+	}
+
+	// One move in the reference's dress: the piece letter drawn as the piece,
+	// the square in text after it. Pawn moves and castling have no letter to
+	// replace and print as they stand.
+	INT32 ChessPrintSan(INT32 x, INT32 y, const ST::string& san, UINT8 colour, UINT32 glyph)
+	{
+		int type = 0;
+		switch (san.empty() ? '\0' : san.c_str()[0])
+		{
+			case 'N': type = ChessGame::Knight; break;
+			case 'B': type = ChessGame::Bishop; break;
+			case 'R': type = ChessGame::Rook;   break;
+			case 'Q': type = ChessGame::Queen;  break;
+			case 'K': type = ChessGame::King;   break;
+			default: break;
+		}
+		if (type == 0)
+		{
+			PrintAt(FONT10ARIAL, colour, x, y, san);
+			return StringPixLength(san, FONT10ARIAL);
+		}
+		// on the text's own cap line, not slung under it
+		ChessDrawCaptureGlyph(x, y - 1, type, glyph);
+		const ST::string rest = san.substr(1);
+		PrintAt(FONT10ARIAL, colour, x + 10, y, rest);
+		return 10 + StringPixLength(rest, FONT10ARIAL);
+	}
+
+	// `view` is the scrubber's position: an index into the history, where 0 is
+	// the starting board and -1 means the live end. The move that produced the
+	// board on screen is the ply before it, and that is the one the list marks.
 	void ChessRenderMoveList(const std::vector<ST::string>& san, INT32 y0, INT32 y1,
-	                         int* scroll)
+	                         int* scroll, int view)
 	{
 		const int pairs = int(san.size() + 1) / 2;
 		const int fit   = (y1 - y0) / 16;
 		const int maxOff = pairs > fit ? pairs - fit : 0;
+		const int plies  = int(san.size());
+		const int cur    = (view < 0 || view > plies) ? plies - 1 : view - 1;
+
+		// follow the scrubber: when the marked move is walked out of sight,
+		// bring it back, and otherwise leave the reader's scroll alone
+		static int sLastCur = -2;
+		if (cur != sLastCur && cur >= 0 && maxOff > 0)
+		{
+			const int wanted = cur / 2;
+			const int firstNow = maxOff - *scroll;
+			if (wanted < firstNow || wanted >= firstNow + fit)
+			{
+				const int top = wanted - fit / 2;
+				const int clamped = top < 0 ? 0 : top > maxOff ? maxOff : top;
+				*scroll = maxOff - clamped;
+			}
+		}
+		sLastCur = cur;
+
 		if (*scroll > maxOff) *scroll = maxOff;
+		if (*scroll < 0) *scroll = 0;
 		const int first = maxOff - *scroll;
 		const int last  = first + fit < pairs ? first + fit : pairs;
-		ChessDrawScrollbar(y0, y1, pairs, fit, *scroll);
 		INT32 y = y0;
 		for (int pn = first; pn < last; ++pn)
 		{
-			// zebra rows: every second move-pair sits on a sunk band
+			// zebra rows: every second move-pair sits on a lighter band that
+			// runs the full width of the sidebar, edge to edge
 			if (pn % 2 == 0)
 			{
-				FillRect(CH_PANEL_X + 6, y - 3, CH_PANEL_W - 16, 16, CH_RGB_PANEL_SUNK);
+				FillRect(CH_PANEL_X, y - 3, CH_PANEL_W, 16, CH_RGB_ROW_ALT);
 			}
-			PrintAt(FONT10ARIAL, FONT_GRAY7, CH_PANEL_X + 10, y, ST::format("{}.", pn + 1));
-			PrintAt(FONT10ARIAL, FONT_GRAY2, CH_PANEL_X + 32, y, san[pn * 2]);
-			if (pn * 2 + 1 < int(san.size()))
+			PrintAt(FONT10ARIAL, FONT_GRAY7, CH_PANEL_X + 10, y + 2, ST::format("{}.", pn + 1));
+			const UINT32 glyph = FROMRGB(196, 193, 188);
+			for (int half = 0; half < 2; ++half)
 			{
-				PrintAt(FONT10ARIAL, FONT_GRAY2, CH_PANEL_X + 86, y, san[pn * 2 + 1]);
+				const int ply = pn * 2 + half;
+				if (ply >= plies) break;
+				const INT32 mx = CH_PANEL_X + (half == 0 ? 32 : 86);
+				const bool here = ply == cur;
+				if (here)
+				{
+					// the move on the board wears the badge's dress: a chip
+					// under it, and its own text and piece brightened
+					const INT32 w = ChessMoveWidth(san[ply]);
+					FillRoundedOnly(mx - 4, y, w + 8, 14, CH_RGB_PANEL_UP, 3);
+				}
+				ChessPrintSan(mx, y + 2, san[ply], here ? FONT_MCOLOR_WHITE : FONT_GRAY2,
+				              here ? FROMRGB(245, 244, 242) : glyph);
 			}
 			y += 16;
 		}
+		// last, so it rides over the zebra rather than under them: the bands
+		// run the full width of the panel and would paint it out
+		ChessDrawScrollbar(y0, y1, pairs, fit, *scroll);
 	}
 
 	// A right panel scaffold shared by the live views: rounded ground and a
@@ -3466,26 +3685,32 @@ namespace
 		ChessDrawChevron(CH_NEXT_X + CH_ARROW_W / 2, CH_DATE_Y + 10, false,
 		                 giChessLesson < CHESS_LESSON_COUNT - 1 ? FROMRGB(148, 142, 136)
 		                                                        : FROMRGB(74, 69, 64));
-		PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, cx, 52, lesson.title);
+		PrintCentred(FONT10ARIAL, FONT_MCOLOR_WHITE, cx, CH_DATE_Y + 26,
+		             lesson.title);
 
-		// the coach carries the first line; the rest follows as body text
+		// the coach carries the first line; the rest follows as body text.
+		// Face, bubble and tail sit exactly where the daily puzzle puts
+		// them, so flipping between the two tabs moves nothing.
 		const INT32 faceX = CH_PANEL_X + 4;
 		INT32 faceW = 26;
 		if (guiChessCoach)
 		{
 			faceW = guiChessCoach->SubregionProperties(0).usWidth;
-			BltVideoObject(FRAME_BUFFER, guiChessCoach, 0, CH_X(faceX), CH_Y(80));
+			BltVideoObject(FRAME_BUFFER, guiChessCoach, 0, CH_X(faceX),
+			               CH_Y(CH_COACH_Y));
 		}
 		const INT32 bubbleX = faceX + faceW + 4;
 		const INT32 bubbleW = CH_PANEL_X + CH_PANEL_W - 4 - bubbleX;
-		FillRounded(bubbleX, 80, bubbleW, CH_COACH_TILE, CH_RGB_BUBBLE, 3, CH_RGB_PANEL);
+		FillRounded(bubbleX, CH_COACH_Y, bubbleW, CH_COACH_TILE, CH_RGB_BUBBLE, 3,
+		            CH_RGB_PANEL);
 		for (int i = 0; i < 4; ++i)
 		{
 			const INT32 h = 8 - 2 * i;
 			if (h <= 0) break;
-			FillRect(bubbleX - 1 - i, 93 - h / 2, 1, h, CH_RGB_BUBBLE);
+			FillRect(bubbleX - 1 - i, CH_COACH_Y + 13 - h / 2, 1, h,
+			         CH_RGB_BUBBLE);
 		}
-		DisplayWrappedString(UINT16(CH_X(bubbleX + 4)), UINT16(CH_Y(85)),
+		DisplayWrappedString(UINT16(CH_X(bubbleX + 4)), UINT16(CH_Y(CH_COACH_Y + 5)),
 		                     UINT16(bubbleW - 8), 1, FONT10ARIAL, FONT_MCOLOR_BLACK,
 		                     lesson.lines[0], FONT_MCOLOR_WHITE, LEFT_JUSTIFIED);
 
@@ -3625,7 +3850,7 @@ namespace
 		ChessRenderPanelTabs(giWatchTab);
 		if (giWatchTab == 0)
 		{
-			ChessRenderMoveList(gWatchSan, 58, CH_FOOT_Y - 4, &giMoveScroll);
+			ChessRenderMoveList(gWatchSan, 58, CH_FOOT_Y - 4, &giMoveScroll, giWatchView);
 		}
 		else
 		{
@@ -3673,6 +3898,12 @@ namespace
 		if (nameEnd + StringPixLength(handle, FONT10ARIAL) < dx - 8)
 		{
 			PrintAt(FONT10ARIAL, FONT_GRAY4, nameEnd, y + 8, handle);
+			// signers who are on the roster sign under their flag
+			const INT32 flagX = nameEnd + StringPixLength(handle, FONT10ARIAL) + 5;
+			if (flagX + 11 < dx - 6)
+			{
+				ChessDrawFlag(flagX, y + 10, ChessFlagForHandle(handle));
+			}
 		}
 		DisplayWrappedString(UINT16(CH_X(tx)), UINT16(CH_Y(y + 20)),
 		                     UINT16(CH_BOARD_X + CH_BOARD_SIZE - 12 - tx), 3,
@@ -4021,6 +4252,7 @@ void EnterChess()
 	guiChessPiecesSmall = nullptr;
 	guiChessCoach  = nullptr;
 	guiChessIcons  = nullptr;
+	guiChessFlags  = nullptr;
 	guiChessLogo   = nullptr;
 	guiChessAdDragon = nullptr;
 	guiChessAdTiles  = nullptr;
@@ -4044,6 +4276,17 @@ void EnterChess()
 	}
 	try
 	{
+		// on its own, so an old install without the sheet still gets its
+		// icons, logo and ads - the flags are the one decoration nothing
+		// else depends on
+		guiChessFlags  = AddVideoObjectFromFile("sti/laptop/chessflags.sti");
+	}
+	catch (...)
+	{
+		// no flags: handles simply stand without one
+	}
+	try
+	{
 		guiChessIcons  = AddVideoObjectFromFile("sti/laptop/chessicons.sti");
 		guiChessLogo   = AddVideoObjectFromFile("sti/laptop/chesslogo.sti");
 		guiChessAdDragon = AddVideoObjectFromFile("sti/laptop/mahjongdragon.sti");
@@ -4064,8 +4307,9 @@ void EnterChess()
 	}
 	try
 	{
-		// Buns coaches: a schoolteacher by trade, and German, which is why the
-		// site has a language switch at all. Merc faces have to come through
+		// Buns coaches: a kindergarten teacher before A.I.M., and a Danish
+		// sharpshooter before that. The language switch is the proprietor's
+		// doing, not hers. Merc faces have to come through
 		// Load33Portrait - the raw FACESDIR path only resolves for NPCs, which
 		// is why the tile was empty.
 		guiChessCoach = Load33Portrait(GetProfile(BUNS));
@@ -4162,6 +4406,7 @@ void ExitChess()
 	if (guiChessPiecesSmall) { DeleteVideoObject(guiChessPiecesSmall); guiChessPiecesSmall = nullptr; }
 	if (guiChessCoach)  { DeleteVideoObject(guiChessCoach);  guiChessCoach  = nullptr; }
 	if (guiChessIcons)  { DeleteVideoObject(guiChessIcons);  guiChessIcons  = nullptr; }
+	if (guiChessFlags)  { DeleteVideoObject(guiChessFlags);  guiChessFlags  = nullptr; }
 	if (guiChessLogo)   { DeleteVideoObject(guiChessLogo);   guiChessLogo   = nullptr; }
 	if (guiChessAdDragon) { DeleteVideoObject(guiChessAdDragon); guiChessAdDragon = nullptr; }
 	if (guiChessAdTiles)  { DeleteVideoObject(guiChessAdTiles);  guiChessAdTiles  = nullptr; }

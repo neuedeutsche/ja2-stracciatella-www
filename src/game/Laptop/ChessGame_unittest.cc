@@ -222,6 +222,124 @@ TEST(ChessGame, SearchFindsMateInOne)
 	EXPECT_EQ(ChessGame::Result::WhiteMates, game.GetResult());
 }
 
+TEST(ChessGame, FinishesAWonRookEndgame)
+{
+	// Two rooks against a bare king: the ladder. Material and piece-square
+	// tables alone score every rook shuffle the same, so the old evaluation
+	// pushed these around until the fifty-move rule bailed the defender out.
+	struct Case { const char* name; const char* fen; int plies; };
+	const Case cases[] = {
+		{ "two rooks",  "8/8/4k3/8/8/8/8/R3K2R w - - 0 1",   60 },
+		{ "rook alone", "8/8/4k3/8/8/8/8/R3K3 w - - 0 1",   100 },
+		{ "queen",      "8/8/4k3/8/8/8/8/3QK3 w - - 0 1",    40 },
+	};
+
+	for (const Case& c : cases)
+	{
+		ChessGame game;
+		ASSERT_TRUE(game.SetFen(c.fen)) << c.name;
+		std::uint32_t seed = 4242;
+		ChessGame::Result result = ChessGame::Result::Ongoing;
+		for (int ply = 0; ply < c.plies; ++ply)
+		{
+			result = game.GetResult();
+			if (result != ChessGame::Result::Ongoing) break;
+			const Move m = game.Search(3, 0, seed);
+			ASSERT_FALSE(m.IsNull()) << c.name;
+			ASSERT_TRUE(game.MakeMove(m)) << c.name;
+		}
+		EXPECT_EQ(ChessGame::Result::WhiteMates, result)
+			<< c.name << " ended " << game.Fen();
+	}
+}
+
+TEST(ChessGame, MopUpOnlyAppliesToABareKing)
+{
+	ChessGame game;
+
+	// a full board has no mating net to steer toward
+	ASSERT_TRUE(game.SetFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"));
+	EXPECT_EQ(0, game.MopUp());
+
+	// nor does an endgame where the weak side still has a pawn to push
+	ASSERT_TRUE(game.SetFen("8/5p2/4k3/8/8/8/8/R3K3 w - - 0 1"));
+	EXPECT_EQ(0, game.MopUp());
+
+	// a king driven to the corner scores worse for its owner than one in the
+	// middle, which is the whole point of the term
+	ASSERT_TRUE(game.SetFen("7k/8/8/8/8/8/8/R3K3 w - - 0 1"));
+	const int corner = game.MopUp();
+	ASSERT_TRUE(game.SetFen("8/8/8/3k4/8/8/8/R3K3 w - - 0 1"));
+	EXPECT_GT(corner, game.MopUp());
+}
+
+TEST(ChessGame, SeeScoresTheExchangeOnASquare)
+{
+	ChessGame game;
+
+	// a free pawn: nothing is defending b7
+	ASSERT_TRUE(game.SetFen("4k3/1p6/8/8/8/8/8/1Q2K3 w - - 0 1"));
+	EXPECT_EQ(100, game.See(game.ParseUci("b1b7")));
+	EXPECT_EQ(0, game.See(game.ParseUci("b1b5")));   // a quiet move wins nothing
+
+	// the same pawn, defended by its king: the queen loses the exchange.
+	// This is the capture the bots kept playing.
+	ASSERT_TRUE(game.SetFen("2k5/1p6/8/8/8/8/8/1Q2K3 w - - 0 1"));
+	EXPECT_EQ(100 - 900, game.See(game.ParseUci("b1b7")));
+
+	// pawn takes queen is worth a queen however well defended she is
+	ASSERT_TRUE(game.SetFen("4k3/8/8/3q4/2P5/8/8/4K3 w - - 0 1"));
+	EXPECT_EQ(900, game.See(game.ParseUci("c4d5")));
+
+	// knight takes knight, recaptured by a pawn: a clean even trade
+	ASSERT_TRUE(game.SetFen("4k3/2p5/3n4/8/4N3/8/8/4K3 w - - 0 1"));
+	EXPECT_EQ(0, game.See(game.ParseUci("e4d6")));
+
+	// x-ray: the rook behind the rook joins the exchange on d5
+	ASSERT_TRUE(game.SetFen("3rk3/3r4/8/3p4/8/8/3R4/3RK3 w - - 0 1"));
+	EXPECT_EQ(100 - 500 + 500 - 500, game.See(game.ParseUci("d2d5")));
+}
+
+TEST(ChessGame, LosesMaterialCatchesHangingAPiece)
+{
+	ChessGame game;
+
+	// Qxb7 with the pawn defended: the capture itself loses the exchange
+	ASSERT_TRUE(game.SetFen("2k5/1p6/8/8/8/8/8/1Q2K3 w - - 0 1"));
+	EXPECT_TRUE(game.LosesMaterial(game.ParseUci("b1b7"), 90));
+
+	// a queen stepping somewhere the king can simply take her
+	ASSERT_TRUE(game.SetFen("2k5/8/8/8/8/8/8/3QK3 w - - 0 1"));
+	EXPECT_TRUE(game.LosesMaterial(game.ParseUci("d1d7"), 90));
+
+	// plain developing moves lose nothing
+	ASSERT_TRUE(game.SetFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"));
+	EXPECT_FALSE(game.LosesMaterial(game.ParseUci("g1f3"), 90));
+	EXPECT_FALSE(game.LosesMaterial(game.ParseUci("e2e4"), 90));
+
+	// the position is exactly as it was afterwards
+	const std::string before = game.Fen();
+	game.LosesMaterial(game.ParseUci("d2d4"), 90);
+	EXPECT_EQ(before, game.Fen());
+}
+
+TEST(ChessGame, LosingCapturesAgreeWithTheirSign)
+{
+	// The bug in the wild: a rated bot grabbing a defended pawn because a
+	// capture was available. Whatever See calls losing must really lose, so
+	// that a seat's greed has something honest to filter on.
+	ChessGame game;
+	ASSERT_TRUE(game.SetFen(
+		"r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4"));
+	Move caps[ChessGame::MAX_MOVES];
+	const int n = game.GenerateLegalCaptures(caps);
+	ASSERT_GT(n, 0);
+	for (int i = 0; i < n; ++i)
+	{
+		if (game.See(caps[i]) < 0) EXPECT_TRUE(game.LosesMaterial(caps[i], 0));
+	}
+}
+
 TEST(ChessGame, SearchAlwaysRestoresThePosition)
 {
 	ChessGame game;
