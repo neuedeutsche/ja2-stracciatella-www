@@ -2220,6 +2220,17 @@ namespace
 		}
 	}
 
+	// a small outlined pill, the interest chip of the era to come
+	INT32 DrawChip(INT32 x, INT32 y, const ST::string& text, UINT32 edge)
+	{
+		const INT32 w = StringPixLength(text, FONT10ARIAL) + 12;
+		FillRounded(x, y, w, 15, CP_RGB_CARD, 5, CP_RGB_CARD);
+		FillRounded(x, y, w, 15, edge, 5, CP_RGB_CARD);
+		FillRounded(x + 1, y + 1, w - 2, 13, CP_RGB_CARD, 5, edge);
+		PrintCentred(FONT10ARIAL, FONT_NEARBLACK, x + w / 2, y + 3, text);
+		return w;
+	}
+
 	void RenderMemberCard(const Card& card, INT32 cardX)
 	{
 		MERCPROFILESTRUCT const& p = GetProfile(card.pid);
@@ -2229,46 +2240,59 @@ namespace
 		FillCard(cardX, CP_CARD_Y, CP_CARD_W, CP_CARD_H, CP_RGB_CARD,
 				CP_RGB_BLUE_DK, CP_RGB_BG);
 
-		// the photo, big, the entire point of the format - matted like a
-		// polaroid, with an ink keyline so it sits in the card
+		// the photo zone: dark, full width, the picture is the profile
+		const INT32 zoneY = CP_CARD_Y + 4;
+		const INT32 zoneH = 142;
+		FillRounded(cardX + 3, zoneY, CP_CARD_W - 6, zoneH, CP_RGB_INK,
+				CP_RADIUS, CP_RGB_CARD);
 		const INT32 photoX = cardX + (CP_CARD_W - CP_PHOTO_W) / 2;
-		FillRect(photoX - 4, CP_CARD_Y + 6, CP_PHOTO_W + 8, CP_PHOTO_H + 8,
-				CP_RGB_INK);
-		FillRect(photoX - 3, CP_CARD_Y + 7, CP_PHOTO_W + 6, CP_PHOTO_H + 6,
-				CP_RGB_MAT);
 		SGPVObject* big = BigFaceFor(card.pid);
 		if (big)
 		{
 			BltVideoObject(FRAME_BUFFER, big, 0, CP_X(photoX),
-					CP_Y(CP_CARD_Y + 10));
+					CP_Y(zoneY + 4));
 			// the 28.8k curtain: everything below the download line is
 			// still on its way, with an interlace fringe above it
 			if (giCupidPhotoReveal < CP_PHOTO_H)
 			{
-				const INT32 edge = CP_CARD_Y + 10 + giCupidPhotoReveal;
+				const INT32 edge = zoneY + 4 + giCupidPhotoReveal;
 				FillRect(photoX, edge, CP_PHOTO_W,
-						CP_PHOTO_H - giCupidPhotoReveal, CP_RGB_CARD_DIM);
+						CP_PHOTO_H - giCupidPhotoReveal, CP_RGB_INK);
 				for (INT32 fy = edge - 12; fy < edge; fy += 2)
 				{
-					if (fy >= CP_CARD_Y + 10)
+					if (fy >= zoneY + 4)
 					{
-						FillRect(photoX, fy, CP_PHOTO_W, 1, CP_RGB_CARD_DIM);
+						FillRect(photoX, fy, CP_PHOTO_W, 1, CP_RGB_INK);
 					}
 				}
 			}
 		}
 		else
 		{
-			FillRect(photoX, CP_CARD_Y + 10, CP_PHOTO_W, CP_PHOTO_H,
-					CP_RGB_CARD_DIM);
 			PrintCentred(FONT10ARIAL, FONT_GRAY5, cardX + CP_CARD_W / 2,
-					CP_CARD_Y + 64, T(CPS_NO_PHOTO));
+					zoneY + 60, T(CPS_NO_PHOTO));
 		}
 
-		INT32 y = CP_CARD_Y + 10 + CP_PHOTO_H + 8;
-		PrintCentred(FONT14ARIAL, FONT_NEARBLACK, cardX + CP_CARD_W / 2, y,
-				p.zNickname);
-		y += 16;
+		// the name band, printed on the photo the way the future would
+		FillRect(cardX + 3, zoneY + zoneH - 20, CP_CARD_W - 6, 20,
+				CP_RGB_INK);
+		PrintAt(FONT14ARIAL, FONT_MCOLOR_WHITE, cardX + 12,
+				zoneY + zoneH - 17, p.zNickname);
+		if (PlayerHasProfile())
+		{
+			const DatingGame::Match match = MatchWith(card.pid);
+			const ST::string pct = ST::format("{}%", match.percent);
+			PrintAt(FONT14ARIAL,
+					match.percent >= 75 ? FONT_MCOLOR_LTGREEN
+					: match.percent >= 50 ? FONT_MCOLOR_LTYELLOW
+					: FONT_MCOLOR_LTRED,
+					cardX + CP_CARD_W - 14 -
+						StringPixLength(pct, FONT14ARIAL),
+					zoneY + zoneH - 17, pct);
+		}
+
+		INT32 y = zoneY + zoneH + 6;
+
 		// the ad runs under a headline, as personals always did
 		PrintCentred(FONT10ARIAL, FONT_GRAY4, cardX + CP_CARD_W / 2, y,
 				CUPID_HEADLINE[gfCupidGerman ? 1 : 0]
@@ -2279,9 +2303,6 @@ namespace
 		if (PlayerHasProfile())
 		{
 			const DatingGame::Match match = MatchWith(card.pid);
-			PrintCentred(FONT12ARIAL, MatchColour(match.percent),
-					cardX + CP_CARD_W / 2, y, MatchLabel(match));
-			y += 15;
 			DrawMeter(cardX + (CP_CARD_W - 120) / 2, y, 120, match.percent,
 					match.percent >= 75 ? CP_RGB_LIKE
 					: match.percent >= 50 ? CP_RGB_GOLD : CP_RGB_NOPE);
@@ -2289,44 +2310,55 @@ namespace
 		}
 		else
 		{
-			PrintCentred(FONT12ARIAL, FONT_GRAY5, cardX + CP_CARD_W / 2, y,
-					"??%");
-			y += 28;
+			y += 4;
 		}
 
-		const CupidStr status = MemberStatus(card.pid);
-		PrintCentred(FONT10ARIAL,
-				status == CPS_STATUS_ONLINE ? FONT_DKGREEN : FONT_GRAY5,
-				cardX + CP_CARD_W / 2, y, T(status));
-		y += 14;
-
-		// verification is the class system here
-		if (merc)
+		// the chips: trait, standing, verification - flowed, wrapped
 		{
-			PrintCentred(FONT10ARIAL, FONT_GRAY5, cardX + CP_CARD_W / 2, y,
-					T(CPS_UNVERIFIED));
-		}
-		else
-		{
-			const ST::string v = T(CPS_VERIFIED);
-			const INT32 w = StringPixLength(v, FONT10ARIAL);
-			if (guiCupidIcons)
-			{
-				BltVideoObject(FRAME_BUFFER, guiCupidIcons, CP_ICON_VERIFIED,
-						CP_X(cardX + (CP_CARD_W - w) / 2 - 17), CP_Y(y - 2));
-			}
-			PrintCentred(FONT10ARIAL, FONT_DKYELLOW, cardX + CP_CARD_W / 2, y,
-					v);
-		}
-		y += 16;
-
-		const int trait = p.bPersonalityTrait >= 0 && p.bPersonalityTrait < 8
+			ST::string chips[3];
+			UINT32 edges[3];
+			int n = 0;
+			const int trait = p.bPersonalityTrait >= 0 &&
+						p.bPersonalityTrait < 8
 					? p.bPersonalityTrait : 0;
-		DisplayWrappedString(UINT16(CP_X(cardX + 10)), UINT16(CP_Y(y)),
-				CP_CARD_W - 20, 2, FONT10ARIAL, FONT_GRAY4,
-				ST::format(T(CPS_NOTICE_FIRST),
-					CUPID_TRAIT_SPIN[gfCupidGerman ? 1 : 0][trait]),
-				FONT_MCOLOR_BLACK, CENTER_JUSTIFIED);
+			chips[n] = CUPID_TRAIT_SPIN[gfCupidGerman ? 1 : 0][trait];
+			edges[n++] = CP_RGB_PINK;
+			const CupidStr status = MemberStatus(card.pid);
+			chips[n] = status == CPS_STATUS_ONLINE
+					? (gfCupidGerman ? "ONLINE" : "ONLINE")
+					: (gfCupidGerman ? "WEG" : "AWAY");
+			edges[n++] = status == CPS_STATUS_ONLINE
+					? CP_RGB_LIKE : CP_RGB_GREY;
+			chips[n] = merc ? T(CPS_UNVERIFIED)
+					: (gfCupidGerman ? "GEPRUEFT" : "VERIFIED");
+			edges[n++] = merc ? CP_RGB_GREY : CP_RGB_GOLD;
+
+			INT32 cxp = cardX + 12;
+			for (int i = 0; i < n; ++i)
+			{
+				const INT32 w =
+					StringPixLength(chips[i], FONT10ARIAL) + 12;
+				if (cxp + w > cardX + CP_CARD_W - 10)
+				{
+					cxp = cardX + 12;
+					y += 18;
+				}
+				DrawChip(cxp, y, chips[i], edges[i]);
+				cxp += w + 5;
+			}
+			y += 20;
+		}
+
+		// two lines of the bio, the way the future would quote it
+		const char* flavor = FlavorFor(card.pid);
+		const int att = p.bAttitude >= 0 && p.bAttitude < NUM_ATTITUDES
+					? p.bAttitude : 0;
+		const char* bio = flavor ? flavor
+			: (merc ? CUPID_SUMMARY_MERC : CUPID_SUMMARY_AIM)
+				[gfCupidGerman ? 1 : 0][att];
+		DisplayWrappedString(UINT16(CP_X(cardX + 12)), UINT16(CP_Y(y)),
+				CP_CARD_W - 24, 2, FONT10ARIAL, FONT_GRAY3, bio,
+				FONT_MCOLOR_BLACK, LEFT_JUSTIFIED);
 
 		// the opinion graph, surfacing as dating drama: this member has
 		// blocked somebody currently on your payroll
@@ -2335,7 +2367,7 @@ namespace
 			const INT8 hated = p.bHated[i];
 			if (hated < 0 || !IsMercOnTeam(UINT8(hated))) continue;
 			PrintCentred(FONT10ARIAL, FONT_DKRED, cardX + CP_CARD_W / 2,
-					CP_CARD_Y + CP_CARD_H - 18,
+					CP_CARD_Y + CP_CARD_H - 16,
 					ST::format(T(CPS_BLOCKED_WARN),
 						GetProfile(ProfileID(hated)).zNickname));
 			break;
@@ -2345,10 +2377,10 @@ namespace
 		if (idx >= 0 && gCupidRoster[size_t(idx)].fresh &&
 		    (GetJA2Clock() / 400) % 2 == 0)
 		{
-			FillRounded(cardX + CP_CARD_W - 42, CP_CARD_Y + 6, 36, 14,
-					CP_RGB_NOPE, 3, CP_RGB_CARD);
+			FillRounded(cardX + CP_CARD_W - 46, zoneY + 4, 40, 14,
+					CP_RGB_NOPE, 3, CP_RGB_INK);
 			PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE,
-					cardX + CP_CARD_W - 24, CP_CARD_Y + 9, "NEW!!");
+					cardX + CP_CARD_W - 26, zoneY + 7, "NEW!!");
 		}
 	}
 
