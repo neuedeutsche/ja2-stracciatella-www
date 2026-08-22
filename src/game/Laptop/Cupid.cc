@@ -92,9 +92,9 @@ static_assert(int(DatingGame::SEX_FEMALE) == int(FEMALE));
 
 // the card, dealt centre stage
 #define CP_CARD_W       190
-#define CP_CARD_H       288
+#define CP_CARD_H       340
 #define CP_CARD_X       ((502 - CP_CARD_W) / 2)
-#define CP_CARD_Y       34
+#define CP_CARD_Y       30
 #define CP_PHOTO_W      106
 #define CP_PHOTO_H      122
 
@@ -102,11 +102,13 @@ static_assert(int(DatingGame::SEX_FEMALE) == int(FEMALE));
 #define CP_SWIPE_COMMIT 55
 #define CP_FLY_STEP     34
 
-// the two verdict buttons under the card
+// the two verdict buttons sit on the photo itself, in its bottom corners
 #define CP_BTN_SIZE     36
-#define CP_BTN_Y        (CP_CARD_Y + CP_CARD_H + 8)
-#define CP_BTN_PASS_X   (CP_CARD_X + 18)
-#define CP_BTN_LIKE_X   (CP_CARD_X + CP_CARD_W - 18 - CP_BTN_SIZE)
+#define CP_PHOTO_X      (CP_CARD_X + (CP_CARD_W - CP_PHOTO_W) / 2)
+#define CP_PHOTO_TOP    (CP_CARD_Y + 8)
+#define CP_BTN_Y        (CP_PHOTO_TOP + CP_PHOTO_H - CP_BTN_SIZE - 4)
+#define CP_BTN_PASS_X   (CP_PHOTO_X + 4)
+#define CP_BTN_LIKE_X   (CP_PHOTO_X + CP_PHOTO_W - CP_BTN_SIZE - 4)
 
 // the "small" face is the A.I.M. mugshot (faces/NN.sti frame 0), measured
 // from the game data: 48x43. The 33face files are 14x15 tactical heads and
@@ -244,9 +246,8 @@ namespace
 	// the card photo downloads over a 28.8k line: rows revealed so far
 	INT32 giCupidPhotoReveal = 0;
 
-	// the card in hand: dragging follows the pointer, a commit flies it out
-	bool  gfCupidDragging = false;
-	INT32 giCupidDragAnchor = 0;
+	// the card on the table: a verdict button flies it off the stage.
+	// No dragging - this is 1999, and pages have buttons.
 	INT32 giCupidCardDx = 0;
 	int   giCupidFlyDir = 0; // -1 flying left, +1 flying right, 0 still
 
@@ -273,7 +274,6 @@ namespace
 
 	MOUSE_REGION gCupidTabRegion[3];
 	MOUSE_REGION gCupidCardRegion;
-	MOUSE_REGION gCupidDropRegion;   // catches a card released off the stage
 	MOUSE_REGION gCupidPassRegion;
 	MOUSE_REGION gCupidLikeRegion;
 	MOUSE_REGION gCupidLangRegion;
@@ -1025,7 +1025,6 @@ namespace
 		gCupidDeckPos = 0;
 		giCupidCardDx = 0;
 		giCupidFlyDir = 0;
-		gfCupidDragging = false;
 
 		std::vector<ProfileID> pool;
 		for (const Member& m : gCupidRoster)
@@ -1533,7 +1532,6 @@ namespace
 			CupidRedraw();
 			return;
 		}
-		gfCupidDragging = false;
 		giCupidFlyDir = dir;
 		CupidRedraw();
 	}
@@ -1570,7 +1568,6 @@ namespace
 		gfCupidQuizLive = false;
 		giCupidQuizQ = -1;
 		RemoveAnswerRegions();
-		gfCupidDragging = false;
 		giCupidCardDx = 0;
 		CupidRedraw();
 	}
@@ -1592,47 +1589,13 @@ namespace
 		}
 		const Card& card = CurrentCard();
 
-		if (reason & MSYS_CALLBACK_REASON_POINTER_DWN)
-		{
-			if (card.kind == CARD_END) return;
-			gfCupidDragging  = true;
-			giCupidDragAnchor = INT32(gusMouseXPos);
-			giCupidCardDx     = 0;
-			CupidRedraw();
-			return;
-		}
-
 		if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
+		if (card.kind != CARD_MEMBER) return;
 
-		if (gfCupidDragging)
-		{
-			gfCupidDragging = false;
-			if (giCupidCardDx <= -CP_SWIPE_COMMIT) StartFly(-1);
-			else if (giCupidCardDx >= CP_SWIPE_COMMIT) StartFly(1);
-			else if (std::abs(giCupidCardDx) < 4 && card.kind == CARD_MEMBER)
-			{
-				// a click, not a drag: open the dossier
-				gCupidDetailPid  = card.pid;
-				gCupidDetailFrom = CPP_DECK;
-				gCupidPage = CPP_DETAIL;
-				giCupidCardDx = 0;
-			}
-			else
-			{
-				giCupidCardDx = 0; // snap back
-			}
-			CupidRedraw();
-		}
-	}
-
-	void DropCallback(MOUSE_REGION* region, UINT32 reason)
-	{
-		if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
-		if (!gfCupidDragging) return;
-		gfCupidDragging = false;
-		if (giCupidCardDx <= -CP_SWIPE_COMMIT) StartFly(-1);
-		else if (giCupidCardDx >= CP_SWIPE_COMMIT) StartFly(1);
-		else giCupidCardDx = 0;
+		// the card is a link: click it and the dossier opens
+		gCupidDetailPid  = card.pid;
+		gCupidDetailFrom = CPP_DECK;
+		gCupidPage = CPP_DETAIL;
 		CupidRedraw();
 	}
 
@@ -1896,14 +1859,6 @@ namespace
 	{
 		if (gfCupidRegionsUp) return;
 
-		// everything released outside the card still resolves the drag; sits
-		// above the laptop's own screen region, below the live controls
-		MSYS_DefineRegion(&gCupidDropRegion,
-				UINT16(CP_X(0)), UINT16(CP_Y(0)),
-				UINT16(CP_X(CP_PAGE_W)), UINT16(CP_Y(CP_PAGE_H)),
-				MSYS_PRIORITY_NORMAL + 2, CURSOR_WWW, MSYS_NO_CALLBACK,
-				DropCallback);
-
 		for (int i = 0; i < 3; ++i)
 		{
 			const INT32 x = 168 + i * 80;
@@ -2036,7 +1991,6 @@ namespace
 		for (MOUSE_REGION& r : gCupidMatchRegion)  MSYS_RemoveRegion(&r);
 		for (MOUSE_REGION& r : gCupidSideAdRegion) MSYS_RemoveRegion(&r);
 		MSYS_RemoveRegion(&gCupidCardRegion);
-		MSYS_RemoveRegion(&gCupidDropRegion);
 		MSYS_RemoveRegion(&gCupidPassRegion);
 		MSYS_RemoveRegion(&gCupidLikeRegion);
 		MSYS_RemoveRegion(&gCupidLangRegion);
@@ -2193,14 +2147,14 @@ namespace
 
 	void RenderVerdictStamp(INT32 cardX)
 	{
-		if (giCupidCardDx >= CP_SWIPE_COMMIT || giCupidFlyDir > 0)
+		if (giCupidFlyDir > 0)
 		{
 			FillRounded(cardX + 10, CP_CARD_Y + 12, 52, 20, CP_RGB_LIKE, 3,
 					CP_RGB_BG);
 			PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, cardX + 36,
 					CP_CARD_Y + 18, T(CPS_STAMP_LIKE));
 		}
-		else if (giCupidCardDx <= -CP_SWIPE_COMMIT || giCupidFlyDir < 0)
+		else if (giCupidFlyDir < 0)
 		{
 			FillRounded(cardX + CP_CARD_W - 62, CP_CARD_Y + 12, 52, 20,
 					CP_RGB_NOPE, 3, CP_RGB_BG);
@@ -2214,11 +2168,33 @@ namespace
 	INT32 DrawChip(INT32 x, INT32 y, const ST::string& text, UINT32 edge)
 	{
 		const INT32 w = StringPixLength(text, FONT10ARIAL) + 12;
-		FillRounded(x, y, w, 15, CP_RGB_CARD, 5, CP_RGB_CARD);
 		FillRounded(x, y, w, 15, edge, 5, CP_RGB_CARD);
 		FillRounded(x + 1, y + 1, w - 2, 13, CP_RGB_CARD, 5, edge);
 		PrintCentred(FONT10ARIAL, FONT_NEARBLACK, x + w / 2, y + 3, text);
 		return w;
+	}
+
+	// cut a text so it wraps to at most maxLines rows of the given width,
+	// with the era-appropriate ellipsis
+	ST::string ClampLines(const ST::string& text, INT32 w, int maxLines)
+	{
+		const UINT16 limit = UINT16(maxLines * 13);
+		if (IanWrappedStringHeight(UINT16(w), 2, FONT10ARIAL, text) <= limit)
+		{
+			return text;
+		}
+		ST::string cut = text;
+		while (cut.size() > 4)
+		{
+			cut = cut.left(cut.size() - 1);
+			const ST::string probe = ST::format("{}...", cut);
+			if (IanWrappedStringHeight(UINT16(w), 2, FONT10ARIAL, probe)
+					<= limit)
+			{
+				return probe;
+			}
+		}
+		return text;
 	}
 
 	void RenderMemberCard(const Card& card, INT32 cardX)
@@ -2230,9 +2206,9 @@ namespace
 		FillCard(cardX, CP_CARD_Y, CP_CARD_W, CP_CARD_H, CP_RGB_CARD,
 				CP_RGB_BLUE_DK, CP_RGB_BG);
 
-		// the photo zone: dark, full width, the picture is the profile
+		// the photo frame: dark, snug around the picture
 		const INT32 zoneY = CP_CARD_Y + 4;
-		const INT32 zoneH = 142;
+		const INT32 zoneH = CP_PHOTO_H + 8;
 		FillRounded(cardX + 3, zoneY, CP_CARD_W - 6, zoneH, CP_RGB_INK,
 				CP_RADIUS, CP_RGB_CARD);
 		const INT32 photoX = cardX + (CP_CARD_W - CP_PHOTO_W) / 2;
@@ -2260,35 +2236,29 @@ namespace
 		else
 		{
 			PrintCentred(FONT10ARIAL, FONT_GRAY5, cardX + CP_CARD_W / 2,
-					zoneY + 60, T(CPS_NO_PHOTO));
+					zoneY + 56, T(CPS_NO_PHOTO));
 		}
 
-		// the name band, printed on the photo the way the future would
-		FillRect(cardX + 3, zoneY + zoneH - 20, CP_CARD_W - 6, 20,
-				CP_RGB_INK);
-		PrintAt(FONT14ARIAL, FONT_MCOLOR_WHITE, cardX + 12,
-				zoneY + zoneH - 17, p.zNickname);
+		// name and number on the white, where the reading happens
+		INT32 y = zoneY + zoneH + 9;
+		PrintAt(FONT14ARIAL, FONT_NEARBLACK, cardX + 12, y, p.zNickname);
 		if (PlayerHasProfile())
 		{
 			const DatingGame::Match match = MatchWith(card.pid);
 			const ST::string pct = ST::format("{}%", match.percent);
-			PrintAt(FONT14ARIAL,
-					match.percent >= 75 ? FONT_MCOLOR_LTGREEN
-					: match.percent >= 50 ? FONT_MCOLOR_LTYELLOW
-					: FONT_MCOLOR_LTRED,
+			PrintAt(FONT14ARIAL, MatchColour(match.percent),
 					cardX + CP_CARD_W - 14 -
 						StringPixLength(pct, FONT14ARIAL),
-					zoneY + zoneH - 17, pct);
+					y, pct);
 		}
-
-		INT32 y = zoneY + zoneH + 6;
+		y += 19;
 
 		// the ad runs under a headline, as personals always did
 		PrintCentred(FONT10ARIAL, FONT_GRAY4, cardX + CP_CARD_W / 2, y,
 				CUPID_HEADLINE[gfCupidGerman ? 1 : 0]
 					[p.bAttitude >= 0 && p.bAttitude < NUM_ATTITUDES
 						? p.bAttitude : 0]);
-		y += 14;
+		y += 13;
 
 		if (PlayerHasProfile())
 		{
@@ -2296,11 +2266,11 @@ namespace
 			DrawMeter(cardX + (CP_CARD_W - 120) / 2, y, 120, match.percent,
 					match.percent >= 75 ? CP_RGB_LIKE
 					: match.percent >= 50 ? CP_RGB_GOLD : CP_RGB_NOPE);
-			y += 13;
+			y += 16;
 		}
 		else
 		{
-			y += 4;
+			y += 5;
 		}
 
 		// the chips: trait, standing, verification - flowed, wrapped
@@ -2314,8 +2284,7 @@ namespace
 			chips[n] = CUPID_TRAIT_SPIN[gfCupidGerman ? 1 : 0][trait];
 			edges[n++] = CP_RGB_PINK;
 			const CupidStr status = MemberStatus(card.pid);
-			chips[n] = status == CPS_STATUS_ONLINE
-					? (gfCupidGerman ? "ONLINE" : "ONLINE")
+			chips[n] = status == CPS_STATUS_ONLINE ? "ONLINE"
 					: (gfCupidGerman ? "WEG" : "AWAY");
 			edges[n++] = status == CPS_STATUS_ONLINE
 					? CP_RGB_LIKE : CP_RGB_GREY;
@@ -2336,10 +2305,10 @@ namespace
 				DrawChip(cxp, y, chips[i], edges[i]);
 				cxp += w + 5;
 			}
-			y += 20;
+			y += 24;
 		}
 
-		// two lines of the bio, quoted, the way the future would
+		// two lines of bio, quoted and clamped; one line of intent
 		const char* flavor = FlavorFor(card.pid);
 		const int att = p.bAttitude >= 0 && p.bAttitude < NUM_ATTITUDES
 					? p.bAttitude : 0;
@@ -2348,23 +2317,16 @@ namespace
 				[gfCupidGerman ? 1 : 0][att];
 		y += DisplayWrappedString(UINT16(CP_X(cardX + 12)), UINT16(CP_Y(y)),
 				CP_CARD_W - 24, 2, FONT10ARIAL, FONT_GRAY3,
-				ST::format("\"{}\"", bio), FONT_MCOLOR_BLACK,
-				LEFT_JUSTIFIED) + 5;
+				ST::format("\"{}\"",
+					ClampLines(bio, CP_CARD_W - 30, 3)),
+				FONT_MCOLOR_BLACK, LEFT_JUSTIFIED) + 6;
+		PrintAt(FONT10ARIAL, FONT_GRAY4, cardX + 12, y,
+				ClampLines(ST::format(T(CPS_LOOKING_FOR),
+						CUPID_LOOKING[gfCupidGerman ? 1 : 0][att]),
+					CP_CARD_W - 24, 1));
 
-		// what they are looking for, and the vanity plate at the foot
-		DisplayWrappedString(UINT16(CP_X(cardX + 12)), UINT16(CP_Y(y)),
-				CP_CARD_W - 24, 2, FONT10ARIAL, FONT_GRAY4,
-				ST::format(T(CPS_LOOKING_FOR),
-					CUPID_LOOKING[gfCupidGerman ? 1 : 0][att]),
-				FONT_MCOLOR_BLACK, LEFT_JUSTIFIED);
-		PrintCentred(FONT10ARIAL, FONT_GRAY5, cardX + CP_CARD_W / 2,
-				CP_CARD_Y + CP_CARD_H - 30,
-				ST::format(gfCupidGerman ? "Mitglied Nr. {}"
-							 : "member no. {}",
-						1000 + int(card.pid) * 7));
-
-		// the opinion graph, surfacing as dating drama: this member has
-		// blocked somebody currently on your payroll
+		// one line at the foot: the warning outranks the vanity plate
+		bool warned = false;
 		for (int i = 0; i < 2; ++i)
 		{
 			const INT8 hated = p.bHated[i];
@@ -2373,7 +2335,16 @@ namespace
 					CP_CARD_Y + CP_CARD_H - 16,
 					ST::format(T(CPS_BLOCKED_WARN),
 						GetProfile(ProfileID(hated)).zNickname));
+			warned = true;
 			break;
+		}
+		if (!warned)
+		{
+			PrintCentred(FONT10ARIAL, FONT_GRAY5, cardX + CP_CARD_W / 2,
+					CP_CARD_Y + CP_CARD_H - 16,
+					ST::format(gfCupidGerman ? "Mitglied Nr. {}"
+								 : "member no. {}",
+							1000 + int(card.pid) * 7));
 		}
 
 		// the NEW!! tag: applied on unlock, removed never
@@ -2691,7 +2662,7 @@ namespace
 				: T(CPS_OUT_OF_LIKES);
 		PrintCentred(FONT10ARIAL, IsGold() ? FONT_DKYELLOW
 				: CanLike() ? FONT_GRAY4 : FONT_DKRED,
-				251, CP_BTN_Y + CP_BTN_SIZE + 5, likes);
+				251, CP_CARD_Y + CP_CARD_H + 4, likes);
 
 		// the popup: a little window with a big claim and one honest pixel
 		if (gfCupidPopupUp)
@@ -3377,14 +3348,6 @@ void HandleCupid()
 			uiLastBlink = uiBlink;
 			if (gCupidPage == CPP_DECK) CupidRedraw();
 		}
-	}
-
-	// the card in hand follows the pointer
-	if (gfCupidDragging)
-	{
-		giCupidCardDx = INT32(gusMouseXPos) - giCupidDragAnchor;
-		CupidRedraw();
-		return;
 	}
 
 	// a committed card flies off the edge, then the verdict lands
