@@ -710,7 +710,8 @@
         "Courtiers d'Assurance des Mercenaires de l'A.I.M.",
         "San Mona Mahjong Parlour",
         "Chach.com - Grunty's daily chess puzzle",
-        "Mercs & Kisses - where the tough get tender"
+        "C.U.P.I.D. - where the tough get tender",
+        "The Arulco Feline Society - cats, shows, and one foster programme"
     ],
     "gzLateLocalizedString": [
         "Le robot ne peut quitter ce secteur par lui-même.",
@@ -892,7 +893,8 @@
         "Assurance",
         "San Mahjong",
         "Chach.com",
-        "Mercs&Kisses",
+        "C.U.P.I.D.",
+        "Feline Soc.",
         "Annuler"
     ],
     "pBullseyeStrings": [
@@ -1663,7 +1665,8 @@
         "A.I.M.",
         "Elliot",
         "Grunty",
-        "Speck T. Kline"
+        "Speck T. Kline",
+        "Brenda"
     ],
     "pShortAttributeStrings": [
         "Agi",
@@ -1848,7 +1851,8 @@
         "Bobby Ray - Dernières commandes",
         "San Mona Mahjong Parlour",
         "Chach.com",
-        "Mercs & Kisses"
+        "C.U.P.I.D. - Certified Union of Professionals In Dating",
+        "The Arulco Feline Society"
     ],
     "pWebTitle": "sir-FER 4.0",
     "pwMineStrings": [

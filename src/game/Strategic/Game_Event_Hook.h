@@ -68,6 +68,7 @@ enum StrategicEventKind
 	EVENT_MAHJONG_KINGPIN_EMAIL                          = 79,
 	EVENT_CHESS_GRUNTY_EMAIL                             = 80,
 	EVENT_CUPID_SPECK_EMAIL                              = 81,
+	EVENT_FELINE_SOCIETY_EMAIL                           = 82,
 
 	NUMBER_OF_EVENT_TYPES
 };

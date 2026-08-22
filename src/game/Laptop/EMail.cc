@@ -498,6 +498,28 @@ void AddEmailWithSpecialData(INT32 iMessageOffset, INT32 iMessageLength, UINT8 u
 }
 
 
+BOOLEAN EmailAlreadyInBox(INT32 iMessageOffset, INT32 iFirstData)
+{
+	for (Email const* mail = pEmailList; mail != NULL; mail = mail->Next)
+	{
+		if (mail->usOffset == UINT16(iMessageOffset) &&
+			mail->iFirstData == iFirstData)
+		{
+			return TRUE;
+		}
+	}
+	return FALSE;
+}
+
+
+BOOLEAN AddEmailOnce(INT32 iMessageOffset, UINT8 ubSender, INT32 iDate, INT32 iFirstData)
+{
+	if (EmailAlreadyInBox(iMessageOffset, iFirstData)) return FALSE;
+	AddEmailWithSpecialData(iMessageOffset, 0, ubSender, iDate, iFirstData, 0);
+	return TRUE;
+}
+
+
 void AddEmail(INT32 iMessageOffset, INT32 iMessageLength, UINT8 ubSender, INT32 iDate)
 {
 	AddEmailMessage(iMessageOffset, iMessageLength, iDate, ubSender, FALSE, 0, 0);
@@ -587,11 +609,15 @@ void AddEmailMessage(INT32 iMessageOffset, INT32 iMessageLength, INT32 iDate, UI
 	}
 	else if (iMessageOffset == CUPID_EMAIL_WELCOME)
 	{
-		pSubject = "WELCOME to Mercs & Kisses!!";
+		pSubject = "WELCOME to C.U.P.I.D.!!";
 	}
 	else if (iMessageOffset == CUPID_EMAIL_CONDOLENCE)
 	{
 		pSubject = "In memoriam (and a word about your account)";
+	}
+	else if (iMessageOffset == FELINE_EMAIL_INVITE)
+	{
+		pSubject = "an invitation (cats)";
 	}
 	else if (iMessageOffset == MAHJONG_EMAIL_SPAM)
 	{
@@ -1746,6 +1772,7 @@ static void HandleIMPCharProfileResultsMessage(void);
 static void HandleMahjongKingpinMessage(UINT16 usMessageId, const Email* pMail);
 static void HandleChessGruntyMessage(UINT16 usMessageId, const Email* pMail);
 static void HandleCupidSpeckMessage(UINT16 usMessageId, const Email* pMail);
+static void HandleFelineBrendaMessage(UINT16 usMessageId, const Email* pMail);
 static void ModifyInsuranceEmails(UINT16 usMessageId, Email* pMail, UINT8 ubNumberOfRecords);
 
 
@@ -1783,6 +1810,10 @@ static void HandleMailSpecialMessages(UINT16 usMessageId, Email* pMail)
 		case CUPID_EMAIL_WELCOME:
 		case CUPID_EMAIL_CONDOLENCE:
 			HandleCupidSpeckMessage(usMessageId, pMail);
+			break;
+
+		case FELINE_EMAIL_INVITE:
+			HandleFelineBrendaMessage(usMessageId, pMail);
 			break;
 
 
@@ -1974,7 +2005,7 @@ static void HandleCupidSpeckMessage(UINT16 usMessageId, const Email* pMail)
 	{
 		const ST::string& nick =
 			GetProfile(ProfileID(pMail->iFirstData)).zNickname;
-		AddEmailRecordToList(ST::format("It has come to my attention that {} - a member you matched with - has passed away in the line of work. On behalf of the entire Mercs & Kisses family, which is me, my condolences.", nick));
+		AddEmailRecordToList(ST::format("It has come to my attention that {} - a member you matched with - has passed away in the line of work. On behalf of the entire C.U.P.I.D. family, which is me, my condolences.", nick));
 		blank();
 		AddEmailRecordToList("Per our terms of service, the profile will remain live as a memorial. The match percentage will continue to be displayed. Some find that comforting. The terms of service do.");
 		blank();
@@ -1987,7 +2018,7 @@ static void HandleCupidSpeckMessage(UINT16 usMessageId, const Email* pMail)
 
 	if (usMessageId == CUPID_EMAIL_WELCOME)
 	{
-		AddEmailRecordToList("Your profile is LIVE on Mercs & Kisses, the future of romance and a Speck T. Kline company. I reviewed it personally. Strong material. The responses will pour in - any day now.");
+		AddEmailRecordToList("Your profile is LIVE on C.U.P.I.D., the future of romance and a Speck T. Kline company. I reviewed it personally. Strong material. The responses will pour in - any day now.");
 		blank();
 		AddEmailRecordToList("A word of advice from a man who knows people: log in daily. The algorithm rewards commitment, and frankly, so do I.");
 		blank();
@@ -2022,11 +2053,29 @@ static void HandleCupidSpeckMessage(UINT16 usMessageId, const Email* pMail)
 			blank();
 			AddEmailRecordToList("You don't know me, except you do - Speck T. Kline, of M.E.R.C. fame - and I am writing to you about the loneliness. Not YOUR loneliness. The general kind. The market kind.");
 			blank();
-			AddEmailRecordToList("Introducing MERCS & KISSES (mercsandkisses.com): the first online introduction service built by mercenaries, for mercenaries, using SCIENCE. Where the tough get tender. Not affiliated with M.E.R.C., a completely separate company that I also founded.");
+			AddEmailRecordToList("Introducing C.U.P.I.D. - the Certified Union of Professionals In Dating: the first online introduction service built by mercenaries, for mercenaries, using SCIENCE. Where the tough get tender. People worth dying for. Not affiliated with M.E.R.C., a completely separate company that I also founded.");
 			blank();
 			AddEmailRecordToList("Membership is free. Ask about our premium services. Everything you will see is genuine.");
 			break;
 	}
+}
+
+static void HandleFelineBrendaMessage(UINT16 usMessageId, const Email* pMail)
+{
+	if (pMessageRecordList != NULL) return;
+	auto const blank = []() { AddEmailRecordToList(" "); };
+	(void)usMessageId;
+	(void)pMail;
+
+	AddEmailRecordToList("Dear newcomer. You do not know me. I keep the general store in Cambria, and I am also the secretary and treasurer of the Arulco Feline Society, founded 1994, nine members, one of whom does not count because she only signs the guestbook to argue.");
+	blank();
+	AddEmailRecordToList("Word travels when somebody new is online. We are a small country and a smaller hobby. The Society maintains a page - the breed standard, the show results, the sightings, and lately a foster programme, because we noticed that people in your line of work want something to come back to and cannot keep it in a pocket.");
+	blank();
+	AddEmailRecordToList("There is no charge to look. There is a modest charge for everything else, which is how treasuries work.");
+	blank();
+	AddEmailRecordToList("The address is below. Mind the guestbook.");
+	blank();
+	AddEmailRecordToList("Brenda, Cambria. The cat on the counter is not for sale.");
 }
 
 

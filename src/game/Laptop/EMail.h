@@ -189,6 +189,10 @@ enum {
 #define CUPID_EMAIL_CONDOLENCE 5202 // a memorial, and an upsell; iFirstData is the pid
 #define CUPID_SPECK_SENDER  53   // appended to pSenderNameList
 
+// The Arulco Feline Society: Brenda writes once, by hand, and means it
+#define FELINE_EMAIL_INVITE 5300 // the letter that carries the bookmark
+#define FELINE_BRENDA_SENDER 54  // appended to pSenderNameList
+
 extern BOOLEAN fUnReadMailFlag;
 extern BOOLEAN fNewMailFlag;
 extern BOOLEAN  fOldNewMailFlag;
@@ -218,5 +222,15 @@ void CreateDestroyDeleteNoticeMailButton(void);
 void ReDrawNewMailBox( void );
 void ShutDownEmailList(void);
 void AddEmailWithSpecialData(INT32 iMessageOffset, INT32 iMessageLength, UINT8 ubSender, INT32 iDate, INT32 iFirstData, UINT32 uiSecondData );
+
+// The websites' own mail is one-shot: an invitation, or one stage of an ad
+// campaign, belongs in the box exactly once. A campaign can reach the same
+// send twice - a save made before the site was discovered, a scheduled event
+// that outlived the backfill which already covered it - so every one-shot
+// send asks first. iFirstData tells the stages of a campaign apart.
+BOOLEAN EmailAlreadyInBox(INT32 iMessageOffset, INT32 iFirstData);
+
+// Sends only if it is not already there. Returns TRUE if it was sent.
+BOOLEAN AddEmailOnce(INT32 iMessageOffset, UINT8 ubSender, INT32 iDate, INT32 iFirstData);
 
 #endif

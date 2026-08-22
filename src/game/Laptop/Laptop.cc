@@ -50,6 +50,7 @@
 #include "Funeral.h"
 #include "Chess.h"
 #include "Cupid.h"
+#include "Feline.h"
 #include "Mahjong.h"
 #include "Finances.h"
 #include "Personnel.h"
@@ -351,6 +352,10 @@ static void GetLaptopKeyboardInput(void)
 				ChessHandleTextInput(InputEvent.codepoints)) continue;
 			if (guiCurrentLaptopMode == LAPTOP_MODE_MAHJONG &&
 				MahjongHandleTextInput(InputEvent.codepoints)) continue;
+			if (guiCurrentLaptopMode == LAPTOP_MODE_CUPID &&
+				CupidHandleTextInput(InputEvent.codepoints)) continue;
+			if (guiCurrentLaptopMode == LAPTOP_MODE_FELINE &&
+				FelineHandleTextInput(InputEvent.codepoints)) continue;
 		}
 		HandleKeyBoardShortCutsForLapTop(InputEvent.usEvent, InputEvent.usParam, InputEvent.usKeyState);
 	}
@@ -546,13 +551,35 @@ static void EnterLaptop(void)
 			{
 				// the campaign is already past it, so it has been sitting in
 				// the inbox - backfill it stamped with the evening it was sent
-				AddEmailWithSpecialData(CHESS_EMAIL_INVITE, 0, CHESS_GRUNTY_SENDER,
-							uiDue, 0, 0);
+				AddEmailOnce(CHESS_EMAIL_INVITE, CHESS_GRUNTY_SENDER, uiDue, 0);
 				SetBookMark(CHESS_BOOKMARK);
 			}
 			else
 			{
 				AddStrategicEvent(EVENT_CHESS_GRUNTY_EMAIL, uiDue, 0);
+			}
+		}
+	}
+	// The Feline Society does not advertise. Brenda writes one letter,
+	// personally, when word reaches her that somebody new is online.
+	{
+		FelinePersist fe = FelineGetPersist();
+		if (!(fe.ubFlags & FELINE_FLAG_INVITED))
+		{
+			fe.ubFlags |= FELINE_FLAG_INVITED;
+			FelineSetPersist(fe);
+			UINT32 const uiNow = GetWorldTotalMin();
+			// day five, mid-afternoon: after the shop's quiet hour
+			UINT32 const uiDue = 4 * 1440 + 900;
+			if (uiNow >= uiDue)
+			{
+				AddEmailOnce(FELINE_EMAIL_INVITE, FELINE_BRENDA_SENDER,
+						uiDue, 0);
+				SetBookMark(FELINE_BOOKMARK);
+			}
+			else
+			{
+				AddStrategicEvent(EVENT_FELINE_SOCIETY_EMAIL, uiDue, 0);
 			}
 		}
 	}
@@ -572,13 +599,13 @@ static void EnterLaptop(void)
 			for (UINT32 uiStage = 0; uiStage < 4; ++uiStage)
 			{
 				if (uiStageAt[uiStage] > uiNow) { uiNext = uiStage; break; }
-				AddEmailWithSpecialData(MAHJONG_EMAIL_SPAM, 0, KING_PIN, uiStageAt[uiStage],
-							static_cast<INT32>(uiStage), 0);
+				AddEmailOnce(MAHJONG_EMAIL_SPAM, KING_PIN, uiStageAt[uiStage],
+						static_cast<INT32>(uiStage));
 			}
 			if (uiNext == 0)
 			{
 				// brand-new campaign: the first ad lands the moment you go online
-				AddEmailWithSpecialData(MAHJONG_EMAIL_SPAM, 0, KING_PIN, uiNow, 0, 0);
+				AddEmailOnce(MAHJONG_EMAIL_SPAM, KING_PIN, uiNow, 0);
 				uiNext = 1;
 			}
 			SetBookMark(MAHJONG_BOOKMARK);
@@ -606,9 +633,8 @@ static void EnterLaptop(void)
 			for (UINT32 uiStage = 0; uiStage < 3; ++uiStage)
 			{
 				if (uiCupidStageAt[uiStage] > uiNow) { uiNext = uiStage; break; }
-				AddEmailWithSpecialData(CUPID_EMAIL_SPAM, 0, CUPID_SPECK_SENDER,
-							uiCupidStageAt[uiStage],
-							static_cast<INT32>(uiStage), 0);
+				AddEmailOnce(CUPID_EMAIL_SPAM, CUPID_SPECK_SENDER,
+						uiCupidStageAt[uiStage], static_cast<INT32>(uiStage));
 				SetBookMark(CUPID_BOOKMARK);
 			}
 			if (uiNext < 3)
@@ -633,6 +659,14 @@ static void EnterLaptop(void)
 	{
 		guiCurrentWWWMode    = LAPTOP_MODE_CUPID;
 		guiCurrentLaptopMode = LAPTOP_MODE_CUPID;
+		fFirstTimeInLaptop = FALSE;
+		fNewMailFlag       = FALSE;
+	}
+	// ...and the cat club, softest of the five
+	if (getenv("JA2_DEV_FELINE"))
+	{
+		guiCurrentWWWMode    = LAPTOP_MODE_FELINE;
+		guiCurrentLaptopMode = LAPTOP_MODE_FELINE;
 		fFirstTimeInLaptop = FALSE;
 		fNewMailFlag       = FALSE;
 	}
@@ -818,6 +852,7 @@ static void RenderLaptop(void)
 		case LAPTOP_MODE_MAHJONG:                  RenderMahjong();           break;
 		case LAPTOP_MODE_CHESS:                    RenderChess();             break;
 		case LAPTOP_MODE_CUPID:                    RenderCupid();             break;
+		case LAPTOP_MODE_FELINE:                   RenderFeline();            break;
 
 		case LAPTOP_MODE_FINANCES:                 RenderFinances();          break;
 		case LAPTOP_MODE_PERSONNEL:                RenderPersonnel();         break;
@@ -1017,6 +1052,7 @@ do_nothing:
 		case LAPTOP_MODE_MAHJONG:                  EnterMahjong();           break;
 		case LAPTOP_MODE_CHESS:                    EnterChess();             break;
 		case LAPTOP_MODE_CUPID:                    EnterCupid();             break;
+		case LAPTOP_MODE_FELINE:                   EnterFeline();            break;
 
 		case LAPTOP_MODE_FINANCES:                 EnterFinances();          break;
 		case LAPTOP_MODE_PERSONNEL:                EnterPersonnel();         break;
@@ -1070,6 +1106,7 @@ static void HandleLapTopHandles(void)
 		case LAPTOP_MODE_MAHJONG:                  HandleMahjong();           break;
 		case LAPTOP_MODE_CHESS:                    HandleChess();             break;
 		case LAPTOP_MODE_CUPID:                    HandleCupid();             break;
+		case LAPTOP_MODE_FELINE:                   HandleFeline();            break;
 
 		case LAPTOP_MODE_CHAR_PROFILE:             HandleCharProfile();       break;
 
@@ -1402,6 +1439,7 @@ static void ExitLaptopMode(LaptopMode uiMode)
 		case LAPTOP_MODE_MAHJONG:                  ExitMahjong();           break;
 		case LAPTOP_MODE_CHESS:                    ExitChess();             break;
 		case LAPTOP_MODE_CUPID:                    ExitCupid();             break;
+		case LAPTOP_MODE_FELINE:                   ExitFeline();            break;
 
 		case LAPTOP_MODE_FINANCES:                 ExitFinances();          break;
 		case LAPTOP_MODE_PERSONNEL:                ExitPersonnel();         break;
@@ -1954,6 +1992,11 @@ void GoToWebPage(INT32 iPageId)
 		case CUPID_BOOKMARK:
 			guiCurrentWWWMode    = LAPTOP_MODE_CUPID;
 			guiCurrentLaptopMode = LAPTOP_MODE_CUPID;
+			break;
+
+		case FELINE_BOOKMARK:
+			guiCurrentWWWMode    = LAPTOP_MODE_FELINE;
+			guiCurrentLaptopMode = LAPTOP_MODE_FELINE;
 			break;
 
 		case MAHJONG_BOOKMARK:
@@ -2903,6 +2946,8 @@ void HandleKeyBoardShortCutsForLapTop(UINT16 usEvent, UINT32 usParam, UINT16 usK
 	if (guiCurrentLaptopMode == LAPTOP_MODE_CHESS && ChessHandleTypedKey(usParam, usKeyState)) return;
 	// the dating site: arrow keys swipe the deck
 	if (guiCurrentLaptopMode == LAPTOP_MODE_CUPID && CupidHandleTypedKey(usParam, usKeyState)) return;
+	// the cat club: the foster form takes a name
+	if (guiCurrentLaptopMode == LAPTOP_MODE_FELINE && FelineHandleTypedKey(usParam, usKeyState)) return;
 
 	switch (usParam)
 	{
@@ -3500,8 +3545,23 @@ void SaveLaptopInfoToSavedGame(HWFILE const f)
 		INJ_U8A( d, cp.ubPassed, lengthof(cp.ubPassed))
 		INJ_U8(  d, cp.ubLikesLeft)
 		INJ_U16( d, cp.usDeckDay)
+		INJ_U8(  d, cp.ubSpin)
+		for (UINT8 const b : cp.ubProposed) INJ_U8(d, b)
+		INJ_U16( d, cp.usProposeDay)
 	}
-	INJ_SKIP( d, 24)
+	{
+		// the Feline Society: the reserve's last 13 bytes. The cat's
+		// name is text and rides the tail behind a marker, chess fashion.
+		FelinePersist const fe = FelineGetPersist();
+		INJ_U8(  d, fe.ubFlags)
+		INJ_U8(  d, fe.ubHunger)
+		INJ_U8(  d, fe.ubSupplies)
+		INJ_U16( d, fe.usLastFedDay)
+		INJ_U16( d, fe.usLastVisitDay)
+		INJ_I32( d, fe.iSpent)
+		INJ_U8(  d, 0xFE)
+		INJ_U8(  d, UINT8(strnlen(fe.szName, sizeof(fe.szName) - 1)))
+	}
 	Assert(d.getConsumed() == lengthof(data));
 
 	f->write(data, sizeof(data));
@@ -3523,6 +3583,13 @@ void SaveLaptopInfoToSavedGame(HWFILE const f)
 		ChessPersist const ch = ChessGetPersist();
 		size_t const len = strnlen(ch.szLine, sizeof(ch.szLine) - 1);
 		if (len != 0) f->write(ch.szLine, len);
+	}
+
+	{
+		// and the cat's name, right behind it
+		FelinePersist const fe = FelineGetPersist();
+		size_t const len = strnlen(fe.szName, sizeof(fe.szName) - 1);
+		if (len != 0) f->write(fe.szName, len);
 	}
 }
 
@@ -3612,6 +3679,8 @@ void LoadLaptopInfoFromSavedGame(HWFILE const f)
 	// itself rides behind the fixed block; only its length lives in it.
 	ChessPersist ch;
 	UINT8 ubChessLineLen;
+	FelinePersist fe = {};
+	UINT8 ubFelineNameLen = 0;
 	{
 		EXTR_U16( d, ch.usDay)
 		EXTR_U16( d, ch.usLastSolvedDay)
@@ -3639,6 +3708,9 @@ void LoadLaptopInfoFromSavedGame(HWFILE const f)
 		EXTR_U8A( d, cp.ubPassed, lengthof(cp.ubPassed))
 		EXTR_U8(  d, cp.ubLikesLeft)
 		EXTR_U16( d, cp.usDeckDay)
+		EXTR_U8(  d, cp.ubSpin)
+		for (UINT8& b : cp.ubProposed) EXTR_U8(d, b)
+		EXTR_U16( d, cp.usProposeDay)
 		if (!(cp.ubFlags & (CUPID_FLAG_PROFILE | CUPID_FLAG_IMP_ANSWERS)))
 		{
 			std::fill(std::begin(cp.ubAnswers), std::end(cp.ubAnswers),
@@ -3646,7 +3718,24 @@ void LoadLaptopInfoFromSavedGame(HWFILE const f)
 		}
 		CupidSetPersist(cp);
 	}
-	EXTR_SKIP( d, 24)
+	{
+		// the Feline Society's corner of the blob. Old saves carry
+		// zeros: no marker, no name, a cat not yet imagined.
+		EXTR_U8(  d, fe.ubFlags)
+		EXTR_U8(  d, fe.ubHunger)
+		EXTR_U8(  d, fe.ubSupplies)
+		EXTR_U16( d, fe.usLastFedDay)
+		EXTR_U16( d, fe.usLastVisitDay)
+		EXTR_I32( d, fe.iSpent)
+		UINT8 ubFelineMarker;
+		EXTR_U8(  d, ubFelineMarker)
+		EXTR_U8(  d, ubFelineNameLen)
+		if (ubFelineMarker != 0xFE)
+		{
+			fe = FelinePersist{};
+			ubFelineNameLen = 0;
+		}
+	}
 	Assert(d.getConsumed() == lengthof(data));
 
 	// Handle old saves in M.E.R.C. module
@@ -3680,6 +3769,13 @@ void LoadLaptopInfoFromSavedGame(HWFILE const f)
 		f->read(ch.szLine, ubChessLineLen);
 	}
 	ChessSetPersist(ch);
+
+	if (ubFelineNameLen != 0)
+	{
+		if (ubFelineNameLen > sizeof(fe.szName) - 1) ubFelineNameLen = UINT8(sizeof(fe.szName) - 1);
+		f->read(fe.szName, ubFelineNameLen);
+	}
+	FelineSetPersist(fe);
 }
 
 // Used to determine delay if its raining

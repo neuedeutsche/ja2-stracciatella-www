@@ -301,9 +301,12 @@ BOOLEAN ExecuteStrategicEvent( STRATEGICEVENT *pEvent )
 				// escalating ad campaign: repeats daily until the site is
 				// visited, growing less "spam" and more "Kingpin" each time
 				UINT32 const uiStage = pEvent->uiParam & 0x3;
-				if (uiStage > 0 && (MahjongGetPersist().ubFlags & 0x20)) break;
-				AddEmailWithSpecialData(MAHJONG_EMAIL_SPAM, 0, KING_PIN, pEvent->uiTimeStamp,
-							static_cast<INT32>(uiStage), 0);
+				// once the player has been to the parlour the campaign is
+				// over, first notice included - a scheduled stage can outlive
+				// the visit that answered it
+				if (MahjongGetPersist().ubFlags & 0x20) break;
+				AddEmailOnce(MAHJONG_EMAIL_SPAM, KING_PIN, pEvent->uiTimeStamp,
+						static_cast<INT32>(uiStage));
 				SetBookMark(MAHJONG_BOOKMARK);
 				if (uiStage < 3)
 				{
@@ -331,8 +334,15 @@ BOOLEAN ExecuteStrategicEvent( STRATEGICEVENT *pEvent )
 			                       : usKind == 4 ? CHESS_EMAIL_REVIEW
 			                       : usKind == 5 ? CHESS_EMAIL_CROWN
 			                                     : CHESS_EMAIL_INVITE;
-			// the invitation is what puts the bookmark in the browser
-			if (usMessage == CHESS_EMAIL_INVITE) SetBookMark(CHESS_BOOKMARK);
+			// the invitation is what puts the bookmark in the browser, and it
+			// is written once however often the event is replayed
+			if (usMessage == CHESS_EMAIL_INVITE)
+			{
+				SetBookMark(CHESS_BOOKMARK);
+				AddEmailOnce(CHESS_EMAIL_INVITE, CHESS_GRUNTY_SENDER,
+						pEvent->uiTimeStamp, iStreak);
+				break;
+			}
 			AddEmailWithSpecialData(usMessage, 0, CHESS_GRUNTY_SENDER,
 						pEvent->uiTimeStamp, iStreak, 0);
 			break;
@@ -344,20 +354,19 @@ BOOLEAN ExecuteStrategicEvent( STRATEGICEVENT *pEvent )
 			// every profile personally, and personally takes a while
 			if (pEvent->uiParam & 0x10)
 			{
-				AddEmailWithSpecialData(CUPID_EMAIL_WELCOME, 0,
-						CUPID_SPECK_SENDER, pEvent->uiTimeStamp, 0, 0);
+				AddEmailOnce(CUPID_EMAIL_WELCOME, CUPID_SPECK_SENDER,
+						pEvent->uiTimeStamp, 0);
 				break;
 			}
 			// param is the ad-campaign stage; the campaign stops the moment
 			// the member has actually visited the site
 			UINT32 const uiStage = pEvent->uiParam & 0x3;
-			if (uiStage > 0 && (CupidGetPersist().ubFlags & CUPID_FLAG_VISITED))
+			if (CupidGetPersist().ubFlags & CUPID_FLAG_VISITED)
 			{
 				break;
 			}
-			AddEmailWithSpecialData(CUPID_EMAIL_SPAM, 0, CUPID_SPECK_SENDER,
-						pEvent->uiTimeStamp,
-						static_cast<INT32>(uiStage), 0);
+			AddEmailOnce(CUPID_EMAIL_SPAM, CUPID_SPECK_SENDER,
+					pEvent->uiTimeStamp, static_cast<INT32>(uiStage));
 			SetBookMark(CUPID_BOOKMARK);
 			if (uiStage < 2)
 			{
@@ -367,6 +376,13 @@ BOOLEAN ExecuteStrategicEvent( STRATEGICEVENT *pEvent )
 			}
 			break;
 		}
+
+		case EVENT_FELINE_SOCIETY_EMAIL:
+			// Brenda's one letter; the bookmark arrives with it
+			AddEmailOnce(FELINE_EMAIL_INVITE, FELINE_BRENDA_SENDER,
+					pEvent->uiTimeStamp, 0);
+			SetBookMark(FELINE_BOOKMARK);
+			break;
 
 		case EVENT_HAVENT_MADE_IMP_CHARACTER_EMAIL:
 			HaventMadeImpMercEmailCallBack();

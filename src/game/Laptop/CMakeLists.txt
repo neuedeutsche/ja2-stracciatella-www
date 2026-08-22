@@ -6,6 +6,7 @@ if (WITH_UNITTESTS)
         ${CMAKE_CURRENT_SOURCE_DIR}/DatingGame_unittest.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/ChessGame_unittest.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/MahjongGame_unittest.cc
+        ${CMAKE_CURRENT_SOURCE_DIR}/FelineCat_unittest.cc
     )
 endif()
 
@@ -37,6 +38,8 @@ set(JA2_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/ChessPuzzles.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/Cupid.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/DatingGame.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/Feline.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/FelineCat.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/EMail.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/Files.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/Finances.cc
