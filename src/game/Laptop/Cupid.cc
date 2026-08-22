@@ -102,13 +102,12 @@ static_assert(int(DatingGame::SEX_FEMALE) == int(FEMALE));
 #define CP_SWIPE_COMMIT 55
 #define CP_FLY_STEP     34
 
-// the two verdict buttons sit on the photo itself, in its bottom corners
-#define CP_BTN_SIZE     36
-#define CP_PHOTO_X      (CP_CARD_X + (CP_CARD_W - CP_PHOTO_W) / 2)
-#define CP_PHOTO_TOP    (CP_CARD_Y + 8)
-#define CP_BTN_Y        (CP_PHOTO_TOP + CP_PHOTO_H - CP_BTN_SIZE - 4)
-#define CP_BTN_PASS_X   (CP_PHOTO_X + 4)
-#define CP_BTN_LIKE_X   (CP_PHOTO_X + CP_PHOTO_W - CP_BTN_SIZE - 4)
+// the two verdict circles sit under the photo at the card's edges, the
+// name held between them
+#define CP_BTN_SIZE     34
+#define CP_BTN_Y        (CP_CARD_Y + CP_PHOTO_H + 16)
+#define CP_BTN_PASS_X   (CP_CARD_X + 10)
+#define CP_BTN_LIKE_X   (CP_CARD_X + CP_CARD_W - 10 - CP_BTN_SIZE)
 
 // the "small" face is the A.I.M. mugshot (faces/NN.sti frame 0), measured
 // from the game data: 48x43. The 33face files are 14x15 tactical heads and
@@ -339,7 +338,8 @@ namespace
 		CPS_AD_NEW_HEAD, CPS_AD_NEW_BODY,
 		CPS_END_HEAD, CPS_END_BODY,
 		CPS_AD_HINT,
-		CPS_ME_TITLE, CPS_ME_IMPORT, CPS_ME_TAKE, CPS_ME_RETAKE, CPS_ME_UPGRADE,
+		CPS_ME_TITLE, CPS_ME_TITLE_MINE, CPS_ME_PREVIEW, CPS_ME_STATS,
+		CPS_ME_IMPORT, CPS_ME_TAKE, CPS_ME_RETAKE, CPS_ME_UPGRADE,
 		CPS_ME_COMPLETE, CPS_ME_PARTIAL, CPS_ME_HINT, CPS_ME_POWERED,
 		CPS_QUIZ_SEX, CPS_QUIZ_MALE, CPS_QUIZ_FEMALE, CPS_QUIZ_PROGRESS,
 		CPS_NO_PHOTO, CPS_NO_PROFILE_CARD,
@@ -385,7 +385,10 @@ namespace
 			"THAT'S EVERYONE", "You have seen every professional in Arulco. "
 			"I am in talks with several other war zones. - S.T.K.",
 			"(the heart winks. the X declines. no refunds.)",
-			"THE QUESTIONNAIRE", "IMPORT MY I.M.P. PROFILE (free)",
+			"THE QUESTIONNAIRE", "MY PROFILE",
+			"HOW YOU APPEAR IN THE DECK",
+			"login streak: {} days   -   winks today: {}",
+			"IMPORT MY I.M.P. PROFILE (free)",
 			"TAKE THE QUESTIONNAIRE (free)", "RETAKE THE QUESTIONNAIRE (${})",
 			"COMPLETE MY PROFILE (${})",
 			"YOUR PROFILE IS 100% COMPLETE", "YOUR PROFILE IS 60% COMPLETE",
@@ -454,7 +457,10 @@ namespace
 			"DAS WAREN ALLE", "Sie haben jeden Profi in Arulco gesehen. Ich "
 			"verhandle mit weiteren Kriegsgebieten. - S.T.K.",
 			"(das Herz zwinkert. das X lehnt ab. keine Rueckerstattung.)",
-			"DER FRAGEBOGEN", "MEIN I.M.P.-PROFIL IMPORTIEREN (gratis)",
+			"DER FRAGEBOGEN", "MEIN PROFIL",
+			"SO ERSCHEINEN SIE IM DECK",
+			"Login-Serie: {} Tage   -   Zwinkern heute: {}",
+			"MEIN I.M.P.-PROFIL IMPORTIEREN (gratis)",
 			"FRAGEBOGEN AUSFUELLEN (gratis)", "FRAGEBOGEN WIEDERHOLEN ({} $)",
 			"PROFIL VERVOLLSTAENDIGEN ({} $)",
 			"IHR PROFIL IST ZU 100% VOLLSTAENDIG",
@@ -706,6 +712,17 @@ namespace
 		FillRect(x + CP_RADIUS, y + 1, w - 2 * CP_RADIUS, 1, CP_RGB_GLOSS);
 		FillRect(x + CP_RADIUS, y + h - 2, w - 2 * CP_RADIUS, 1,
 				CP_RGB_SHADOW);
+	}
+
+	// the round sibling: a gel disc for the verdict buttons
+	void GelCircle(INT32 x, INT32 y, INT32 d, UINT32 base, UINT32 lite,
+				UINT32 ring, UINT32 bg)
+	{
+		FillRounded(x, y, d, d, ring, d / 2, bg);
+		FillRounded(x + 1, y + 1, d - 2, d - 2, base, (d - 2) / 2, ring);
+		FillRounded(x + 3, y + 3, d - 6, (d - 6) / 2, lite, (d - 6) / 4,
+				base);
+		FillRect(x + 10, y + 3, d - 20, 1, CP_RGB_GLOSS);
 	}
 
 	// the aqua gel pill: saturated base, lighter lit top half, a one-pixel
@@ -2239,19 +2256,17 @@ namespace
 					zoneY + 56, T(CPS_NO_PHOTO));
 		}
 
-		// name and number on the white, where the reading happens
-		INT32 y = zoneY + zoneH + 9;
-		PrintAt(FONT14ARIAL, FONT_NEARBLACK, cardX + 12, y, p.zNickname);
+		// the name holds the centre between the two verdict circles
+		PrintCentred(FONT14ARIAL, FONT_NEARBLACK, cardX + CP_CARD_W / 2,
+				CP_BTN_Y + 1, p.zNickname);
 		if (PlayerHasProfile())
 		{
 			const DatingGame::Match match = MatchWith(card.pid);
-			const ST::string pct = ST::format("{}%", match.percent);
-			PrintAt(FONT14ARIAL, MatchColour(match.percent),
-					cardX + CP_CARD_W - 14 -
-						StringPixLength(pct, FONT14ARIAL),
-					y, pct);
+			PrintCentred(FONT10ARIALBOLD, MatchColour(match.percent),
+					cardX + CP_CARD_W / 2, CP_BTN_Y + 19,
+					ST::format("{}% MATCH", match.percent));
 		}
-		y += 19;
+		INT32 y = CP_BTN_Y + CP_BTN_SIZE + 8;
 
 		// the ad runs under a headline, as personals always did
 		PrintCentred(FONT10ARIAL, FONT_GRAY4, cardX + CP_CARD_W / 2, y,
@@ -2636,23 +2651,23 @@ namespace
 		else                          RenderAdCard(card, cardX);
 		RenderVerdictStamp(cardX);
 
-		// the verdict buttons: white gel with a coloured ring, warming
-		// under the pointer
+		// the verdict circles: white gel discs with coloured rings,
+		// warming under the pointer
 		DropShadow(CP_BTN_PASS_X, CP_BTN_Y, CP_BTN_SIZE, CP_BTN_SIZE);
-		GelPill(CP_BTN_PASS_X, CP_BTN_Y, CP_BTN_SIZE, CP_BTN_SIZE,
+		GelCircle(CP_BTN_PASS_X, CP_BTN_Y, CP_BTN_SIZE,
 				Hover(gCupidPassRegion) ? FROMRGB(248, 222, 216)
 							: CP_RGB_CARD,
-				CP_RGB_CARD_LITE, CP_RGB_NOPE, CP_RGB_BG);
-		DrawCross(CP_BTN_PASS_X + 11, CP_BTN_Y + 11, 14, 3, CP_RGB_NOPE);
+				CP_RGB_CARD_LITE, CP_RGB_NOPE, CP_RGB_CARD);
+		DrawCross(CP_BTN_PASS_X + 10, CP_BTN_Y + 10, 14, 3, CP_RGB_NOPE);
 
 		const bool likeLive = CanLike() && card.kind != CARD_END;
 		DropShadow(CP_BTN_LIKE_X, CP_BTN_Y, CP_BTN_SIZE, CP_BTN_SIZE);
-		GelPill(CP_BTN_LIKE_X, CP_BTN_Y, CP_BTN_SIZE, CP_BTN_SIZE,
+		GelCircle(CP_BTN_LIKE_X, CP_BTN_Y, CP_BTN_SIZE,
 				likeLive && Hover(gCupidLikeRegion) ? CP_RGB_PINK_PALE
 								    : CP_RGB_CARD,
 				CP_RGB_CARD_LITE,
-				likeLive ? CP_RGB_PINK : CP_RGB_GREY, CP_RGB_BG);
-		DrawHeart(CP_BTN_LIKE_X + 8, CP_BTN_Y + 10, 3,
+				likeLive ? CP_RGB_PINK : CP_RGB_GREY, CP_RGB_CARD);
+		DrawHeart(CP_BTN_LIKE_X + 7, CP_BTN_Y + 9, 3,
 				likeLive ? CP_RGB_PINK : CP_RGB_GREY);
 
 		// the allowance, on its own line beneath the verdict
@@ -2819,8 +2834,9 @@ namespace
 
 	void RenderMeLanding()
 	{
+		const bool member = PlayerHasProfile() && HaveStoredAnswers();
 		PrintCentred(FONT12ARIAL, FONT_NEARBLACK, CP_PAGE_W / 2, 32,
-				T(CPS_ME_TITLE));
+				T(member ? CPS_ME_TITLE_MINE : CPS_ME_TITLE));
 
 		// the status row: your photo beside the truth about your profile
 		DropShadow(96, 52, 310, 76);
@@ -2864,6 +2880,60 @@ namespace
 					: giCupidSeek == SEEK_WOMEN ? CPS_SEEK_WOMEN
 					: CPS_SEEK_ALL)));
 
+		if (member)
+		{
+			// the account view: your own ad, as the deck deals it
+			PrintCentred(FONT10ARIALBOLD, FONT_DKRED, 251, 158,
+					T(CPS_ME_PREVIEW));
+			const DatingGame::Profile self = BuildPlayerProfile();
+			MERCPROFILESTRUCT const& imp = GetProfile(PlayerImpPid());
+			DropShadow(126, 172, 250, 96);
+			FillCard(126, 172, 250, 96, CP_RGB_CARD, CP_RGB_PINK, CP_RGB_BG);
+			FillRect(135, 181, CP_FACE_SM_W + 4, CP_FACE_SM_H + 4,
+					CP_RGB_INK);
+			FillRect(136, 182, CP_FACE_SM_W + 2, CP_FACE_SM_H + 2,
+					CP_RGB_MAT);
+			if (guiCupidSelf)
+			{
+				BltVideoObject(FRAME_BUFFER, guiCupidSelf, 0, CP_X(137),
+						CP_Y(183));
+			}
+			const INT32 px = 194;
+			PrintAt(FONT10ARIALBOLD, FONT_NEARBLACK, px, 182, imp.zNickname);
+			PrintAt(FONT10ARIAL, FONT_GRAY4, px, 196,
+					CUPID_HEADLINE[gfCupidGerman ? 1 : 0]
+						[self.attitude >= 0 &&
+						 self.attitude < NUM_ATTITUDES
+							? self.attitude : 0]);
+			INT32 cxp = px;
+			cxp += DrawChip(cxp, 212,
+					CUPID_TRAIT_SPIN[gfCupidGerman ? 1 : 0]
+						[self.trait >= 0 && self.trait < 8
+							? self.trait : 0],
+					CP_RGB_PINK) + 5;
+			DrawChip(cxp, 212, gfCupidGerman ? "I.M.P.-GEPRUEFT"
+							 : "I.M.P. VERIFIED",
+					CP_RGB_GOLD);
+			PrintAt(FONT10ARIAL, FONT_GRAY4, 136, 240,
+					ClampLines(ST::format(T(CPS_LOOKING_FOR),
+							CUPID_LOOKING[gfCupidGerman ? 1 : 0]
+								[self.attitude >= 0 &&
+								 self.attitude < NUM_ATTITUDES
+									? self.attitude : 0]),
+						230, 1));
+
+			// the vitals, and the one line of legal the lawyers insisted on
+			PrintCentred(FONT10ARIAL, FONT_GRAY4, 251, 282,
+					ST::format(T(CPS_ME_STATS), gCupidPersist.ubStreak,
+						IsGold() ? 99 : gCupidPersist.ubLikesLeft));
+			PrintCentred(FONT10ARIAL, FONT_GRAY5, 251, 298,
+					gfCupidGerman ? "Instrument: Speck-o-metrisch(tm), "
+							"unverklagt"
+						      : "instrument: Speck-o-metric(tm), "
+							"unlitigated");
+		}
+		else
+		{
 		// POWERED BY I.M.P., 88x31 in spirit, with the fine print below
 		DropShadow(176, 148, 150, 38);
 		FillCard(176, 148, 150, 38, CP_RGB_BLUE_PALE, CP_RGB_BLUE_DK,
@@ -2889,11 +2959,15 @@ namespace
 				ST::format("{} {}", T(CPS_AD_TESTI_HEAD), T(CPS_AD_TESTI_BODY)),
 				FONT_MCOLOR_BLACK, LEFT_JUSTIFIED);
 		PrintAt(FONT10ARIAL, FONT_GRAY5, 162, 286, T(CPS_AD_TESTI_BY));
+		}
 
 		const bool imp     = LaptopSaveInfo.fIMPCompletedFlag;
 		const bool banked  = HaveStoredAnswers();
 		const bool profile = PlayerHasProfile();
-		RenderWideButton(0, T(CPS_ME_IMPORT), imp && banked && !profile);
+		if (!member)
+		{
+			RenderWideButton(0, T(CPS_ME_IMPORT), imp && banked && !profile);
+		}
 
 		ST::string second;
 		if (!profile && !banked) second = T(CPS_ME_TAKE);
