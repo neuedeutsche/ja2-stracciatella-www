@@ -261,6 +261,34 @@ namespace
 	MOUSE_REGION gCupidMatchRegion[7];  // clickable rows on the matches page
 	MOUSE_REGION gCupidSideAdRegion[2]; // the skyscraper banners, deck page
 
+	bool Hover(const MOUSE_REGION& r)
+	{
+		return (r.uiFlags & MSYS_MOUSE_IN_AREA) != 0;
+	}
+
+	// Every control belongs to one page; everything else is switched off so
+	// an invisible region can never eat a click meant for the page on show.
+	void SyncRegions()
+	{
+		if (!gfCupidRegionsUp) return;
+		const bool deck    = gCupidPage == CPP_DECK;
+		const bool actions = (gCupidPage == CPP_ME && !gfCupidQuizLive) ||
+					gCupidPage == CPP_DETAIL ||
+					gCupidPage == CPP_SPLASH;
+		const bool matches = gCupidPage == CPP_MATCHES;
+
+		auto set = [](MOUSE_REGION& r, bool on)
+		{
+			if (on) r.Enable(); else r.Disable();
+		};
+		set(gCupidCardRegion, deck);
+		set(gCupidPassRegion, deck);
+		set(gCupidLikeRegion, deck);
+		for (MOUSE_REGION& r : gCupidSideAdRegion) set(r, deck);
+		for (MOUSE_REGION& r : gCupidActionRegion) set(r, actions);
+		for (MOUSE_REGION& r : gCupidMatchRegion)  set(r, matches);
+	}
+
 	// --- text, EN/DE -------------------------------------------------------
 	enum CupidStr
 	{
@@ -609,7 +637,11 @@ namespace
 		PrintAt(font, colour, cx - StringPixLength(text, font) / 2, y, text);
 	}
 
-	void CupidRedraw() { fPausedReDrawScreenFlag = TRUE; }
+	void CupidRedraw()
+	{
+		SyncRegions();
+		fPausedReDrawScreenFlag = TRUE;
+	}
 
 	// a blocky heart at 1x (7x6) or scaled up
 	void DrawHeart(INT32 x, INT32 y, int s, UINT32 rgb)
@@ -1716,11 +1748,11 @@ namespace
 
 		for (int i = 0; i < 2; ++i)
 		{
-			const INT32 x = 116 + i * 146;
+			const INT32 y = CP_PAGE_H - 84 + i * 32;
 			MSYS_DefineRegion(&gCupidActionRegion[i],
-					UINT16(CP_X(x)), UINT16(CP_Y(CP_PAGE_H - 52)),
-					UINT16(CP_X(x + 124)), UINT16(CP_Y(CP_PAGE_H - 28)),
-					MSYS_PRIORITY_HIGH, CURSOR_WWW, MSYS_NO_CALLBACK,
+					UINT16(CP_X(96)), UINT16(CP_Y(y)),
+					UINT16(CP_X(96 + 310)), UINT16(CP_Y(y + 26)),
+					MSYS_PRIORITY_HIGH - 1, CURSOR_WWW, MSYS_NO_CALLBACK,
 					ActionCallback);
 			MSYS_SetRegionUserData(&gCupidActionRegion[i], 0, i);
 		}
@@ -1748,6 +1780,7 @@ namespace
 		}
 
 		gfCupidRegionsUp = true;
+		SyncRegions();
 	}
 
 	void CupidRemoveRegions()
@@ -1836,8 +1869,11 @@ namespace
 			}
 			else
 			{
-				GelPill(x, 3, 74, CP_TOPBAR_H - 6, CP_RGB_BLUE_PALE,
-						CP_RGB_BLUE_LITE, CP_RGB_BLUE_DK, CP_RGB_BLUE);
+				const bool hov = Hover(gCupidTabRegion[i]);
+				GelPill(x, 3, 74, CP_TOPBAR_H - 6,
+						hov ? CP_RGB_CARD : CP_RGB_BLUE_PALE,
+						hov ? CP_RGB_GLOSS : CP_RGB_BLUE_LITE,
+						CP_RGB_BLUE_DK, CP_RGB_BLUE);
 			}
 			PrintCentred(FONT10ARIALBOLD,
 					active ? FONT_MCOLOR_WHITE : FONT_NEARBLACK,
@@ -2148,16 +2184,21 @@ namespace
 		else                          RenderAdCard(card, cardX);
 		RenderVerdictStamp(cardX);
 
-		// the verdict buttons: white gel with a coloured ring
+		// the verdict buttons: white gel with a coloured ring, warming
+		// under the pointer
 		DropShadow(CP_BTN_PASS_X, CP_BTN_Y, CP_BTN_SIZE, CP_BTN_SIZE);
 		GelPill(CP_BTN_PASS_X, CP_BTN_Y, CP_BTN_SIZE, CP_BTN_SIZE,
-				CP_RGB_CARD, CP_RGB_CARD_LITE, CP_RGB_NOPE, CP_RGB_BG);
+				Hover(gCupidPassRegion) ? FROMRGB(248, 222, 216)
+							: CP_RGB_CARD,
+				CP_RGB_CARD_LITE, CP_RGB_NOPE, CP_RGB_BG);
 		DrawCross(CP_BTN_PASS_X + 11, CP_BTN_Y + 11, 14, 3, CP_RGB_NOPE);
 
 		const bool likeLive = CanLike() && card.kind != CARD_END;
 		DropShadow(CP_BTN_LIKE_X, CP_BTN_Y, CP_BTN_SIZE, CP_BTN_SIZE);
 		GelPill(CP_BTN_LIKE_X, CP_BTN_Y, CP_BTN_SIZE, CP_BTN_SIZE,
-				CP_RGB_CARD, CP_RGB_CARD_LITE,
+				likeLive && Hover(gCupidLikeRegion) ? CP_RGB_PINK_PALE
+								    : CP_RGB_CARD,
+				CP_RGB_CARD_LITE,
 				likeLive ? CP_RGB_PINK : CP_RGB_GREY, CP_RGB_BG);
 		DrawHeart(CP_BTN_LIKE_X + 8, CP_BTN_Y + 10, 3,
 				likeLive ? CP_RGB_PINK : CP_RGB_GREY);
@@ -2223,7 +2264,10 @@ namespace
 		{
 			if (row >= 7) break;
 			DropShadow(96, y, 310, 38);
-			FillCard(96, y, 310, 38, CP_RGB_CARD, CP_RGB_BLUE, CP_RGB_BG);
+			FillCard(96, y, 310, 38, CP_RGB_CARD,
+					row < 7 && Hover(gCupidMatchRegion[row]) ? CP_RGB_PINK
+										 : CP_RGB_BLUE,
+					CP_RGB_BG);
 			SGPVObject* face = Face33For(pid);
 			if (face)
 			{
@@ -2245,22 +2289,27 @@ namespace
 				T(CPS_MATCHES_HINT));
 	}
 
+	// the action rows: two full-width pills stacked over the footer, wide
+	// enough for every label in both languages
 	void RenderWideButton(INT32 slot, const ST::string& label, bool live)
 	{
-		const INT32 x = 116 + slot * 146;
-		DropShadow(x, CP_PAGE_H - 52, 124, 24);
+		const INT32 y = CP_PAGE_H - 84 + slot * 32;
+		DropShadow(96, y, 310, 26);
 		if (live)
 		{
-			GelPill(x, CP_PAGE_H - 52, 124, 24, CP_RGB_PINK,
-					CP_RGB_PINK_LITE, CP_RGB_PINK_DK, CP_RGB_BG);
+			const bool hov = Hover(gCupidActionRegion[slot]);
+			GelPill(96, y, 310, 26,
+					hov ? CP_RGB_PINK_LITE : CP_RGB_PINK,
+					hov ? CP_RGB_PINK_PALE : CP_RGB_PINK_LITE,
+					CP_RGB_PINK_DK, CP_RGB_BG);
 		}
 		else
 		{
-			GelPill(x, CP_PAGE_H - 52, 124, 24, CP_RGB_CARD_DIM,
-					CP_RGB_BLUE_LITE, CP_RGB_GREY, CP_RGB_BG);
+			GelPill(96, y, 310, 26, CP_RGB_CARD_DIM, CP_RGB_BLUE_LITE,
+					CP_RGB_GREY, CP_RGB_BG);
 		}
 		PrintCentred(FONT10ARIALBOLD, live ? FONT_MCOLOR_WHITE : FONT_GRAY5,
-				x + 62, CP_PAGE_H - 45, label);
+				251, y + 9, label);
 	}
 
 	void RenderMeLanding()
@@ -2268,38 +2317,47 @@ namespace
 		PrintCentred(FONT12ARIAL, FONT_NEARBLACK, CP_PAGE_W / 2, 32,
 				T(CPS_ME_TITLE));
 
-		// the member's own card: photo, or the penalty for not having one
-		DropShadow(186, 50, 130, 128);
-		FillCard(186, 50, 130, 128, CP_RGB_CARD, CP_RGB_BLUE_DK, CP_RGB_BG);
+		// the status row: your photo beside the truth about your profile
+		DropShadow(96, 52, 310, 76);
+		FillCard(96, 52, 310, 76, CP_RGB_CARD, CP_RGB_BLUE_DK, CP_RGB_BG);
+		FillRect(106, 60, CP_FACE33_W + 6, CP_FACE33_H + 6, CP_RGB_INK);
+		FillRect(107, 61, CP_FACE33_W + 4, CP_FACE33_H + 4, CP_RGB_MAT);
 		if (guiCupidSelf)
 		{
-			BltVideoObject(FRAME_BUFFER, guiCupidSelf, 0, CP_X(202), CP_Y(58));
+			BltVideoObject(FRAME_BUFFER, guiCupidSelf, 0, CP_X(109), CP_Y(63));
 		}
 		else
 		{
-			FillRect(202, 58, CP_FACE33_W, CP_FACE33_H, CP_RGB_CARD_DIM);
-			PrintAt(FONT10ARIAL, FONT_GRAY5, 236, 66, T(CPS_NO_PHOTO));
+			FillRect(109, 63, CP_FACE33_W, CP_FACE33_H, CP_RGB_CARD_DIM);
+			PrintAt(FONT10ARIAL, FONT_GRAY5, 110, 74, T(CPS_NO_PHOTO));
 		}
 
 		const bool full = PlayerHasProfile() && HaveStoredAnswers();
-		PrintCentred(FONT10ARIALBOLD, full ? FONT_DKGREEN : FONT_DKRED,
-				251, 100, T(full ? CPS_ME_COMPLETE : CPS_ME_PARTIAL));
-		const int fillW = full ? 106 : 106 * 60 / 100;
-		FillRect(198, 116, 106, 8, CP_RGB_CARD_DIM);
-		FillRect(198, 116, fillW, 8, full ? CP_RGB_LIKE : CP_RGB_PINK);
+		const INT32 tx = 152;
+		PrintAt(FONT10ARIALBOLD, full ? FONT_DKGREEN : FONT_DKRED, tx, 60,
+				T(full ? CPS_ME_COMPLETE : CPS_ME_PARTIAL));
+		DrawMeter(tx, 76, 240, full ? 100 : 60,
+				full ? CP_RGB_LIKE : CP_RGB_PINK);
 		if (!full)
 		{
-			DisplayWrappedString(UINT16(CP_X(192)), UINT16(CP_Y(130)), 118, 2,
+			DisplayWrappedString(UINT16(CP_X(tx)), UINT16(CP_Y(90)), 246, 2,
 					FONT10ARIAL, FONT_GRAY4, T(CPS_ME_HINT),
-					FONT_MCOLOR_BLACK, CENTER_JUSTIFIED);
+					FONT_MCOLOR_BLACK, LEFT_JUSTIFIED);
+		}
+		else
+		{
+			PrintAt(FONT10ARIAL, FONT_GRAY4, tx, 90,
+					gfCupidGerman ? "Das Deck wartet auf Sie."
+						      : "The deck is waiting for you.");
 		}
 
-		// POWERED BY I.M.P., 88x31 in spirit
-		FillCard(186, 192, 130, 36, CP_RGB_BLUE_PALE, CP_RGB_BLUE_DK,
+		// POWERED BY I.M.P., 88x31 in spirit, with the fine print below
+		DropShadow(176, 148, 150, 38);
+		FillCard(176, 148, 150, 38, CP_RGB_BLUE_PALE, CP_RGB_BLUE_DK,
 				CP_RGB_BG);
-		PrintCentred(FONT10ARIALBOLD, FONT_NEARBLACK, 251, 198, "POWERED BY");
-		PrintCentred(FONT10ARIALBOLD, FONT_NEARBLACK, 251, 210, "I.M.P.");
-		DisplayWrappedString(UINT16(CP_X(106)), UINT16(CP_Y(238)), 290, 2,
+		PrintCentred(FONT10ARIALBOLD, FONT_NEARBLACK, 251, 155, "POWERED BY");
+		PrintCentred(FONT10ARIALBOLD, FONT_NEARBLACK, 251, 168, "I.M.P.");
+		DisplayWrappedString(UINT16(CP_X(96)), UINT16(CP_Y(198)), 310, 2,
 				FONT10ARIAL, FONT_GRAY5, T(CPS_ME_POWERED),
 				FONT_MCOLOR_BLACK, CENTER_JUSTIFIED);
 
@@ -2353,8 +2411,10 @@ namespace
 			const INT32 y = gsCupidAnsY[i];
 			const INT32 h = gsCupidAnsH[i];
 			DropShadow(96, y, 310, h);
-			GelPill(96, y, 310, h, CP_RGB_CARD, CP_RGB_CARD_LITE,
-					CP_RGB_BLUE_DK, CP_RGB_BG);
+			const bool hov = Hover(gCupidAnswerRegion[i]);
+			GelPill(96, y, 310, h,
+					hov ? CP_RGB_BLUE_LITE : CP_RGB_CARD, CP_RGB_CARD_LITE,
+					hov ? CP_RGB_PINK : CP_RGB_BLUE_DK, CP_RGB_BG);
 			GelPill(102, y + (h - 18) / 2, 18, 18, CP_RGB_PINK,
 					CP_RGB_PINK_LITE, CP_RGB_PINK_DK, CP_RGB_CARD);
 			const char letter[2] = { char('A' + i), '\0' };
@@ -2380,8 +2440,8 @@ namespace
 		const int idx = RosterIndexOf(pid);
 		const bool merc = idx >= 0 && gCupidRoster[size_t(idx)].merc;
 
-		DropShadow(76, 30, 350, 306);
-		FillCard(76, 30, 350, 306, CP_RGB_CARD, CP_RGB_BLUE_DK, CP_RGB_BG);
+		DropShadow(76, 30, 350, 276);
+		FillCard(76, 30, 350, 276, CP_RGB_CARD, CP_RGB_BLUE_DK, CP_RGB_BG);
 
 		SGPVObject* big = BigFaceFor(pid);
 		if (big)
@@ -2478,7 +2538,7 @@ namespace
 		if (PlayerHasProfile())
 		{
 			const DatingGame::Match match = MatchWith(pid);
-			if (match.bestQ >= 0 && y < 286)
+			if (match.bestQ >= 0 && y < 252)
 			{
 				PrintAt(FONT10ARIAL, FONT_DKGREEN, 90, y, T(CPS_YOU_AGREED));
 				y += 11;
@@ -2487,7 +2547,7 @@ namespace
 						QuizAnswer(match.bestQ, GetAnswer(match.bestQ)),
 						FONT_MCOLOR_BLACK, LEFT_JUSTIFIED) + 3;
 			}
-			if (match.worstQ >= 0 && y < 300)
+			if (match.worstQ >= 0 && y < 272)
 			{
 				PrintAt(FONT10ARIAL, FONT_DKRED, 90, y, T(CPS_YOU_DIFFER));
 				y += 11;
@@ -2664,6 +2724,29 @@ void RenderCupid()
 
 void HandleCupid()
 {
+	// hover states repaint the moment the pointer crosses a control
+	{
+		UINT32 uiHover = 0;
+		int bit = 0;
+		auto acc = [&](const MOUSE_REGION& r)
+		{
+			if (Hover(r)) uiHover |= 1u << bit;
+			++bit;
+		};
+		for (const MOUSE_REGION& r : gCupidTabRegion)    acc(r);
+		for (const MOUSE_REGION& r : gCupidActionRegion) acc(r);
+		for (const MOUSE_REGION& r : gCupidMatchRegion)  acc(r);
+		for (const MOUSE_REGION& r : gCupidAnswerRegion) acc(r);
+		acc(gCupidPassRegion);
+		acc(gCupidLikeRegion);
+		static UINT32 uiLastHover = 0;
+		if (uiHover != uiLastHover)
+		{
+			uiLastHover = uiHover;
+			CupidRedraw();
+		}
+	}
+
 	// the card in hand follows the pointer
 	if (gfCupidDragging)
 	{
