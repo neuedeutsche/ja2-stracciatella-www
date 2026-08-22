@@ -283,9 +283,7 @@ namespace
 	MOUSE_REGION gCupidRingRegion[3];   // the webring: prev, random, next
 	MOUSE_REGION gCupidPopupXRegion;    // the popup's only honest exit
 	MOUSE_REGION gCupidPopupCtaRegion;  // and its entire reason to exist
-	MOUSE_REGION gCupidFaceRegion[8];   // the sidebar face strips, deck page
 	MOUSE_REGION gCupidSeekRegion;      // "I am seeking", the ME page widget
-	ProfileID    gCupidFacePids[8] = {};  // who each strip slot showed last
 
 	bool Hover(const MOUSE_REGION& r)
 	{
@@ -316,7 +314,6 @@ namespace
 		for (MOUSE_REGION& r : gCupidMatchRegion)  set(r, matches);
 		set(gCupidPopupXRegion, popup);
 		set(gCupidPopupCtaRegion, popup);
-		for (MOUSE_REGION& r : gCupidFaceRegion) set(r, deck);
 		set(gCupidSeekRegion, gCupidPage == CPP_ME && !gfCupidQuizLive);
 	}
 
@@ -1839,19 +1836,6 @@ namespace
 		}
 	}
 
-	void FaceStripCallback(MOUSE_REGION* region, UINT32 reason)
-	{
-		if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
-		if (gCupidPage != CPP_DECK) return;
-		const int slot = int(MSYS_GetRegionUserData(region, 0));
-		const ProfileID pid = gCupidFacePids[slot];
-		if (pid == 0xFF || RosterIndexOf(pid) < 0) return; // empty slot
-		gCupidDetailPid  = pid;
-		gCupidDetailFrom = CPP_DECK;
-		gCupidPage = CPP_DETAIL;
-		CupidRedraw();
-	}
-
 	void SeekCallback(MOUSE_REGION* region, UINT32 reason)
 	{
 		if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
@@ -1945,8 +1929,8 @@ namespace
 		{
 			const INT32 x = i == 0 ? CP_LCOL_X : CP_RCOL_X;
 			MSYS_DefineRegion(&gCupidSideAdRegion[i],
-					UINT16(CP_X(x)), UINT16(CP_Y(44)),
-					UINT16(CP_X(x + CP_COL_W)), UINT16(CP_Y(44 + 178)),
+					UINT16(CP_X(x)), UINT16(CP_Y(32)),
+					UINT16(CP_X(x + CP_COL_W)), UINT16(CP_Y(32 + 318)),
 					MSYS_PRIORITY_HIGH - 2, CURSOR_WWW, MSYS_NO_CALLBACK,
 					SideAdCallback);
 			MSYS_SetRegionUserData(&gCupidSideAdRegion[i], 0, i);
@@ -1961,24 +1945,6 @@ namespace
 					MSYS_PRIORITY_HIGH - 1, CURSOR_WWW, MSYS_NO_CALLBACK,
 					MatchRowCallback);
 			MSYS_SetRegionUserData(&gCupidMatchRegion[i], 0, i);
-		}
-
-		// the sidebar face strips: four online on the left, four hot on
-		// the right, each mugshot a door into a dossier
-		for (int i = 0; i < 8; ++i)
-		{
-			const bool left = i < 4;
-			const int  cell = left ? i : i - 4;
-			const INT32 bx = left ? CP_LCOL_X : CP_RCOL_X;
-			const INT32 x  = bx + 6 + (cell % 2) * (CP_FACE_SM_W + 4);
-			const INT32 y  = 246 + (cell / 2) * (CP_FACE_SM_H + 6);
-			MSYS_DefineRegion(&gCupidFaceRegion[i],
-					UINT16(CP_X(x)), UINT16(CP_Y(y)),
-					UINT16(CP_X(x + CP_FACE_SM_W)),
-					UINT16(CP_Y(y + CP_FACE_SM_H)),
-					MSYS_PRIORITY_HIGH, CURSOR_WWW, MSYS_NO_CALLBACK,
-					FaceStripCallback);
-			MSYS_SetRegionUserData(&gCupidFaceRegion[i], 0, i);
 		}
 
 		MSYS_DefineRegion(&gCupidSeekRegion,
@@ -2029,7 +1995,6 @@ namespace
 		MSYS_RemoveRegion(&gCupidLangRegion);
 		for (MOUSE_REGION& r : gCupidRingRegion) MSYS_RemoveRegion(&r);
 		MSYS_RemoveRegion(&gCupidSeekRegion);
-		for (MOUSE_REGION& r : gCupidFaceRegion) MSYS_RemoveRegion(&r);
 		MSYS_RemoveRegion(&gCupidPopupXRegion);
 		MSYS_RemoveRegion(&gCupidPopupCtaRegion);
 		gfCupidRegionsUp = false;
@@ -2445,137 +2410,58 @@ namespace
 		}
 	}
 
-	// The flanks: a compact banner up top, and under it the thing every
-	// 1999 page really ran on - a wall of mugshots.
+	// The flanks: two tall skyscraper banners, as the era intended.
 	void RenderSideAds()
 	{
-		// left banner: the Parlour, house green, a rival Kingpin property
+		// left: the Parlour, house green, a rival Kingpin property
 		const INT32 lx = CP_LCOL_X, lc = CP_LCOL_X + CP_COL_W / 2;
-		DropShadow(lx, 44, CP_COL_W, 178);
-		FillCard(lx, 44, CP_COL_W, 178, FROMRGB(24, 82, 50),
+		DropShadow(lx, 32, CP_COL_W, 318);
+		FillCard(lx, 32, CP_COL_W, 318, FROMRGB(24, 82, 50),
 				FROMRGB(16, 56, 34), CP_RGB_BG);
-		PrintCentred(FONT10ARIAL, FONT_GRAY6, lx + CP_COL_W - 12, 48, "AD");
-		PrintCentred(FONT12ARIAL, FONT_MCOLOR_WHITE, lc, 62, "TIRED");
-		PrintCentred(FONT12ARIAL, FONT_MCOLOR_WHITE, lc, 78, "OF");
-		PrintCentred(FONT12ARIAL, FONT_MCOLOR_WHITE, lc, 94, "LOVE?");
+		PrintCentred(FONT10ARIAL, FONT_GRAY6, lx + CP_COL_W - 12, 36, "AD");
+		PrintCentred(FONT12ARIAL, FONT_MCOLOR_WHITE, lc, 64, "TIRED");
+		PrintCentred(FONT12ARIAL, FONT_MCOLOR_WHITE, lc, 82, "OF");
+		PrintCentred(FONT12ARIAL, FONT_MCOLOR_WHITE, lc, 100, "LOVE?");
+		FillRect(lc - 28, 124, 56, 1, FROMRGB(120, 180, 140));
 		for (int i = 0; i < 3; ++i)
 		{
-			FillRounded(lc - 25 + i * 18, 116, 14, 22, CP_RGB_CARD, 2,
+			FillRounded(lc - 27 + i * 19, 140, 15, 24, CP_RGB_CARD, 2,
 					FROMRGB(24, 82, 50));
-			FillRect(lc - 22 + i * 18, 121 + (i % 2) * 6, 8, 6,
+			FillRect(lc - 23 + i * 19, 146 + (i % 2) * 7, 8, 7,
 					i == 1 ? CP_RGB_NOPE : FROMRGB(24, 82, 50));
 		}
-		PrintCentred(FONT10ARIAL, FONT_MCOLOR_WHITE, lc, 148, "SAN MONA");
-		PrintCentred(FONT10ARIAL, FONT_MCOLOR_WHITE, lc, 160, "MAHJONG");
-		FillRounded(lc - 30, 178, 60, 16, FROMRGB(120, 180, 140), 3,
+		PrintCentred(FONT10ARIAL, FONT_MCOLOR_LTGREEN, lc, 182, "TRY");
+		PrintCentred(FONT10ARIAL, FONT_MCOLOR_LTGREEN, lc, 196, "LUCK");
+		FillRect(lc - 28, 218, 56, 1, FROMRGB(120, 180, 140));
+		PrintCentred(FONT10ARIAL, FONT_MCOLOR_WHITE, lc, 234, "SAN MONA");
+		PrintCentred(FONT10ARIAL, FONT_MCOLOR_WHITE, lc, 248, "MAHJONG");
+		PrintCentred(FONT10ARIAL, FONT_MCOLOR_WHITE, lc, 262, "PARLOUR");
+		GelPill(lc - 34, 306, 68, 22, FROMRGB(120, 180, 140),
+				FROMRGB(168, 214, 182), FROMRGB(16, 56, 34),
 				FROMRGB(24, 82, 50));
-		PrintCentred(FONT10ARIALBOLD, FONT_NEARBLACK, lc, 182, "VISIT");
+		PrintCentred(FONT10ARIALBOLD, FONT_NEARBLACK, lc, 312, "VISIT");
 
-		// right banner: the florist, because the funnel has a next step
+		// right: the florist, because the funnel has a next step
 		const INT32 rx = CP_RCOL_X, rc = CP_RCOL_X + CP_COL_W / 2;
-		DropShadow(rx, 44, CP_COL_W, 178);
-		FillCard(rx, 44, CP_COL_W, 178, CP_RGB_PINK_PALE, CP_RGB_PINK,
+		DropShadow(rx, 32, CP_COL_W, 318);
+		FillCard(rx, 32, CP_COL_W, 318, CP_RGB_PINK_PALE, CP_RGB_PINK,
 				CP_RGB_BG);
-		PrintCentred(FONT10ARIAL, FONT_GRAY5, rx + CP_COL_W - 12, 48, "AD");
-		PrintCentred(FONT12ARIAL, FONT_DKRED, rc, 62, "SAY IT");
-		PrintCentred(FONT12ARIAL, FONT_DKRED, rc, 78, "WITH");
-		PrintCentred(FONT12ARIAL, FONT_DKRED, rc, 94, "FLOWERS");
-		DrawHeart(rc - 11, 114, 3, CP_RGB_PINK);
-		FillRect(rc - 2, 134, 3, 24, FROMRGB(88, 138, 74));
-		FillRect(rc - 8, 142, 8, 3, FROMRGB(88, 138, 74));
-		PrintCentred(FONT10ARIAL, FONT_NEARBLACK, rc, 162, "UNITED FLORAL");
-		FillRounded(rc - 30, 178, 60, 16, CP_RGB_PINK, 3, CP_RGB_PINK_PALE);
-		PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, rc, 182, "ORDER");
-
-		// pick the two casts: who is reachable right now, and who the
-		// algorithm is loudest about (the latter honours your search)
-		std::vector<int> online, hot;
-		for (int i = 0; i < int(gCupidRoster.size()); ++i)
-		{
-			const Member& m = gCupidRoster[size_t(i)];
-			if (m.locked || MemberIsDead(m.pid)) continue;
-			if (MemberStatus(m.pid) == CPS_STATUS_ONLINE) online.push_back(i);
-			if (!MemberIsMarried(m.pid) && SeekAllows(m.pid)) hot.push_back(i);
-		}
-		const int day = int(GetWorldDay());
-		if (!online.empty())
-		{
-			std::rotate(online.begin(),
-					online.begin() + (day * 3) % int(online.size()),
-					online.end());
-		}
-		if (PlayerHasProfile())
-		{
-			std::sort(hot.begin(), hot.end(), [](int a, int b)
-			{
-				return MatchWith(gCupidRoster[size_t(a)].pid).percent >
-				       MatchWith(gCupidRoster[size_t(b)].pid).percent;
-			});
-		}
-		else if (!hot.empty())
-		{
-			std::rotate(hot.begin(), hot.begin() + (day * 5) % int(hot.size()),
-					hot.end());
-		}
-
-		// the two face panels: 2x2 mugshots each
-		struct FacePanel { INT32 x; const char* en; const char* de;
-				const std::vector<int>* cast; bool dots; };
-		const FacePanel panels[2] =
-		{
-			{ CP_LCOL_X, "ONLINE NOW", "JETZT ONLINE", &online, true  },
-			{ CP_RCOL_X, "HOT!!",      "HEISS!!",      &hot,    false },
-		};
-		for (int pnl = 0; pnl < 2; ++pnl)
-		{
-			const FacePanel& P = panels[pnl];
-			DropShadow(P.x, 228, CP_COL_W, 122);
-			FillCard(P.x, 228, CP_COL_W, 122, CP_RGB_CARD, CP_RGB_BLUE_DK,
-					CP_RGB_BG);
-			const ST::string head = pnl
-				? ST::string(gfCupidGerman ? P.de : P.en)
-				: ST::format("{} ({})", gfCupidGerman ? P.de : P.en,
-						int(online.size()));
-			PrintCentred(FONT10ARIALBOLD, pnl ? FONT_DKRED : FONT_DKGREEN,
-					P.x + CP_COL_W / 2, 232, head);
-			for (int cell = 0; cell < 4; ++cell)
-			{
-				const int slot = pnl * 4 + cell;
-				const INT32 x = P.x + 6 + (cell % 2) * (CP_FACE_SM_W + 4);
-				const INT32 y = 246 + (cell / 2) * (CP_FACE_SM_H + 6);
-				if (cell >= int(P.cast->size()))
-				{
-					gCupidFacePids[slot] = 0xFF;
-					FillRect(x, y, CP_FACE_SM_W, CP_FACE_SM_H,
-							CP_RGB_CARD_DIM);
-					continue;
-				}
-				const Member& m =
-					gCupidRoster[size_t((*P.cast)[size_t(cell)])];
-				gCupidFacePids[slot] = m.pid;
-				const bool hov = Hover(gCupidFaceRegion[slot]);
-				FillRect(x - 2, y - 2, CP_FACE_SM_W + 4, CP_FACE_SM_H + 4,
-						hov ? CP_RGB_PINK : CP_RGB_INK);
-				SGPVObject* face = Face33For(m.pid);
-				if (face)
-				{
-					BltVideoObject(FRAME_BUFFER, face, 0, CP_X(x), CP_Y(y));
-				}
-				if (P.dots)
-				{
-					// the buddy-list dot: green means reachable
-					FillRect(x + CP_FACE_SM_W - 9, y + CP_FACE_SM_H - 9, 9, 9,
-							CP_RGB_INK);
-					FillRect(x + CP_FACE_SM_W - 8, y + CP_FACE_SM_H - 8, 7, 7,
-							FROMRGB(88, 200, 80));
-				}
-				else
-				{
-					DrawHeart(x + CP_FACE_SM_W - 10, y + CP_FACE_SM_H - 9, 1,
-							CP_RGB_PINK);
-				}
-			}
-		}
+		PrintCentred(FONT10ARIAL, FONT_GRAY5, rx + CP_COL_W - 12, 36, "AD");
+		PrintCentred(FONT12ARIAL, FONT_DKRED, rc, 64, "SAY IT");
+		PrintCentred(FONT12ARIAL, FONT_DKRED, rc, 82, "WITH");
+		PrintCentred(FONT12ARIAL, FONT_DKRED, rc, 100, "FLOWERS");
+		DrawHeart(rc - 11, 128, 3, CP_RGB_PINK);
+		FillRect(rc - 2, 148, 3, 40, FROMRGB(88, 138, 74));
+		FillRect(rc - 9, 160, 8, 3, FROMRGB(88, 138, 74));
+		FillRect(rc + 2, 172, 8, 3, FROMRGB(88, 138, 74));
+		PrintCentred(FONT10ARIAL, FONT_GRAY3, rc, 210, "matched?");
+		PrintCentred(FONT10ARIAL, FONT_GRAY3, rc, 224, "don't just");
+		PrintCentred(FONT10ARIAL, FONT_GRAY3, rc, 238, "sit there.");
+		PrintCentred(FONT10ARIAL, FONT_NEARBLACK, rc, 262, "UNITED");
+		PrintCentred(FONT10ARIAL, FONT_NEARBLACK, rc, 276, "FLORAL SERVICE");
+		GelPill(rc - 34, 306, 68, 22, CP_RGB_PINK, CP_RGB_PINK_LITE,
+				CP_RGB_PINK_DK, CP_RGB_PINK_PALE);
+		PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, rc, 312, "ORDER");
 	}
 
 	void RenderDeck()
@@ -2684,14 +2570,13 @@ namespace
 		DrawHeart(CP_BTN_LIKE_X + 7, CP_BTN_Y + 9, 3,
 				likeLive ? CP_RGB_PINK : CP_RGB_GREY);
 
-		// the allowance, on its own line beneath the verdict
-		const ST::string likes = IsGold() ? T(CPS_LIKES_GOLD)
-			: CanLike()
-				? ST::format(T(CPS_LIKES_LEFT), gCupidPersist.ubLikesLeft)
-				: T(CPS_OUT_OF_LIKES);
+		// the allowance, a small tally under the heart itself
+		const ST::string likes = IsGold() ? "GOLD"
+			: ST::format("x {}", gCupidPersist.ubLikesLeft);
 		PrintCentred(FONT10ARIAL, IsGold() ? FONT_DKYELLOW
 				: CanLike() ? FONT_GRAY4 : FONT_DKRED,
-				251, CP_CARD_Y + CP_CARD_H + 4, likes);
+				CP_BTN_LIKE_X + CP_BTN_SIZE / 2,
+				CP_BTN_Y + CP_BTN_SIZE + 4, likes);
 
 		// the popup: a little window with a big claim and one honest pixel
 		if (gfCupidPopupUp)
@@ -3408,7 +3293,6 @@ void HandleCupid()
 		for (const MOUSE_REGION& r : gCupidActionRegion) acc(r);
 		for (const MOUSE_REGION& r : gCupidMatchRegion)  acc(r);
 		for (const MOUSE_REGION& r : gCupidAnswerRegion) acc(r);
-		for (const MOUSE_REGION& r : gCupidFaceRegion)   acc(r);
 		acc(gCupidPassRegion);
 		acc(gCupidLikeRegion);
 		acc(gCupidPopupXRegion);
