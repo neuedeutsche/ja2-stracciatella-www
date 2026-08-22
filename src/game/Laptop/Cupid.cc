@@ -714,15 +714,31 @@ namespace
 				CP_RGB_SHADOW);
 	}
 
-	// the round sibling: a gel disc for the verdict buttons
+	// a true disc, scanline by scanline - the only honest circle in 16bpp
+	void DrawDisc(INT32 cx, INT32 cy, INT32 r, UINT32 rgb)
+	{
+		for (INT32 dy = -r; dy <= r; ++dy)
+		{
+			const double span = std::sqrt(double(r) * r - double(dy) * dy);
+			const INT32 hw = INT32(span + 0.5);
+			if (hw > 0) FillRect(cx - hw, cy + dy, hw * 2, 1, rgb);
+		}
+	}
+
+	// the gel verdict disc: shadow, ring, face, a lifted dome and a glint
 	void GelCircle(INT32 x, INT32 y, INT32 d, UINT32 base, UINT32 lite,
 				UINT32 ring, UINT32 bg)
 	{
-		FillRounded(x, y, d, d, ring, d / 2, bg);
-		FillRounded(x + 1, y + 1, d - 2, d - 2, base, (d - 2) / 2, ring);
-		FillRounded(x + 3, y + 3, d - 6, (d - 6) / 2, lite, (d - 6) / 4,
-				base);
-		FillRect(x + 10, y + 3, d - 20, 1, CP_RGB_GLOSS);
+		(void)bg;
+		const INT32 r  = d / 2;
+		const INT32 cx = x + r;
+		const INT32 cy = y + r;
+		DrawDisc(cx + 2, cy + 2, r, CP_RGB_SHADOW);
+		DrawDisc(cx, cy, r, ring);
+		DrawDisc(cx, cy, r - 2, base);
+		DrawDisc(cx, cy - 2, r - 5, lite);
+		DrawDisc(cx, cy, r - 5, base);
+		FillRect(cx - r / 2, y + 4, r / 2, 2, CP_RGB_GLOSS);
 	}
 
 	// the aqua gel pill: saturated base, lighter lit top half, a one-pixel
@@ -2653,7 +2669,6 @@ namespace
 
 		// the verdict circles: white gel discs with coloured rings,
 		// warming under the pointer
-		DropShadow(CP_BTN_PASS_X, CP_BTN_Y, CP_BTN_SIZE, CP_BTN_SIZE);
 		GelCircle(CP_BTN_PASS_X, CP_BTN_Y, CP_BTN_SIZE,
 				Hover(gCupidPassRegion) ? FROMRGB(248, 222, 216)
 							: CP_RGB_CARD,
@@ -2661,7 +2676,6 @@ namespace
 		DrawCross(CP_BTN_PASS_X + 10, CP_BTN_Y + 10, 14, 3, CP_RGB_NOPE);
 
 		const bool likeLive = CanLike() && card.kind != CARD_END;
-		DropShadow(CP_BTN_LIKE_X, CP_BTN_Y, CP_BTN_SIZE, CP_BTN_SIZE);
 		GelCircle(CP_BTN_LIKE_X, CP_BTN_Y, CP_BTN_SIZE,
 				likeLive && Hover(gCupidLikeRegion) ? CP_RGB_PINK_PALE
 								    : CP_RGB_CARD,
