@@ -47,21 +47,51 @@ Each site's page documents it in full. **Those pages contain spoilers** — how
 you find it, who you meet, what it costs. The sites are written to introduce
 themselves in game, so play first if you would rather be surprised.
 
-## Playing
+## Installing on macOS
 
-You need the original Jagged Alliance 2 game data (any retail/GOG copy). On macOS:
+You need the original Jagged Alliance 2 game data — any retail or
+[GOG](https://www.gog.com/game/jagged_alliance_2) copy works. The build
+itself needs the Xcode command line tools and [Homebrew](https://brew.sh).
+
+**1. Prerequisites**
 
 ```sh
+xcode-select --install        # once, if you have never built anything
 brew install cmake googletest fltk
+```
+
+**2. Clone and build**
+
+```sh
+git clone https://github.com/neuedeutsche/ja2-stracciatella-www.git
+cd ja2-stracciatella-www
 mkdir _bin && cd _bin
 cmake -DCMAKE_TOOLCHAIN_FILE=../cmake/toolchain-macos.cmake -DBUILD_LAUNCHER=OFF ..
 make -j$(sysctl -n hw.ncpu)
-./ja2 -unittests
+```
+
+**3. Point it at your game data**
+
+Run `./ja2` once — it exits but writes `~/.ja2/ja2.json`. Open that file
+and set `game_dir` to the folder holding your JA2 installation's `Data`
+directory, e.g.
+
+```json
+"game_dir": "/Users/you/Games/JA2"
+```
+
+If you already run vanilla JA2 Stracciatella, nothing to do — this fork
+reads the same config and the same saves.
+
+**4. Play**
+
+```sh
+./ja2 -unittests   # optional: 213 tests, all green
 ./ja2
 ```
 
-Point `~/.ja2/ja2.json`'s `game_dir` at your JA2 installation. For other
-platforms, follow upstream's [COMPILATION.md](COMPILATION.md).
+For other platforms, follow upstream's [COMPILATION.md](COMPILATION.md) —
+only step 2's toolchain line differs.
 
 Then open the laptop and read your mail. The sites find you.
 
