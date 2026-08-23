@@ -2750,8 +2750,8 @@ namespace
 		{
 			const INT32 hx = CH_PANEL_X + 14 + i * 29;
 			MSYS_DefineRegion(&gChessHistRegion[i],
-			                  UINT16(CH_X(hx)), UINT16(CH_Y(CH_FOOT_Y + 10)),
-			                  UINT16(CH_X(hx + 26)), UINT16(CH_Y(CH_FOOT_Y + 28)),
+			                  UINT16(CH_X(hx)), UINT16(CH_Y(CH_HINT_Y)),
+			                  UINT16(CH_X(hx + 26)), UINT16(CH_Y(CH_HINT_Y + CH_HINT_H)),
 			                  MSYS_PRIORITY_HIGH, CURSOR_WWW, MSYS_NO_CALLBACK,
 			                  ChessHistCallback);
 			MSYS_SetRegionUserData(&gChessHistRegion[i], 0, i);
@@ -3275,28 +3275,28 @@ namespace
 	// Arrows grey out at the live end and at the start of the game.
 	void ChessRenderScrubber(const std::vector<ChessGame>& hist, int view)
 	{
-		// four buttons spanning the strip, centred in its base band
-		const INT32 y = CH_FOOT_Y + 10;
+		// four buttons in the HINT button's own cut: its height, its row
+		const INT32 y = CH_HINT_Y;
 		const int last = int(hist.size()) - 1;
 		const int cur = (view < 0 || view > last) ? last : view;
 		for (int i = 0; i < 4; ++i)
 		{
 			const INT32 bx = CH_PANEL_X + 14 + i * 29;
 			const bool en = (i < 2) ? cur > 0 : cur < last;
-			ChessDrawGreyButton(bx, y, 26, 18, CH_RGB_PANEL_SUNK, en);
+			ChessDrawGreyButton(bx, y, 26, CH_HINT_H, CH_RGB_PANEL_SUNK, en);
 			const UINT32 col = en ? FROMRGB(190, 185, 178) : FROMRGB(96, 90, 83);
-			const INT32 cy = y + 8;
+			const INT32 cy = y + 12;
 			switch (i)
 			{
 				case 0:
-					FillRect(bx + 7, y + 4, 2, 9, col);
+					FillRect(bx + 7, y + 8, 2, 10, col);
 					ChessDrawChevron(bx + 16, cy, true, col);
 					break;
 				case 1: ChessDrawChevron(bx + 14, cy, true, col); break;
 				case 2: ChessDrawChevron(bx + 13, cy, false, col); break;
 				default:
 					ChessDrawChevron(bx + 10, cy, false, col);
-					FillRect(bx + 17, y + 4, 2, 9, col);
+					FillRect(bx + 17, y + 8, 2, 10, col);
 					break;
 			}
 		}
