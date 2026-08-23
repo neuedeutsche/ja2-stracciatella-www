@@ -4489,10 +4489,10 @@ namespace
 		INT32 hx = px + 46;
 		if (seat.title[0])
 		{
-			const INT32 tw = StringPixLength(seat.title, TINYFONT1) + 6;
+			const INT32 tw = StringPixLength(seat.title, TINYFONT1) + 4;
 			FillRounded(hx, top + 13, tw, 10, FROMRGB(146, 44, 44), 2,
 			            CH_RGB_PANEL);
-			PrintAt(TINYFONT1, FONT_MCOLOR_WHITE, hx + 3, top + 15, seat.title);
+			PrintAt(TINYFONT1, FONT_MCOLOR_WHITE, hx + 2, top + 14, seat.title);
 			hx += tw + 4;
 		}
 		PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, hx, top + 12, seat.handle);
@@ -4681,10 +4681,10 @@ namespace
 			INT32 tx = cOpp + 18;
 			if (r.title)
 			{
-				const INT32 tw = StringPixLength(r.title, TINYFONT1) + 6;
+				const INT32 tw = StringPixLength(r.title, TINYFONT1) + 4;
 				FillRounded(tx, y + 2, tw, 10, FROMRGB(146, 44, 44), 2,
 				            i % 2 == 0 ? CH_RGB_ROW_ALT : CH_RGB_PANEL);
-				PrintAt(TINYFONT1, FONT_MCOLOR_WHITE, tx + 3, y + 4, r.title);
+				PrintAt(TINYFONT1, FONT_MCOLOR_WHITE, tx + 2, y + 3, r.title);
 				tx += tw + 4;
 			}
 			PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, tx, y + 2, r.opp);
@@ -4899,10 +4899,10 @@ namespace
 			if (opp.title[0])
 			{
 				// the crimson title chip, chess.com fashion
-				const INT32 tw = StringPixLength(opp.title, TINYFONT1) + 6;
+				const INT32 tw = StringPixLength(opp.title, TINYFONT1) + 4;
 				FillRounded(tx, y + 2, tw, 10, FROMRGB(146, 44, 44), 2,
 				            i % 2 == 0 ? CH_RGB_ROW_ALT : CH_RGB_PANEL);
-				PrintAt(TINYFONT1, FONT_MCOLOR_WHITE, tx + 3, y + 4,
+				PrintAt(TINYFONT1, FONT_MCOLOR_WHITE, tx + 2, y + 3,
 				        opp.title);
 				tx += tw + 4;
 			}
