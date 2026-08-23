@@ -4472,8 +4472,10 @@ namespace
 		        px + 2 + StringPixLength("PROFILE", FONT10ARIALBOLD) + 10, 10,
 		        "every member, on ze record.");
 		const INT32 top = CH_GB_TOP;
-		const INT32 cardH = CH_BANNER_Y - 6 - top;
-		FillRounded(px, top, pw, cardH, CH_RGB_PANEL, CH_PANEL_RADIUS,
+		const INT32 pageBot = CH_BANNER_Y - 6;
+		// the page is a stack of separate cards on the chrome: header,
+		// the stat boxes, then the ledger - each its own container
+		FillRounded(px, top, pw, 72, CH_RGB_PANEL, CH_PANEL_RADIUS,
 		            CH_RGB_CHROME);
 
 		if (gProfFace)
@@ -4514,10 +4516,10 @@ namespace
 			const ST::string rate = ST::format("{}", seat.rating);
 			PrintAt(FONT14ARIAL, FONT_MCOLOR_WHITE,
 			        px + pw - 14 - StringPixLength(rate, FONT14ARIAL),
-			        top + 8, rate);
+			        top + 10, rate);
 			PrintAt(TINYFONT1, FONT_GRAY4,
 			        px + pw - 14 - StringPixLength("rating", TINYFONT1),
-			        top + 26, "rating");
+			        top + 24, "rating");
 		}
 
 		// the challenge sits right under the name - or the postal notice
@@ -4536,17 +4538,17 @@ namespace
 			        "accepts challenges by post only. write ze mail.");
 		}
 
-		// the stat band: their site totals (invented, but consistently),
+		// the stat cards: their site totals (invented, but consistently),
 		// and the head-to-head that is entirely real
-		const INT32 bandY = top + 74;
-		const INT32 boxW = (pw - 24 - 16) / 3;
+		const INT32 bandY = top + 80;
+		const INT32 boxW = (pw - 16) / 3;
 		const INT32 boxH = 40;
 		static const char* const caps[3] = { "RECORD", "VS YOU", "STREAK" };
 		for (int b = 0; b < 3; ++b)
 		{
-			const INT32 bx = px + 12 + b * (boxW + 8);
-			FillRounded(bx, bandY, boxW, boxH, CH_RGB_PANEL_SUNK, 4,
-			            CH_RGB_PANEL);
+			const INT32 bx = px + b * (boxW + 8);
+			FillRounded(bx, bandY, boxW, boxH, CH_RGB_PANEL, 6,
+			            CH_RGB_CHROME);
 			PrintAt(TINYFONT1, FONT_GRAY4, bx + 8, bandY + 5, caps[b]);
 		}
 		{
@@ -4554,7 +4556,7 @@ namespace
 			const int wpct = std::clamp(32 + (seat.rating - 1500) / 18, 22, 72);
 			const int w = games * wpct / 100;
 			const int d = games * 11 / 100;
-			PrintAt(FONT14ARIAL, FONT_MCOLOR_WHITE, px + 20, bandY + 17,
+			PrintAt(FONT14ARIAL, FONT_MCOLOR_WHITE, px + 8, bandY + 17,
 			        ST::format("{}-{}-{}", w, games - w - d, d));
 		}
 		{
@@ -4567,7 +4569,7 @@ namespace
 				const int r = gProfHist[i].ubResult & 3;
 				if (r == 2) ++vw; else if (r == 0) ++vl; else ++vd;
 			}
-			const INT32 bx = px + 12 + boxW + 8;
+			const INT32 bx = px + boxW + 8;
 			if (vw + vl + vd == 0)
 			{
 				PrintAt(FONT10ARIAL, FONT_GRAY4, bx + 8, bandY + 20,
@@ -4579,18 +4581,20 @@ namespace
 				        ST::format("{}-{}-{}", vw, vl, vd));
 			}
 		}
-		PrintAt(FONT14ARIAL, FONT_MCOLOR_WHITE, px + 12 + 2 * (boxW + 8) + 8,
+		PrintAt(FONT14ARIAL, FONT_MCOLOR_WHITE, px + 2 * (boxW + 8) + 8,
 		        bandY + 17,
 		        ST::format("{}", 3 + (int(seat.pid) * 5) % 19));
 
 		// recent games: your real games against them, woven into a feed of
 		// invented ones against the other regulars - reseeded daily, so the
 		// ladder looks alive whether or not you ever sit down
-		INT32 y = bandY + boxH + 12;
+		const INT32 histTop = bandY + boxH + 8;
+		FillRounded(px, histTop, pw, pageBot - histTop, CH_RGB_PANEL,
+		            CH_PANEL_RADIUS, CH_RGB_CHROME);
+		INT32 y = histTop + 8;
 		PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, px + 12, y,
 		        "RECENT GAMES");
-		FillRect(px + 12, y + 13, pw - 24, 1, CH_RGB_ROW_SEP);
-		y += 18;
+		y += 16;
 		struct ProfRow
 		{
 			ST::string opp;    // handle, with rating for the regulars
@@ -4661,22 +4665,23 @@ namespace
 			}
 		}
 		const INT32 cOpp = px + 12;
-		const INT32 cRes = px + 158;
-		const INT32 cMov = px + 196;
+		const INT32 axRes = px + 172;
+		const INT32 axMov = px + 214;
 		const INT32 cDay = px + pw - 12;
 		PrintAt(TINYFONT1, FONT_GRAY4, cOpp, y, "OPPONENT");
-		PrintAt(TINYFONT1, FONT_GRAY4, cRes, y, "RES");
-		PrintAt(TINYFONT1, FONT_GRAY4, cMov, y, "MOV");
+		PrintCentred(TINYFONT1, FONT_GRAY4, axRes, y, "RES");
+		PrintCentred(TINYFONT1, FONT_GRAY4, axMov, y, "MOV");
 		PrintAt(TINYFONT1, FONT_GRAY4,
 		        cDay - StringPixLength("DATE", TINYFONT1), y, "DATE");
 		y += 14;
 		for (int i = 0; i < n; ++i)
 		{
-			if (y > top + cardH - 20) break;
+			if (y > pageBot - 18) break;
 			const ProfRow& r = rows[i];
 			if (i % 2 == 0)
 			{
-				FillRect(px + 8, y - 3, pw - 16, 19, CH_RGB_ROW_ALT);
+				// zebra flush with the card, move-list fashion
+				FillRect(px, y - 3, pw, 20, CH_RGB_ROW_ALT);
 			}
 			// the chat-line dress: a small face leads the row
 			SGPVSurface* chip = r.seatIdx == -1 ? nullptr
@@ -4709,15 +4714,15 @@ namespace
 			const UINT8 rc = r.res == 2 ? FONT_MCOLOR_LTGREEN
 			               : r.res == 0 ? FONT_MCOLOR_LTRED : FONT_GRAY2;
 			const char* rs = r.res == 2 ? "1-0" : r.res == 0 ? "0-1" : "1/2";
-			PrintAt(FONT10ARIALBOLD, rc, cRes, y + 2, rs);
-			PrintAt(FONT10ARIAL, FONT_GRAY2, cMov, y + 2,
-			        ST::format("{}", r.moves));
+			PrintCentred(FONT10ARIALBOLD, rc, axRes, y + 2, rs);
+			PrintCentred(FONT10ARIAL, FONT_GRAY2, axMov, y + 2,
+			             ST::format("{}", r.moves));
 			PrintAt(FONT10ARIAL, FONT_GRAY2,
 			        cDay - StringPixLength(r.date, FONT10ARIAL), y + 2, r.date);
 			MOUSE_REGION& rr = gChessProfRowRegion[i];
 			rr.RegionTopLeftX = INT16(CH_X(cOpp));
 			rr.RegionTopLeftY = INT16(CH_Y(y - 3));
-			rr.RegionBottomRightX = INT16(CH_X(cRes - 8));
+			rr.RegionBottomRightX = INT16(CH_X(axRes - 24));
 			rr.RegionBottomRightY = INT16(CH_Y(y + 16));
 			giProfRowTarget[i] = r.seatIdx;
 			y += 20;
@@ -4748,8 +4753,8 @@ namespace
 		        "ze server remembers every game. apologies.");
 
 		const INT32 top = CH_GB_TOP;
-		const INT32 cardH = CH_BANNER_Y - 6 - top;
-		FillRounded(px, top, pw, cardH, CH_RGB_PANEL, CH_PANEL_RADIUS,
+		const INT32 pageBot = CH_BANNER_Y - 6;
+		FillRounded(px, top, pw, 72, CH_RGB_PANEL, CH_PANEL_RADIUS,
 		            CH_RGB_CHROME);
 
 		// the header: who you are, and the number the site holds over you
@@ -4778,57 +4783,15 @@ namespace
 				             : ST::format("{}", gusProfRating);
 			PrintAt(FONT14ARIAL, FONT_MCOLOR_WHITE,
 			        px + pw - 14 - StringPixLength(rate, FONT14ARIAL),
-			        top + 8, rate);
+			        top + 10, rate);
 			const char* lbl = gusProfRating == 0 ? "play to earn one"
 			                : games < 10 ? "rating (provisional)" : "rating";
 			PrintAt(TINYFONT1, FONT_GRAY4,
-			        px + pw - 14 - StringPixLength(lbl, TINYFONT1), top + 26,
+			        px + pw - 14 - StringPixLength(lbl, TINYFONT1), top + 24,
 			        lbl);
 		}
 
-		// the stat band: record, form, the puzzle habit
-		const INT32 bandY = top + 44;
-		const INT32 boxW = (pw - 24 - 16) / 3;
-		const INT32 boxH = 40;
-		static const char* const caps[3] = { "RECORD", "FORM", "STREAK" };
-		for (int b = 0; b < 3; ++b)
-		{
-			const INT32 bx = px + 12 + b * (boxW + 8);
-			FillRounded(bx, bandY, boxW, boxH, CH_RGB_PANEL_SUNK, 4,
-			            CH_RGB_PANEL);
-			PrintAt(TINYFONT1, FONT_GRAY4, bx + 8, bandY + 5, caps[b]);
-		}
-		PrintAt(FONT14ARIAL, FONT_MCOLOR_WHITE, px + 20, bandY + 17,
-		        ST::format("{}-{}-{}", gusProfWins, gusProfLosses,
-		                   gusProfDraws));
-		{
-			// the form chips: one square per remembered game, newest left
-			const INT32 fx0 = px + 12 + boxW + 8 + 8;
-			for (int i = 0; i < std::min<int>(gubProfCount, 5); ++i)
-			{
-				const int r = gProfHist[i].ubResult & 3;
-				const UINT32 c = r == 2 ? CH_RGB_CTA
-				               : r == 1 ? FROMRGB(104, 98, 91)
-				                        : CH_RGB_CHK_DARK;
-				FillRounded(fx0 + i * 12, bandY + 19, 9, 9, c, 3,
-				            CH_RGB_PANEL_SUNK);
-			}
-			if (gubProfCount == 0)
-			{
-				PrintAt(FONT10ARIAL, FONT_GRAY4, fx0, bandY + 19, "-");
-			}
-		}
-		{
-			const INT32 sx = px + 12 + 2 * (boxW + 8) + 8;
-			const ST::string sv = ST::format("{}", gChessDay.streak);
-			PrintAt(FONT14ARIAL, FONT_MCOLOR_WHITE, sx, bandY + 17, sv);
-			PrintAt(FONT10ARIAL, FONT_GRAY4,
-			        sx + StringPixLength(sv, FONT14ARIAL) + 8, bandY + 21,
-			        ST::format("best {}", gChessDay.bestStreak));
-		}
-
-		// the site reads your form back to you, whether you asked or not
-		INT32 y = bandY + boxH + 8;
+		// the site reads your form back to you, inside the header card
 		if (gubProfCount > 0)
 		{
 			const int kind = gProfHist[0].ubResult & 3;
@@ -4857,37 +4820,79 @@ namespace
 			{
 				say = "form: inconclusive. ze data is thin.";
 			}
-			PrintAt(FONT10ARIAL, FONT_GRAY2, px + 12, y, say);
-			y += 16;
+			PrintAt(FONT10ARIAL, FONT_GRAY2, px + 12, top + 48, say);
 		}
 
+		// the stat cards: record, form, the puzzle habit
+		const INT32 bandY = top + 80;
+		const INT32 boxW = (pw - 16) / 3;
+		const INT32 boxH = 40;
+		static const char* const caps[3] = { "RECORD", "FORM", "STREAK" };
+		for (int b = 0; b < 3; ++b)
+		{
+			const INT32 bx = px + b * (boxW + 8);
+			FillRounded(bx, bandY, boxW, boxH, CH_RGB_PANEL, 6,
+			            CH_RGB_CHROME);
+			PrintAt(TINYFONT1, FONT_GRAY4, bx + 8, bandY + 5, caps[b]);
+		}
+		PrintAt(FONT14ARIAL, FONT_MCOLOR_WHITE, px + 8, bandY + 17,
+		        ST::format("{}-{}-{}", gusProfWins, gusProfLosses,
+		                   gusProfDraws));
+		{
+			// the form chips: one square per remembered game, newest left
+			const INT32 fx0 = px + boxW + 8 + 8;
+			for (int i = 0; i < std::min<int>(gubProfCount, 5); ++i)
+			{
+				const int r = gProfHist[i].ubResult & 3;
+				const UINT32 c = r == 2 ? CH_RGB_CTA
+				               : r == 1 ? FROMRGB(104, 98, 91)
+				                        : CH_RGB_CHK_DARK;
+				FillRounded(fx0 + i * 12, bandY + 19, 9, 9, c, 3,
+				            CH_RGB_PANEL);
+			}
+			if (gubProfCount == 0)
+			{
+				PrintAt(FONT10ARIAL, FONT_GRAY4, fx0, bandY + 19, "-");
+			}
+		}
+		{
+			const INT32 sx = px + 2 * (boxW + 8) + 8;
+			const ST::string sv = ST::format("{}", gChessDay.streak);
+			PrintAt(FONT14ARIAL, FONT_MCOLOR_WHITE, sx, bandY + 17, sv);
+			PrintAt(FONT10ARIAL, FONT_GRAY4,
+			        sx + StringPixLength(sv, FONT14ARIAL) + 8, bandY + 21,
+			        ST::format("best {}", gChessDay.bestStreak));
+		}
+
+		const INT32 histTop = bandY + boxH + 8;
+		FillRounded(px, histTop, pw, pageBot - histTop, CH_RGB_PANEL,
+		            CH_PANEL_RADIUS, CH_RGB_CHROME);
+		INT32 y = histTop + 8;
 		PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, px + 12, y,
 		        "GAME HISTORY");
-		FillRect(px + 12, y + 13, pw - 24, 1, CH_RGB_ROW_SEP);
-		y += 18;
+		y += 16;
 		if (gubProfCount == 0)
 		{
-			PrintCentred(FONT10ARIAL, FONT_GRAY4, px + pw / 2, y + 16,
+			PrintCentred(FONT10ARIAL, FONT_GRAY4, px + pw / 2, y + 20,
 			             "no games on record. ze board at PLAY is patient.");
 			return;
 		}
 		const INT32 cOpp = px + 12;
-		const INT32 cRes = px + 168;
-		const INT32 cMov = px + 208;
+		const INT32 axRes = px + 172;
+		const INT32 axMov = px + 214;
 		const INT32 cDay = px + pw - 12;
 		PrintAt(TINYFONT1, FONT_GRAY4, cOpp, y, "OPPONENT");
-		PrintAt(TINYFONT1, FONT_GRAY4, cRes, y, "RES");
-		PrintAt(TINYFONT1, FONT_GRAY4, cMov, y, "MOV");
+		PrintCentred(TINYFONT1, FONT_GRAY4, axRes, y, "RES");
+		PrintCentred(TINYFONT1, FONT_GRAY4, axMov, y, "MOV");
 		PrintAt(TINYFONT1, FONT_GRAY4,
 		        cDay - StringPixLength("DAY", TINYFONT1), y, "DAY");
-		y += 12;
-		const int maxRows = std::max<INT32>(0, (top + cardH - 8 - y) / 20);
+		y += 14;
+		const int maxRows = std::max<INT32>(0, (pageBot - 8 - y) / 20);
 		const int rows = std::min<int>(gubProfCount, maxRows);
 		for (int i = 0; i < rows; ++i)
 		{
 			const ChessGameRec& r = gProfHist[i];
-			if (i % 2 == 0) FillRect(px + 8, y - 3, pw - 16, 19,
-			                         CH_RGB_ROW_ALT);
+			if (i % 2 == 0) FillRect(px, y - 3, pw, 20, CH_RGB_ROW_ALT);
 			const int seatIdx = r.ubSeat == 0xFE ? -2 : int(r.ubSeat);
 			const ChessSeat& opp = seatIdx == -2 ? CHESS_SEAT_ENRICO
 			                                     : CHESS_SEATS[seatIdx];
@@ -4914,22 +4919,22 @@ namespace
 			const UINT8 rc = res == 2 ? FONT_MCOLOR_LTGREEN
 			               : res == 0 ? FONT_MCOLOR_LTRED : FONT_GRAY2;
 			const char* rs = res == 2 ? "1-0" : res == 0 ? "0-1" : "1/2";
-			PrintAt(FONT10ARIALBOLD, rc, cRes, y + 2, rs);
+			PrintCentred(FONT10ARIALBOLD, rc, axRes, y + 2, rs);
 			if (r.ubResult & 4)
 			{
 				PrintAt(TINYFONT1, FONT_GRAY4,
-				        cRes + StringPixLength(rs, FONT10ARIALBOLD) + 4,
+				        axRes + StringPixLength(rs, FONT10ARIALBOLD) / 2 + 3,
 				        y + 5, "res.");
 			}
-			PrintAt(FONT10ARIAL, FONT_GRAY2, cMov, y + 2,
-			        ST::format("{}", r.ubMoves));
+			PrintCentred(FONT10ARIAL, FONT_GRAY2, axMov, y + 2,
+			             ST::format("{}", r.ubMoves));
 			const ST::string dd = ST::format("day {}", r.usDay);
 			PrintAt(FONT10ARIAL, FONT_GRAY2,
 			        cDay - StringPixLength(dd, FONT10ARIAL), y + 2, dd);
 			MOUSE_REGION& rr = gChessProfRowRegion[i];
 			rr.RegionTopLeftX = INT16(CH_X(cOpp));
 			rr.RegionTopLeftY = INT16(CH_Y(y - 3));
-			rr.RegionBottomRightX = INT16(CH_X(cRes - 8));
+			rr.RegionBottomRightX = INT16(CH_X(axRes - 24));
 			rr.RegionBottomRightY = INT16(CH_Y(y + 16));
 			giProfRowTarget[i] = seatIdx;
 			y += 20;
