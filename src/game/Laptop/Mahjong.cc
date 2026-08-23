@@ -191,7 +191,7 @@ static SGPVSurface* guiMJFaceSurface;
 static MOUSE_REGION gMJHandRegion[MJ_NUM_HAND_SLOTS];
 static GUIButtonRef guiMJNewGameBtn;
 static GUIButtonRef guiMJMahjongBtn;
-static GUIButtonRef guiMJVoidBtn[3];
+static MOUSE_REGION gMJVoidRegion[3]; // the drawn void-pick buttons
 static GUIButtonRef guiMJPassBtn;
 static GUIButtonRef guiMJPongBtn;
 static GUIButtonRef guiMJKongBtn;
@@ -208,6 +208,7 @@ static int giMJOverlayKind = 0; // 1 = house rules, 2 = guestbook
 static MOUSE_REGION gMJChatUpRegion;
 static MOUSE_REGION gMJChatDownRegion;
 static MOUSE_REGION gMJSponsorRegion;
+static MOUSE_REGION gMJModalCTARegion; // the drawn gold button on the verdict card
 static BOOLEAN gfMJSaidWallLow = FALSE;
 // per-hand cooldowns for contextual table talk
 static BOOLEAN gfMJSaidTenpai[4];
@@ -1535,10 +1536,7 @@ static void MahjongUpdateButtons()
 		if (guiMJKongBtn)    HideButton(guiMJKongBtn);
 		if (guiMJLeaveBtn)   HideButton(guiMJLeaveBtn);
 		if (guiMJReportBtn)  HideButton(guiMJReportBtn);
-		for (int sIdx = 0; sIdx < 3; ++sIdx)
-		{
-			if (guiMJVoidBtn[sIdx]) HideButton(guiMJVoidBtn[sIdx]);
-		}
+		for (MOUSE_REGION& r : gMJVoidRegion) r.Disable();
 		return;
 	}
 	if (guiMJState == MJUI_LOBBY || guiMJState == MJUI_LADDER)
@@ -1550,10 +1548,7 @@ static void MahjongUpdateButtons()
 		if (guiMJKongBtn)    HideButton(guiMJKongBtn);
 		if (guiMJLeaveBtn)   HideButton(guiMJLeaveBtn);
 		for (MOUSE_REGION& r : gMJIconRegion) r.Disable();
-		for (int sIdx = 0; sIdx < 3; ++sIdx)
-		{
-			if (guiMJVoidBtn[sIdx]) HideButton(guiMJVoidBtn[sIdx]);
-		}
+		for (MOUSE_REGION& r : gMJVoidRegion) r.Disable();
 		if (guiMJReportBtn)
 		{
 			if (guiMJState == MJUI_LADDER) ShowButton(guiMJReportBtn);
@@ -1568,10 +1563,7 @@ static void MahjongUpdateButtons()
 		if (guiMJPassBtn)    HideButton(guiMJPassBtn);
 		for (MOUSE_REGION& r : gMJIconRegion) r.Disable();
 
-		for (int s = 0; s < 3; ++s)
-		{
-			if (guiMJVoidBtn[s]) HideButton(guiMJVoidBtn[s]);
-		}
+		for (MOUSE_REGION& r : gMJVoidRegion) r.Disable();
 		return;
 	}
 
@@ -1604,14 +1596,19 @@ static void MahjongUpdateButtons()
 			MahjongPlaceNewGameButton("Deal Me In", MJ_X(201), MJ_Y(227), 100);
 			break;
 		case MJUI_HAND_END:
-			MahjongPlaceNewGameButton("Next Hand", MJ_X(331), MJ_Y(258), 100);
-			break;
 		case MJUI_MATCH_END:
-			MahjongPlaceNewGameButton("New Match", MJ_X(331), MJ_Y(258), 100);
+			// the verdict card draws its own gold CTA; the grey stock
+			// button stays out of it
+			if (guiMJNewGameBtn) HideButton(guiMJNewGameBtn);
+			gMJModalCTARegion.Enable();
 			break;
 		default:
 			if (guiMJNewGameBtn) HideButton(guiMJNewGameBtn);
 			break;
+	}
+	if (guiMJState != MJUI_HAND_END && guiMJState != MJUI_MATCH_END)
+	{
+		gMJModalCTARegion.Disable();
 	}
 
 	if (guiMJPassBtn)
@@ -1628,9 +1625,8 @@ static void MahjongUpdateButtons()
 	}
 	for (int s = 0; s < 3; ++s)
 	{
-		if (!guiMJVoidBtn[s]) continue;
-		if (guiMJState == MJUI_CHOOSE_VOID) ShowButton(guiMJVoidBtn[s]);
-		else                                HideButton(guiMJVoidBtn[s]);
+		if (guiMJState == MJUI_CHOOSE_VOID) gMJVoidRegion[s].Enable();
+		else                                gMJVoidRegion[s].Disable();
 	}
 	if (guiMJLeaveBtn)
 	{
@@ -2466,10 +2462,8 @@ static void BtnMahjongLeaveCallback(GUI_BUTTON* btn, UINT32 reason)
 }
 
 
-static void BtnMahjongNewGameCallback(GUI_BUTTON* btn, UINT32 reason)
+static void MahjongNewGameAction()
 {
-	if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
-
 	if (guiMJState == MJUI_HAND_END)
 	{
 		gGame->NewHand();
@@ -2479,6 +2473,20 @@ static void BtnMahjongNewGameCallback(GUI_BUTTON* btn, UINT32 reason)
 	{
 		MahjongStartMatch();
 	}
+}
+
+static void BtnMahjongNewGameCallback(GUI_BUTTON* btn, UINT32 reason)
+{
+	if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
+	MahjongNewGameAction();
+}
+
+static void MahjongModalCTACallback(MOUSE_REGION* region, UINT32 reason)
+{
+	if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
+	if (guiMJState != MJUI_HAND_END && guiMJState != MJUI_MATCH_END) return;
+	MahjongPlay(MJ_SND_SELECT, BTNVOLUME);
+	MahjongNewGameAction();
 }
 
 
@@ -2510,12 +2518,22 @@ static void BtnMahjongMahjongCallback(GUI_BUTTON* btn, UINT32 reason)
 }
 
 
-static void BtnMahjongVoidCallback(GUI_BUTTON* btn, UINT32 reason)
+// hover repaints the page so the drawn buttons can actually react
+static void MahjongHoverRedrawCallback(MOUSE_REGION* region, UINT32 reason)
+{
+	if (reason & (MSYS_CALLBACK_REASON_GAIN_MOUSE | MSYS_CALLBACK_REASON_LOST_MOUSE))
+	{
+		MahjongRedraw();
+	}
+}
+
+static void MahjongVoidPickCallback(MOUSE_REGION* region, UINT32 reason)
 {
 	if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
 	if (guiMJState != MJUI_CHOOSE_VOID) return;
 
-	gGame->SetHumanVoidSuit(btn->GetUserData());
+	MahjongPlay(MJ_SND_SELECT, BTNVOLUME);
+	gGame->SetHumanVoidSuit(static_cast<int>(MSYS_GetRegionUserData(region, 0)));
 	MahjongSystemSay(ST::format("Voids declared - You: {} | Enrico: {} | Deidranna: {} | Elliot: {}",
 			gMJSuitName[gGame->player(0).voidSuit], gMJSuitName[gGame->player(1).voidSuit],
 			gMJSuitName[gGame->player(2).voidSuit], gMJSuitName[gGame->player(3).voidSuit]));
@@ -3594,12 +3612,12 @@ void EnterMahjong()
 
 	for (int s = 0; s < 3; ++s)
 	{
-		guiMJVoidBtn[s] = CreateTextButton(ST::format("Void {}", gMJSuitName[s]), FONT12ARIAL,
-					FONT_MCOLOR_WHITE, FONT_MCOLOR_BLACK,
-					MJ_X(102 + s * 104), MJ_Y(MJ_SETUP_BTN_Y), 98, 22, MSYS_PRIORITY_HIGH, BtnMahjongVoidCallback);
-		guiMJVoidBtn[s]->SetUserData(s);
-		guiMJVoidBtn[s]->SetCursor(CURSOR_WWW);
-		SpecifyButtonSoundScheme(guiMJVoidBtn[s], BUTTON_SOUND_SCHEME_COMPUTERBEEP2);
+		MSYS_DefineRegion(&gMJVoidRegion[s],
+				static_cast<UINT16>(MJ_X(102 + s * 104)), static_cast<UINT16>(MJ_Y(MJ_SETUP_BTN_Y)),
+				static_cast<UINT16>(MJ_X(102 + s * 104 + 98)), static_cast<UINT16>(MJ_Y(MJ_SETUP_BTN_Y + 22)),
+				MSYS_PRIORITY_HIGH, CURSOR_WWW, MahjongHoverRedrawCallback, MahjongVoidPickCallback);
+		MSYS_SetRegionUserData(&gMJVoidRegion[s], 0, s);
+		gMJVoidRegion[s].Disable();
 	}
 
 	guiMJPassBtn = CreateTextButton("Pass 3 Tiles", FONT12ARIAL, FONT_MCOLOR_WHITE, FONT_MCOLOR_BLACK,
@@ -3628,6 +3646,11 @@ void EnterMahjong()
 				static_cast<UINT16>(MJ_X(447)), static_cast<UINT16>(MJ_Y(330)),
 				MSYS_PRIORITY_HIGH + 3, CURSOR_WWW, MSYS_NO_CALLBACK, MahjongSponsorCallback);
 	gMJSponsorRegion.Disable();
+
+	MSYS_DefineRegion(&gMJModalCTARegion, static_cast<UINT16>(MJ_X(149)), static_cast<UINT16>(MJ_Y(272)),
+				static_cast<UINT16>(MJ_X(353)), static_cast<UINT16>(MJ_Y(302)),
+				MSYS_PRIORITY_HIGH + 3, CURSOR_WWW, MahjongHoverRedrawCallback, MahjongModalCTACallback);
+	gMJModalCTARegion.Disable();
 
 	static const INT16 sLobbyBox[4][2] = { { 61, 124 }, { 255, 124 }, { 61, 210 }, { 255, 210 } };
 	for (int i = 0; i < 4; ++i)
@@ -3712,6 +3735,7 @@ void ExitMahjong()
 	FOR_EACH(MOUSE_REGION, i, gMJHandRegion) MSYS_RemoveRegion(&*i);
 	MSYS_RemoveRegion(&gMJRulesDismissRegion);
 	MSYS_RemoveRegion(&gMJSponsorRegion);
+	MSYS_RemoveRegion(&gMJModalCTARegion);
 	MSYS_RemoveRegion(&gMJChatRegion);
 	for (MOUSE_REGION& r : gMJLobbyRegion) MSYS_RemoveRegion(&r);
 	MSYS_RemoveRegion(&gMJLadderBackRegion);
@@ -3725,7 +3749,7 @@ void ExitMahjong()
 	for (MOUSE_REGION& r : gMJIconRegion) MSYS_RemoveRegion(&r);
 	MSYS_RemoveRegion(&gMJChatUpRegion);
 	MSYS_RemoveRegion(&gMJChatDownRegion);
-	for (int s = 0; s < 3; ++s) RemoveButton(guiMJVoidBtn[s]);
+	for (MOUSE_REGION& r : gMJVoidRegion) MSYS_RemoveRegion(&r);
 	gfMJShowRules = FALSE;
 	MahjongDestroyOverlayFace();
 	// gGame intentionally kept: the table waits for the player's return
@@ -3769,6 +3793,26 @@ static void MahjongDrawVoidBadge(int seat, INT32 fx, INT32 fy)
 	ColorFillVideoSurfaceArea(FRAME_BUFFER, fx + MJ_FACE65_W - 16, fy, fx + MJ_FACE65_W, fy + 16,
 				Get16BPPColor(FROMRGB(6, 36, 20)));
 	BltVideoObject(FRAME_BUFFER, guiMJVoidIcon, static_cast<UINT16>(suit), fx + MJ_FACE65_W - 14, fy - 1);
+}
+
+static void MahjongDrawWonOutline(int seat, INT32 fx, INT32 fy)
+{
+	if (!MahjongGameLive() || MahjongWinOrderOf(seat) < 0) return;
+	UINT16 const silver = Get16BPPColor(FROMRGB(216, 220, 226));
+	for (INT32 dx = -2; dx < MJ_FACE65_W + 2; dx += 4)
+	{
+		ColorFillVideoSurfaceArea(FRAME_BUFFER, fx + dx, fy - 2,
+				fx + dx + 2, fy, silver);
+		ColorFillVideoSurfaceArea(FRAME_BUFFER, fx + dx, fy + MJ_FACE65_H + 1,
+				fx + dx + 2, fy + MJ_FACE65_H + 3, silver);
+	}
+	for (INT32 dy = 2; dy < MJ_FACE65_H - 2; dy += 4)
+	{
+		ColorFillVideoSurfaceArea(FRAME_BUFFER, fx - 2, fy + dy,
+				fx, fy + dy + 2, silver);
+		ColorFillVideoSurfaceArea(FRAME_BUFFER, fx + MJ_FACE65_W, fy + dy,
+				fx + MJ_FACE65_W + 2, fy + dy + 2, silver);
+	}
 }
 
 // seat wind badge: bottom-right corner of the portrait, system green
@@ -3941,6 +3985,7 @@ static void MahjongRenderTopPanels()
 		MahjongDrawFeed(1, x + 3, y + 3, true);
 		MahjongDrawWindBadge(2, x + 3, y + 3);
 		MahjongDrawVoidBadge(2, x + 3, y + 3);
+		MahjongDrawWonOutline(2, x + 3, y + 3);
 		// centre card: score line bottom-aligns with the avatar
 		MahjongPrintPlayerLines(2, x + 3 + MJ_FACE65_W + 6, y + 4, MJ_PANEL_W - MJ_FACE65_W - 16, y + 3 + MJ_FACE65_H - 11);
 	}
@@ -3955,6 +4000,7 @@ static void MahjongRenderTopPanels()
 		MahjongDrawFeed(seat - 1, fx, y + 3, true);
 		MahjongDrawWindBadge(seat, fx, y + 3);
 		MahjongDrawVoidBadge(seat, fx, y + 3);
+		MahjongDrawWonOutline(seat, fx, y + 3);
 		// side panels: score line sits at the panel foot
 		MahjongPrintPlayerLines(seat, x + 5, y + 3 + MJ_FACE65_H + 4, MJ_SIDE_W - 10, y + MJ_SIDE_H - 15);
 	}
@@ -3995,6 +4041,7 @@ static void MahjongRenderInfoBlock()
 		}
 		MahjongDrawWindBadge(0, fx, fy);
 		MahjongDrawVoidBadge(0, fx, fy);
+		MahjongDrawWonOutline(0, fx, fy);
 
 		// the profile bio sits at the foot of the block, like a caption
 		if (MahjongGameLive())
@@ -4499,7 +4546,18 @@ static void MahjongRenderHand()
 {
 	if (!MahjongGameLive() || gfMJExhibition) return;
 
-	int const voidSuit = gGame->player(0).voidSuit;
+	int voidSuit = gGame->player(0).voidSuit;
+	// hovering a void pick previews the sentence: the suit lights up red
+	// in the hand before the click commits to it
+	if (guiMJState == MJUI_CHOOSE_VOID && voidSuit == MahjongGame::NO_SUIT)
+	{
+		for (int sIdx = 0; sIdx < 3; ++sIdx)
+		{
+			if (gMJVoidRegion[sIdx].uiFlags & MSYS_MOUSE_IN_AREA) voidSuit = sIdx;
+		}
+	}
+	bool const voidPreview =
+		guiMJState == MJUI_CHOOSE_VOID && voidSuit != MahjongGame::NO_SUIT;
 	auto const isVoided = [voidSuit](MahjongGame::TileId t)
 	{
 		return voidSuit != MahjongGame::NO_SUIT && MahjongGame::SuitOf(t) == voidSuit;
@@ -4531,7 +4589,8 @@ static void MahjongRenderHand()
 			suggestionMarked = true;
 		}
 		bool const raised = gbMJSelectedSlot == static_cast<INT8>(i) ||
-					(guiMJState == MJUI_EXCHANGE && gfMJExchangeSel[i]);
+					(guiMJState == MJUI_EXCHANGE && gfMJExchangeSel[i]) ||
+					(voidPreview && isVoided(hand[i]));
 		MahjongDrawTile(MJ_X(MJ_HAND_X + i * MJ_TILE_PITCH), MJ_Y(MJ_HAND_Y - (raised ? MJ_HAND_RAISE : 0)),
 				MJ_TILE_W, MJ_TILE_H, hand[i], false, isVoided(hand[i]));
 	}
@@ -4660,6 +4719,103 @@ static void MahjongFillRounded(INT32 x, INT32 y, INT32 w, INT32 h, INT32 r, UINT
 	}
 }
 
+// the void glyph stamped in a single colour: the sti's own red would
+// disappear into the hovered button's red field
+static void MahjongStampVoidIcon(UINT16 frame, INT32 sx, INT32 sy, UINT16 col)
+{
+	if (!guiMJVoidIcon) return;
+	ETRLEObject const& e = guiMJVoidIcon->SubregionProperties(frame);
+	UINT8 const* in = guiMJVoidIcon->PixData(e);
+	SGPVSurface::Lock lock(FRAME_BUFFER);
+	UINT16* out = lock.Buffer<UINT16>();
+	UINT32 const pitch = lock.Pitch() / 2;
+	for (INT32 y = 0; y < e.usHeight; ++y)
+	{
+		INT32 x = 0;
+		while (*in != 0)
+		{
+			UINT8 const code = *in++;
+			UINT8 const run = code & 0x7F;
+			if (code & 0x80)
+			{
+				x += run;
+			}
+			else
+			{
+				for (UINT8 k = 0; k < run; ++k, ++x, ++in)
+				{
+					out[static_cast<UINT32>(sy + y) * pitch +
+							static_cast<UINT32>(sx + x)] = col;
+				}
+			}
+		}
+		++in;
+	}
+}
+
+// The void pick, drawn by hand so it can react: each button carries its
+// suit glyph, and under the mouse the whole thing goes red with glyph
+// and label in white-rose.
+static void MahjongRenderVoidButtons()
+{
+	if (guiMJState != MJUI_CHOOSE_VOID) return;
+	for (int s = 0; s < 3; ++s)
+	{
+		INT32 const bx = MJ_X(102 + s * 104), by = MJ_Y(MJ_SETUP_BTN_Y);
+		bool const hot = gMJVoidRegion[s].uiFlags & MSYS_MOUSE_IN_AREA;
+		MahjongFillRounded(bx, by, 98, 22, 4,
+				Get16BPPColor(hot ? FROMRGB(96, 18, 18) : FROMRGB(8, 26, 18)));
+		MahjongFillRounded(bx + 1, by + 1, 96, 20, 4,
+				Get16BPPColor(hot ? FROMRGB(164, 42, 38) : FROMRGB(20, 50, 34)));
+		ColorFillVideoSurfaceArea(FRAME_BUFFER, bx + 3, by + 2, bx + 95, by + 3,
+				Get16BPPColor(hot ? FROMRGB(192, 70, 62) : FROMRGB(32, 66, 46)));
+		ST::string const label = ST::format("Void {}", gMJSuitName[s]);
+		INT32 const tw = StringPixLength(label, FONT12ARIAL);
+		INT32 iw = 12, ih = 12;
+		if (guiMJVoidIcon)
+		{
+			ETRLEObject const& e = guiMJVoidIcon->SubregionProperties(static_cast<UINT16>(s));
+			iw = e.usWidth;
+			ih = e.usHeight;
+		}
+		INT32 const cx = bx + (98 - (iw + 5 + tw)) / 2;
+		INT32 const cy = by + (22 - ih) / 2;
+		if (guiMJVoidIcon)
+		{
+			if (hot) MahjongStampVoidIcon(static_cast<UINT16>(s), cx, cy,
+					Get16BPPColor(FROMRGB(255, 220, 216)));
+			else BltVideoObject(FRAME_BUFFER, guiMJVoidIcon, static_cast<UINT16>(s), cx, cy);
+		}
+		SetFontAttributes(FONT12ARIAL, FONT_MCOLOR_WHITE, FONT_MCOLOR_BLACK, 0);
+		MPrint(cx + iw + 5, by + 7, label);
+	}
+}
+
+// a nine-pixel star for the winners on the verdict card
+static void MahjongDrawStar(INT32 sx, INT32 sy, UINT16 col)
+{
+	static const char* const rows[9] = {
+		"....X....",
+		"....X....",
+		"...XXX...",
+		"XXXXXXXXX",
+		".XXXXXXX.",
+		"..XXXXX..",
+		"..XXXXX..",
+		".XX...XX.",
+		".X.....X.",
+	};
+	for (INT32 ry = 0; ry < 9; ++ry)
+	{
+		for (INT32 rx = 0; rx < 9; ++rx)
+		{
+			if (rows[ry][rx] != 'X') continue;
+			ColorFillVideoSurfaceArea(FRAME_BUFFER, sx + rx, sy + ry,
+					sx + rx + 1, sy + ry + 1, col);
+		}
+	}
+}
+
 static void MahjongRenderOverlay()
 {
 	if (guiMJState != MJUI_HAND_END && guiMJState != MJUI_MATCH_END) return;
@@ -4667,15 +4823,18 @@ static void MahjongRenderOverlay()
 	// the table dims under the verdict, chach.com fashion
 	FRAME_BUFFER->ShadowRect(MJ_X(2), MJ_Y(2), MJ_X(500), MJ_Y(398));
 
-	INT32 const x = MJ_X(75), y = MJ_Y(24), w = 352, h = 266;
+	INT32 const x = MJ_X(135), y = MJ_Y(24), w = 232, h = 306;
 	MahjongFillRounded(x, y, w, h, 7, Get16BPPColor(FROMRGB(240, 220, 60)));
 	MahjongFillRounded(x + 2, y + 2, w - 4, h - 4, 6, Get16BPPColor(FROMRGB(16, 40, 30)));
 
 	INT32 const textX = x + 14;
 
 	SetFontAttributes(FONT14ARIAL, FONT_MCOLOR_LTYELLOW, FONT_MCOLOR_BLACK, 0);
-	MPrint(textX + 34, y + 14, guiMJState == MJUI_MATCH_END ? "Final standings"
-			: gGame->aborted() ? "Hand VOID" : "Hand over");
+	{
+		ST::string const title = guiMJState == MJUI_MATCH_END ? "Final standings"
+				: gGame->aborted() ? "Hand VOID" : "Hand over";
+		MPrint(x + w / 2 - StringPixLength(title, FONT14ARIAL) / 2, y + 14, title);
+	}
 
 	INT32 lineY = y + 36;
 	if (guiMJState == MJUI_HAND_END)
@@ -4688,16 +4847,21 @@ static void MahjongRenderOverlay()
 				: ST::format("{} claimed {} discard", MahjongSeatName(e.winner),
 						e.discarder == 0 ? "your" : ST::format("{}'s", MahjongSeatName(e.discarder)).c_str());
 			if (e.fan > 0) line += ST::format(" ({} fan)", e.fan);
-			MPrint(textX + 34, lineY, line);
+			INT32 const lw = StringPixLength(line, FONT10ARIAL);
+			INT32 const lx = x + w / 2 - (lw + 13) / 2;
+			MahjongDrawStar(lx, lineY, Get16BPPColor(FROMRGB(240, 214, 62)));
+			MPrint(lx + 13, lineY, line);
 			lineY += 13;
 		}
 		if (gGame->wins().empty())
 		{
-			MPrint(textX + 34, lineY, "Exhaustive draw - no winners.");
+			MPrint(x + w / 2 - StringPixLength("Exhaustive draw - no winners.", FONT10ARIAL) / 2,
+					lineY, "Exhaustive draw - no winners.");
 			lineY += 13;
 		}
-		lineY += 8;
+		lineY += 4;
 	}
+	lineY += 4;
 
 	int leader = 0;
 	for (int i = 1; i < MahjongGame::NUM_PLAYERS; ++i)
@@ -4711,64 +4875,53 @@ static void MahjongRenderOverlay()
 	// the panel regardless of whether the portrait is shown
 	// mini profile rows: avatar, stacked identity, results in columns
 	INT32 const rowL = textX - 4, rowR = x + w - 12;
-	INT32 const nameX = textX + 34;
-	INT32 const scoreRight = textX + 262;
-	INT32 const deltaX = textX + 270;
+	INT32 const nameX = textX + 48;
 	for (int i = 0; i < MahjongGame::NUM_PLAYERS; ++i)
 	{
 		// zebra stripes on the token's dark shades - no felt gaps
 		ColorFillVideoSurfaceArea(FRAME_BUFFER, rowL, lineY - 4, rowR, lineY + 30,
 					Get16BPPColor(i % 2 == 0 ? FROMRGB(22, 52, 38) : FROMRGB(14, 38, 28)));
-		MahjongDrawFaceChip(static_cast<INT8>(i), textX, lineY + 1, 26, 26, true);
-		// line one: who they are - name, handle, rating, in one breath
-		SetFontAttributes(FONT12ARIAL, FONT_MCOLOR_WHITE, FONT_MCOLOR_BLACK, 0);
-		MPrint(nameX, lineY, MahjongSeatName(i));
-		INT32 const nameW = StringPixLength(MahjongSeatName(i), FONT12ARIAL);
-		SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_DKGRAY, FONT_MCOLOR_BLACK, 0);
-		MPrint(nameX + nameW + 8, lineY + 2, i == 0
-				? (gMJSelfNick.empty() ? ST::string("@you") : ST::format("@{}", gMJSelfNick.to_lower()))
-				: ST::string(MahjongSeatHandle(i)));
-		// rating right-aligned on the same line; at match end yours shows
-		// where it moved from
-		ST::string rating = ST::format("{}", i == 0 ? MahjongPlayerRating() : MahjongSeatRating(i));
-		if (i == 0 && guiMJState == MJUI_MATCH_END && giMJRatingBefore != 0 &&
-			giMJRatingBefore != MahjongPlayerRating())
-		{
-			rating = ST::format("{} > {}", giMJRatingBefore, MahjongPlayerRating());
-		}
-		MPrint(scoreRight - StringPixLength(rating, FONT10ARIAL), lineY + 2, rating);
-		// line two: the money - chips, total, movement
-		if (guiMJChips)
-		{
-			INT32 const chips = std::max(0, std::min(6, gGame->player(i).score / 5000));
-			for (INT32 c = 0; c < chips; ++c)
-			{
-				BltVideoObject(FRAME_BUFFER, guiMJChips, i == leader ? 1 : 0,
-						nameX + c * 9, lineY + 16);
-			}
-		}
-		SetFontAttributes(FONT12ARIAL, FONT_MCOLOR_WHITE, FONT_MCOLOR_BLACK, 0);
-		ST::string const score = ST::format("{}", gGame->player(i).score);
-		MPrint(scoreRight - StringPixLength(score, FONT12ARIAL), lineY + 15, score);
-		if (guiMJState == MJUI_HAND_END && gGame->handDelta(i) != 0)
-		{
-			bool const up = gGame->handDelta(i) > 0;
-			INT32 const shown = gGame->handDelta(i) * animPct / 100;
-			SetFontAttributes(FONT10ARIAL, up ? FONT_MCOLOR_LTGREEN : FONT_MCOLOR_LTRED, FONT_MCOLOR_BLACK, 0);
-			MPrint(deltaX, lineY + 17, ST::format("{}{}", up ? "+" : "", shown));
-		}
-		// final standings still rank the room; hand results speak for themselves
-		if (guiMJState == MJUI_MATCH_END)
 		{
 			int rank = 1;
 			for (int j = 0; j < MahjongGame::NUM_PLAYERS; ++j)
 			{
 				if (gGame->player(j).score > gGame->player(i).score) ++rank;
 			}
-			static const char* const place[4] = { "1st", "2nd", "3rd", "4th" };
-			SetFontAttributes(FONT10ARIAL, rank == 1 ? FONT_MCOLOR_LTYELLOW : FONT_MCOLOR_DKGRAY,
-					FONT_MCOLOR_BLACK, 0);
-			MPrint(rowR - 8 - StringPixLength(place[rank - 1], FONT10ARIAL), lineY + 16, place[rank - 1]);
+			SetFontAttributes(FONT12ARIAL, FONT_MCOLOR_DKGRAY, FONT_MCOLOR_BLACK, 0);
+			MPrint(textX + 2, lineY + 8, ST::format("{}", rank));
+		}
+		MahjongDrawFaceChip(static_cast<INT8>(i), textX + 14, lineY + 1, 26, 26, true);
+		// line one: who they are - name, handle, rating, in one breath
+		SetFontAttributes(FONT12ARIAL, FONT_MCOLOR_WHITE, FONT_MCOLOR_BLACK, 0);
+		MPrint(nameX, lineY, MahjongSeatName(i));
+		INT32 const nameW = StringPixLength(MahjongSeatName(i), FONT12ARIAL);
+		SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_DKGRAY, FONT_MCOLOR_BLACK, 0);
+		// just the name and the rating in brackets; at match end yours
+		// shows where it moved from
+		ST::string rating = ST::format("({})", i == 0 ? MahjongPlayerRating() : MahjongSeatRating(i));
+		if (i == 0 && guiMJState == MJUI_MATCH_END && giMJRatingBefore != 0 &&
+			giMJRatingBefore != MahjongPlayerRating())
+		{
+			rating = ST::format("({} > {})", giMJRatingBefore, MahjongPlayerRating());
+		}
+		MPrint(nameX + nameW + 8, lineY + 2, rating);
+		// line two: one chip stands for the stack, then the total and the
+		// movement, all left-aligned under the name
+		if (guiMJChips)
+		{
+			BltVideoObject(FRAME_BUFFER, guiMJChips, i == leader ? 1 : 0,
+					nameX, lineY + 16);
+		}
+		SetFontAttributes(FONT12ARIAL, FONT_MCOLOR_WHITE, FONT_MCOLOR_BLACK, 0);
+		ST::string const score = ST::format("{}", gGame->player(i).score);
+		MPrint(nameX + 16, lineY + 15, score);
+		if (guiMJState == MJUI_HAND_END && gGame->handDelta(i) != 0)
+		{
+			bool const up = gGame->handDelta(i) > 0;
+			INT32 const shown = gGame->handDelta(i) * animPct / 100;
+			SetFontAttributes(FONT10ARIAL, up ? FONT_MCOLOR_LTGREEN : FONT_MCOLOR_LTRED, FONT_MCOLOR_BLACK, 0);
+			MPrint(nameX + 16 + StringPixLength(score, FONT12ARIAL) + 8, lineY + 17,
+					ST::format("{}{}", up ? "+" : "", shown));
 		}
 		lineY += 38;
 	}
@@ -4778,15 +4931,47 @@ static void MahjongRenderOverlay()
 	{
 		bool const won = giMJLastNetGain > 0;
 		SetFontAttributes(FONT14ARIAL, won ? FONT_MCOLOR_LTGREEN : FONT_MCOLOR_LTRED, FONT_MCOLOR_BLACK, 0);
-		MPrint(textX, lineY + 6, won
+		ST::string const cash = won
 			? ST::format("CASH-OUT: ${}", giMJLastNetGain)
-			: ST::format("DOWN: ${}", -giMJLastNetGain));
+			: ST::format("DOWN: ${}", -giMJLastNetGain);
+		MPrint(x + w / 2 - StringPixLength(cash, FONT14ARIAL) / 2, lineY + 6, cash);
 		lineY += 24;
 	}
 
-	// the closing line centres on the button row, aligned with the text column
-	DisplayWrappedString(textX + 34, y + h - 26, w - 190, 2, FONT10ARIAL, FONT_MCOLOR_LTYELLOW, gMJMessage, FONT_MCOLOR_BLACK, LEFT_JUSTIFIED);
+	// the advance button: chach.com's CTA construction, recut in the
+	// parlour's gold and stretched across the card's foot
+	{
+		INT32 const bx = x + 14, by = y + h - 58, bw = w - 28, bh = 30;
+		INT32 const band = (bh - 2) / 3;
+		bool const hot = gMJModalCTARegion.uiFlags & MSYS_MOUSE_IN_AREA;
+		UINT16 const body = Get16BPPColor(hot ? FROMRGB(238, 208, 62) : FROMRGB(216, 184, 44));
+		UINT16 const bandc = Get16BPPColor(hot ? FROMRGB(250, 228, 100) : FROMRGB(236, 208, 76));
+		UINT16 const high = Get16BPPColor(hot ? FROMRGB(255, 246, 172) : FROMRGB(250, 232, 130));
+		MahjongFillRounded(bx, by, bw, bh, 5, Get16BPPColor(FROMRGB(140, 112, 18)));
+		MahjongFillRounded(bx, by, bw, bh - 2, 5, body);
+		ColorFillVideoSurfaceArea(FRAME_BUFFER, bx + 3, by + 2, bx + bw - 3, by + 2 + band, bandc);
+		ColorFillVideoSurfaceArea(FRAME_BUFFER, bx + 5, by + 1, bx + bw - 5, by + 2, high);
+		for (INT32 row = 0; row < 3; ++row)
+		{
+			INT32 const dy = by + 2 + band + row;
+			INT32 const step = row == 2 ? 4 : 2;
+			for (INT32 dx = bx + 2 + ((row + 1) & 1); dx < bx + bw - 2; dx += step)
+			{
+				ColorFillVideoSurfaceArea(FRAME_BUFFER, dx, dy, dx + 1, dy + 1, bandc);
+			}
+		}
+		ST::string const cta = guiMJState == MJUI_MATCH_END ? "New Match" : "Next Hand";
+		SetFontAttributes(FONT14ARIAL, FONT_MCOLOR_BLACK, NO_SHADOW, 0);
+		MPrint(x + w / 2 - StringPixLength(cta, FONT14ARIAL) / 2, by + 8, cta);
+	}
 
+	// the closing line, a footnote under the button: read once, then ignored
+	if (!gMJMessage.empty())
+	{
+		DisplayWrappedString(x + 16, y + h - 24, w - 32, 2, FONT10ARIAL,
+				FONT_MCOLOR_DKGRAY, gMJMessage, FONT_MCOLOR_BLACK,
+				CENTER_JUSTIFIED);
+	}
 }
 
 
@@ -5240,6 +5425,7 @@ void RenderMahjong()
 	MahjongRenderHand();
 	MahjongRenderChatBar();
 	MahjongRenderInfoBlock();
+	MahjongRenderVoidButtons();
 	MahjongRenderOverlay();
 	MahjongRenderRules();
 	MahjongRenderGuestbook();
