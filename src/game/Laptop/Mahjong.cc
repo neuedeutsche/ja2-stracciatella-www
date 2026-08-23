@@ -4886,7 +4886,7 @@ static void MahjongRenderOverlay()
 
 	INT32 const x = MJ_X(135), y = MJ_Y(24), w = 232, h = MahjongModalHeight();
 	MahjongFillRounded(x, y, w, h, 7, Get16BPPColor(FROMRGB(240, 220, 60)));
-	MahjongFillRounded(x + 2, y + 2, w - 4, h - 4, 6, Get16BPPColor(FROMRGB(16, 40, 30)));
+	MahjongFillRounded(x + 2, y + 2, w - 4, h - 4, 6, Get16BPPColor(FROMRGB(30, 26, 20)));
 
 	INT32 const textX = x + 14;
 
@@ -4939,19 +4939,24 @@ static void MahjongRenderOverlay()
 	INT32 const nameX = textX + 48;
 	for (int i = 0; i < MahjongGame::NUM_PLAYERS; ++i)
 	{
-		// every row on the same lighter green, rounded like a card
-		MahjongFillRounded(rowL, lineY - 4, rowR - rowL, 34, 4,
-					Get16BPPColor(FROMRGB(22, 52, 38)));
+		int rank = 1;
+		for (int j = 0; j < MahjongGame::NUM_PLAYERS; ++j)
 		{
-			int rank = 1;
-			for (int j = 0; j < MahjongGame::NUM_PLAYERS; ++j)
-			{
-				if (gGame->player(j).score > gGame->player(i).score) ++rank;
-			}
-			SetFontAttributes(FONT14ARIAL, FONT_MCOLOR_LTGREEN, FONT_MCOLOR_BLACK, 0);
-			SetFontForegroundRGB(FROMRGB(88, 138, 102));
-			MPrint(textX + 2, lineY + 7, ST::format("{}", rank));
+			if (gGame->player(j).score > gGame->player(i).score) ++rank;
 		}
+		// the podium palette: gold, silver, bronze, lead - row ground dark,
+		// the rank number bright in the same metal
+		static const UINT32 metalRow[4] = {
+			FROMRGB(64, 52, 20), FROMRGB(48, 50, 55),
+			FROMRGB(56, 40, 26), FROMRGB(40, 38, 36) };
+		static const UINT32 metalNum[4] = {
+			FROMRGB(240, 204, 82), FROMRGB(200, 206, 214),
+			FROMRGB(198, 134, 86), FROMRGB(122, 118, 114) };
+		MahjongFillRounded(rowL, lineY - 4, rowR - rowL, 34, 4,
+					Get16BPPColor(metalRow[rank - 1]));
+		SetFontAttributes(FONT14ARIAL, FONT_MCOLOR_LTGREEN, FONT_MCOLOR_BLACK, 0);
+		SetFontForegroundRGB(metalNum[rank - 1]);
+		MPrint(textX + 2, lineY + 7, ST::format("{}", rank));
 		MahjongDrawFaceChip(static_cast<INT8>(i), textX + 14, lineY + 1, 26, 26, true);
 		// line one: who they are - name, handle, rating, in one breath
 		SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_WHITE, FONT_MCOLOR_BLACK, 0);
@@ -5044,7 +5049,7 @@ static void MahjongRenderOverlay()
 		}
 		if (!cur.empty()) lines.push_back(cur);
 		SetFontAttributes(TINYFONT1, FONT_MCOLOR_LTGREEN, FONT_MCOLOR_BLACK, 0);
-		SetFontForegroundRGB(FROMRGB(88, 138, 102));
+		SetFontForegroundRGB(FROMRGB(150, 132, 96));
 		INT32 fy = y + h - 8 - static_cast<INT32>(lines.size()) * 9;
 		for (ST::string const& ln : lines)
 		{
