@@ -3165,7 +3165,7 @@ namespace
 	{
 		const PlayControl& pc = CH_PLAY_TIMES[i];
 		const bool on = giPlayMinutes == pc.mins;
-		if (on) FillRounded(bx2 - 1, by2 - 1, bw2 + 2, 26, CH_RGB_CTA, 4, bg);
+		if (on) FillRounded(bx2 - 2, by2 - 2, bw2 + 4, 28, CH_RGB_CTA, 6, bg);
 		ChessDrawGreyButton(bx2, by2, bw2, 24, bg, on);
 		// the badge: bullet streak, blitz bolt, rapid watch, daily sun
 		const INT32 ix = bx2 + 8, iy = by2 + 7;
@@ -3930,10 +3930,10 @@ namespace
 		const UINT32 body = live ? FROMRGB(64, 59, 54) : FROMRGB(42, 39, 36);
 		const UINT32 bnd  = live ? FROMRGB(86, 80, 73) : FROMRGB(50, 46, 42);
 		const UINT32 high = live ? FROMRGB(102, 95, 87) : FROMRGB(56, 52, 48);
-		FillRounded(x, y, w, h, foot, 3, bg);
-		FillRounded(x, y, w, h - 2, body, 3, bg);
-		FillRect(x + 2, y + 2, w - 4, band, bnd);
-		FillRect(x + 3, y + 1, w - 6, 1, high);
+		FillRounded(x, y, w, h, foot, 5, bg);
+		FillRounded(x, y, w, h - 2, body, 5, bg);
+		FillRect(x + 3, y + 2, w - 6, band, bnd);
+		FillRect(x + 5, y + 1, w - 10, 1, high);
 		// the gradient steps down through three loud dither rows: full
 		// checker, then sparser, band colour over the darker body
 		for (INT32 row = 0; row < 3; ++row)
