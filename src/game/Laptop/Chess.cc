@@ -2011,15 +2011,15 @@ namespace
 		ChessRedraw();
 	}
 
-	// releasing anywhere that is not a square just puts the piece back; it stays
-	// selected, so the click-to-move path can still finish the job
+	// releasing anywhere resolves the drop from the pointer's position: a
+	// square lands the move, anywhere else snaps the piece home but keeps
+	// it selected. Touch delivers its button-up through this region, so a
+	// cancel here used to kill every touch drag.
 	void ChessDropCallback(MOUSE_REGION* region, UINT32 reason)
 	{
 		if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
 		if (!gfChessDragging) return;
-		gfChessDragging  = false;
-		gubChessDragFrom = ChessGame::NO_SQUARE;
-		ChessRedraw();
+		ChessResolveDrop();
 	}
 
 	void ChessModalCloseCallback(MOUSE_REGION* region, UINT32 reason)
@@ -5779,11 +5779,19 @@ void HandleChess()
 	}
 
 	// a piece in hand has to be repainted every frame to keep up with the
-	// pointer, and the drop is resolved here rather than in a region callback
+	// pointer, and the drop is resolved here rather than in a region
+	// callback. Touch input never reads as a held mouse button, so the
+	// main finger counts as holding the piece too.
 	if (gfChessDragging)
 	{
-		if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) ChessRedraw();
-		else                                      ChessResolveDrop();
+		if (IsMouseButtonDown(MOUSE_BUTTON_LEFT) || IsMainFingerDown())
+		{
+			ChessRedraw();
+		}
+		else
+		{
+			ChessResolveDrop();
+		}
 	}
 
 	if (guiChessReplyDue == 0 || ChessNow() < guiChessReplyDue) return;
