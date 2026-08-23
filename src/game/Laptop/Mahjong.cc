@@ -1530,6 +1530,19 @@ static bool MahjongExchangeSelectionValid()
 }
 
 
+static int MahjongModalNoteLines()
+{
+	if (gMJMessage.empty()) return 0;
+	int n = 0;
+	bool part = false;
+	for (const char* q = gMJMessage.c_str(); *q; ++q)
+	{
+		part = true;
+		if (*q == '.') { ++n; part = false; }
+	}
+	return n + (part ? 1 : 0);
+}
+
 static INT32 MahjongModalHeight()
 {
 	if (!gGame) return 306;
@@ -1541,13 +1554,22 @@ static INT32 MahjongModalHeight()
 		else c += static_cast<INT32>(gGame->wins().size()) * (MJ_MINI_H + 6);
 	}
 	if (guiMJState == MJUI_MATCH_END && giMJLastNetGain != 0) c += 24;
-	return c + 64;
+	int const notes = MahjongModalNoteLines();
+	return c + 44 + (notes ? 4 + notes * 9 : 0);
 }
 
 // the card centres on the felt and climbs when the open hands need room
 static INT32 MahjongModalTop()
 {
 	return std::max(8, (398 - MahjongModalHeight()) / 2);
+}
+
+// the button's local top edge: the footnote hangs 4px under it
+static INT32 MahjongModalButtonY()
+{
+	int const notes = MahjongModalNoteLines();
+	return MahjongModalTop() + MahjongModalHeight() - 38
+			- (notes ? 4 + notes * 9 : 0);
 }
 
 static INT32 MahjongModalWidth()
@@ -1643,7 +1665,7 @@ static void MahjongUpdateButtons()
 			if (guiMJNewGameBtn) HideButton(guiMJNewGameBtn);
 			{
 				INT16 const top = static_cast<INT16>(
-						MJ_Y(MahjongModalTop() + MahjongModalHeight() - 58));
+						MJ_Y(MahjongModalButtonY()));
 				INT32 const mw = MahjongModalWidth();
 				INT32 const mx = (502 - mw) / 2;
 				gMJModalCTARegion.RegionTopLeftY = top;
@@ -5093,7 +5115,8 @@ static void MahjongRenderOverlay()
 	// the advance button: chach.com's CTA construction, recut in the
 	// parlour's gold and stretched across the card's foot
 	{
-		INT32 const bx = x + 14, by = y + h - 58, bw = w - 28, bh = 30;
+		INT32 const bx = x + 14, by = MJ_Y(MahjongModalButtonY()),
+				bw = w - 28, bh = 30;
 		INT32 const band = (bh - 2) / 3;
 		bool const hot = gMJModalCTARegion.uiFlags & MSYS_MOUSE_IN_AREA;
 		UINT16 const body = Get16BPPColor(hot ? FROMRGB(238, 208, 62) : FROMRGB(216, 184, 44));
@@ -5135,7 +5158,7 @@ static void MahjongRenderOverlay()
 		if (!cur.empty()) lines.push_back(cur);
 		SetFontAttributes(TINYFONT1, FONT_MCOLOR_LTGREEN, FONT_MCOLOR_BLACK, 0);
 		SetFontForegroundRGB(FROMRGB(150, 132, 96));
-		INT32 fy = y + h - 8 - static_cast<INT32>(lines.size()) * 9;
+		INT32 fy = MJ_Y(MahjongModalButtonY()) + 34;
 		for (ST::string const& ln : lines)
 		{
 			MPrint(x + w / 2 - StringPixLength(ln, TINYFONT1) / 2, fy, ln);
