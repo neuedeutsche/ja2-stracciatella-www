@@ -4549,10 +4549,10 @@ namespace
 		INT32 hx = px + 46;
 		if (seat.title[0])
 		{
-			const INT32 tw = StringPixLength(seat.title, TINYFONT1) + 4;
-			FillRounded(hx, top + 13, tw, 10, FROMRGB(146, 44, 44), 2,
+			const INT32 tw = StringPixLength(seat.title, TINYFONT1) + 2;
+			FillRounded(hx, top + 14, tw, 8, FROMRGB(146, 44, 44), 2,
 			            CH_RGB_PANEL);
-			PrintAt(TINYFONT1, FONT_MCOLOR_WHITE, hx + 2, top + 14, seat.title);
+			PrintAt(TINYFONT1, FONT_MCOLOR_WHITE, hx + 1, top + 15, seat.title);
 			hx += tw + 4;
 		}
 		PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, hx, top + 12, seat.handle);
@@ -4595,7 +4595,7 @@ namespace
 
 		// the stat cards: their site totals (invented, but consistently),
 		// and the head-to-head that is entirely real
-		const INT32 bandY = top + 86;
+		const INT32 bandY = top + 84;
 		const INT32 boxW = (pw - 16) / 3;
 		const INT32 boxH = 40;
 		static const char* const caps[3] = { "RECORD", "VS YOU", "STREAK" };
@@ -4643,7 +4643,7 @@ namespace
 		// recent games: your real games against them, woven into a feed of
 		// invented ones against the other regulars - reseeded daily, so the
 		// ladder looks alive whether or not you ever sit down
-		const INT32 histTop = bandY + boxH + 8;
+		const INT32 histTop = bandY + boxH + 6;
 		FillRounded(px, histTop, pw, pageBot - histTop, CH_RGB_PANEL,
 		            CH_PANEL_RADIUS, CH_RGB_CHROME);
 		INT32 y = histTop + 8;
@@ -4757,10 +4757,10 @@ namespace
 			INT32 tx = cOpp + 18;
 			if (r.title)
 			{
-				const INT32 tw = StringPixLength(r.title, TINYFONT1) + 4;
-				FillRounded(tx, y + 2, tw, 10, FROMRGB(146, 44, 44), 2,
+				const INT32 tw = StringPixLength(r.title, TINYFONT1) + 2;
+				FillRounded(tx, y + 3, tw, 8, FROMRGB(146, 44, 44), 2,
 				            i % 2 == 0 ? CH_RGB_ROW_ALT : CH_RGB_PANEL);
-				PrintAt(TINYFONT1, FONT_MCOLOR_WHITE, tx + 2, y + 3, r.title);
+				PrintAt(TINYFONT1, FONT_MCOLOR_WHITE, tx + 1, y + 4, r.title);
 				tx += tw + 4;
 			}
 			PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, tx, y + 2, r.opp);
@@ -4913,7 +4913,7 @@ namespace
 		}
 
 		// the stat cards: record, form, the puzzle habit
-		const INT32 bandY = top + 86;
+		const INT32 bandY = top + 84;
 		const INT32 boxW = (pw - 16) / 3;
 		const INT32 boxH = 40;
 		static const char* const caps[3] = { "RECORD", "FORM", "STREAK" };
@@ -4953,7 +4953,7 @@ namespace
 			        ST::format("best {}", gChessDay.bestStreak));
 		}
 
-		const INT32 histTop = bandY + boxH + 8;
+		const INT32 histTop = bandY + boxH + 6;
 		FillRounded(px, histTop, pw, pageBot - histTop, CH_RGB_PANEL,
 		            CH_PANEL_RADIUS, CH_RGB_CHROME);
 		INT32 y = histTop + 8;
@@ -4994,10 +4994,10 @@ namespace
 			if (opp.title[0])
 			{
 				// the crimson title chip, chess.com fashion
-				const INT32 tw = StringPixLength(opp.title, TINYFONT1) + 4;
-				FillRounded(tx, y + 2, tw, 10, FROMRGB(146, 44, 44), 2,
+				const INT32 tw = StringPixLength(opp.title, TINYFONT1) + 2;
+				FillRounded(tx, y + 3, tw, 8, FROMRGB(146, 44, 44), 2,
 				            i % 2 == 0 ? CH_RGB_ROW_ALT : CH_RGB_PANEL);
-				PrintAt(TINYFONT1, FONT_MCOLOR_WHITE, tx + 2, y + 3,
+				PrintAt(TINYFONT1, FONT_MCOLOR_WHITE, tx + 1, y + 4,
 				        opp.title);
 				tx += tw + 4;
 			}
