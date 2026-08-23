@@ -4831,17 +4831,7 @@ namespace
 			}
 			// the START GAME cut: full CTA height, title-bar type
 			ChessDrawCTAButton(mx + 16, 246, 128, CH_HINT_H, CH_RGB_PANEL);
-			const ST::string play = ST::format("PLAY {}", seat.handle);
-			if (StringPixLength(play, FONT14ARIAL) <= 120)
-			{
-				PrintCentred(FONT14ARIAL, FONT_MCOLOR_WHITE, mx + 80, 254,
-				             play);
-			}
-			else
-			{
-				PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, mx + 80, 256,
-				             play);
-			}
+			PrintCentred(FONT14ARIAL, FONT_MCOLOR_WHITE, mx + 80, 254, "PLAY");
 			PrintCentred(FONT10ARIAL, FONT_GRAY4, mx + 80, 284, "nevermind");
 		}
 	}
