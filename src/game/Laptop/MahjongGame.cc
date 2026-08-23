@@ -603,7 +603,8 @@ void MahjongGame::ClaimPong(int who)
 	if (phase_ != Phase::RonWindow || players_[who].counts[lastDiscard_] < 2) return;
 	Player& p = players_[who];
 	p.counts[lastDiscard_] -= 2;
-	p.melds.push_back(Meld{ lastDiscard_, 3, false });
+	p.melds.push_back(Meld{ lastDiscard_, 3, false,
+			static_cast<std::int8_t>(lastDiscarder_) });
 	// the claimed tile leaves the discarder's pond
 	players_[lastDiscarder_].discards.pop_back();
 	current_ = who;
@@ -617,7 +618,8 @@ void MahjongGame::ClaimKong(int who)
 	if (phase_ != Phase::RonWindow || players_[who].counts[lastDiscard_] < 3) return;
 	Player& p = players_[who];
 	p.counts[lastDiscard_] -= 3;
-	p.melds.push_back(Meld{ lastDiscard_, 4, false });
+	p.melds.push_back(Meld{ lastDiscard_, 4, false,
+			static_cast<std::int8_t>(lastDiscarder_) });
 	players_[lastDiscarder_].discards.pop_back();
 	// gua feng: the discarder pays for the exposed kong on the spot
 	p.score += KONG_EXPOSED_BONUS;
@@ -885,6 +887,7 @@ void MahjongGame::retireWinner(int winner, int discarder, TileId winningTile,
 	e.fanFlags = fanFlags;
 	e.roots = roots;
 	e.payment = payment;
+	e.winningTile = winningTile;
 	recordWinningHand(e, winner, winningTile);
 	wins_.push_back(e);
 	players_[winner].finished = true;

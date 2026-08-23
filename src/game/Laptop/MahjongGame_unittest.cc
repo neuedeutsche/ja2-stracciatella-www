@@ -228,6 +228,39 @@ TEST(MahjongGameTest, exchangeRejectsMixedSuitsAndMissingTiles)
 }
 
 
+TEST(MahjongGameTest, provenanceAndWinningTileRecorded)
+{
+	for (std::uint32_t seed : { 3u, 11u, 42u, 512u, 4711u, 90210u })
+	{
+		MahjongGame game;
+		game.NewMatch(seed);
+		PlayOutHand(game);
+
+		for (MahjongGame::WinEvent const& e : game.wins())
+		{
+			ASSERT_NE(e.winningTile, MahjongGame::NO_TILE) << "seed " << seed;
+			EXPECT_GT(e.winningCounts[e.winningTile], 0) << "seed " << seed;
+		}
+		for (int p = 0; p < MahjongGame::NUM_PLAYERS; ++p)
+		{
+			for (MahjongGame::Meld const& m : game.player(p).melds)
+			{
+				if (m.concealed)
+				{
+					EXPECT_EQ(m.from, -1) << "seed " << seed;
+				}
+				else if (m.count == 3)
+				{
+					// a pong is always fed; only kongs can be self-made
+					EXPECT_GE(m.from, 0) << "seed " << seed;
+					EXPECT_LT(m.from, MahjongGame::NUM_PLAYERS);
+					EXPECT_NE(int(m.from), p) << "seed " << seed;
+				}
+			}
+		}
+	}
+}
+
 TEST(MahjongGameTest, bloodyBattleHandEndsAndScoresStayZeroSum)
 {
 	for (std::uint32_t seed : { 7u, 42u, 99u, 1234u, 987654u })

@@ -64,8 +64,9 @@ public:
 	struct Meld
 	{
 		TileId tile;
-		std::uint8_t count;  // 3 = pong, 4 = kong
-		bool concealed;      // concealed kong
+		std::uint8_t count;      // 3 = pong, 4 = kong
+		bool concealed;          // concealed kong
+		std::int8_t from = -1;   // seat that fed the claimed tile; -1 = self
 	};
 
 	struct Player
@@ -87,6 +88,7 @@ public:
 		std::uint8_t fanFlags = 0;                  // FAN_* bits
 		std::uint8_t roots    = 0;                  // four-of-a-kind count
 		std::int32_t payment  = 0;                  // per payer
+		TileId winningTile    = NO_TILE;            // the tile that completed it
 		std::uint8_t winningCounts[NUM_KINDS] = {}; // 14-tile display hand (kongs shown as 3)
 	};
 
