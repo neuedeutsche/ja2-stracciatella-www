@@ -4533,7 +4533,7 @@ namespace
 		const INT32 pageBot = CH_BANNER_Y - 6;
 		// the page is a stack of separate cards on the chrome: header,
 		// the stat boxes, then the ledger - each its own container
-		FillRounded(px, top, pw, 72, CH_RGB_PANEL, CH_PANEL_RADIUS,
+		FillRounded(px, top, pw, 78, CH_RGB_PANEL, CH_PANEL_RADIUS,
 		            CH_RGB_CHROME);
 
 		if (gProfFace)
@@ -4595,7 +4595,7 @@ namespace
 
 		// the stat cards: their site totals (invented, but consistently),
 		// and the head-to-head that is entirely real
-		const INT32 bandY = top + 80;
+		const INT32 bandY = top + 86;
 		const INT32 boxW = (pw - 16) / 3;
 		const INT32 boxH = 40;
 		static const char* const caps[3] = { "RECORD", "VS YOU", "STREAK" };
@@ -4720,8 +4720,8 @@ namespace
 			}
 		}
 		const INT32 cOpp = px + 12;
-		const INT32 axRes = px + 172;
-		const INT32 axMov = px + 214;
+		const INT32 axRes = px + 164;
+		const INT32 axMov = px + 202;
 		const INT32 cDay = px + pw - 12;
 		PrintAt(TINYFONT1, FONT_GRAY4, cOpp, y, "OPPONENT");
 		PrintCentred(TINYFONT1, FONT_GRAY4, axRes, y, "RES");
@@ -4843,7 +4843,7 @@ namespace
 
 		const INT32 top = CH_GB_TOP;
 		const INT32 pageBot = CH_BANNER_Y - 6;
-		FillRounded(px, top, pw, 72, CH_RGB_PANEL, CH_PANEL_RADIUS,
+		FillRounded(px, top, pw, 78, CH_RGB_PANEL, CH_PANEL_RADIUS,
 		            CH_RGB_CHROME);
 
 		// the header: who you are, and the number the site holds over you
@@ -4913,7 +4913,7 @@ namespace
 		}
 
 		// the stat cards: record, form, the puzzle habit
-		const INT32 bandY = top + 80;
+		const INT32 bandY = top + 86;
 		const INT32 boxW = (pw - 16) / 3;
 		const INT32 boxH = 40;
 		static const char* const caps[3] = { "RECORD", "FORM", "STREAK" };
@@ -4967,8 +4967,8 @@ namespace
 			return;
 		}
 		const INT32 cOpp = px + 12;
-		const INT32 axRes = px + 172;
-		const INT32 axMov = px + 214;
+		const INT32 axRes = px + 164;
+		const INT32 axMov = px + 202;
 		const INT32 cDay = px + pw - 12;
 		PrintAt(TINYFONT1, FONT_GRAY4, cOpp, y, "OPPONENT");
 		PrintCentred(TINYFONT1, FONT_GRAY4, axRes, y, "RES");
