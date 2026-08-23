@@ -4948,14 +4948,15 @@ static void MahjongRenderOverlay()
 			{
 				if (gGame->player(j).score > gGame->player(i).score) ++rank;
 			}
-			SetFontAttributes(FONT12ARIAL, FONT_MCOLOR_DKGRAY, FONT_MCOLOR_BLACK, 0);
-			MPrint(textX + 2, lineY + 8, ST::format("{}", rank));
+			SetFontAttributes(FONT14ARIAL, FONT_MCOLOR_LTGREEN, FONT_MCOLOR_BLACK, 0);
+			SetFontForegroundRGB(FROMRGB(88, 138, 102));
+			MPrint(textX + 2, lineY + 7, ST::format("{}", rank));
 		}
 		MahjongDrawFaceChip(static_cast<INT8>(i), textX + 14, lineY + 1, 26, 26, true);
 		// line one: who they are - name, handle, rating, in one breath
-		SetFontAttributes(FONT12ARIAL, FONT_MCOLOR_WHITE, FONT_MCOLOR_BLACK, 0);
-		MPrint(nameX, lineY, MahjongSeatName(i));
-		INT32 const nameW = StringPixLength(MahjongSeatName(i), FONT12ARIAL);
+		SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_WHITE, FONT_MCOLOR_BLACK, 0);
+		MPrint(nameX, lineY + 2, MahjongSeatName(i));
+		INT32 const nameW = StringPixLength(MahjongSeatName(i), FONT10ARIAL);
 		SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_DKGRAY, FONT_MCOLOR_BLACK, 0);
 		// just the name and the rating in brackets; at match end yours
 		// shows where it moved from
