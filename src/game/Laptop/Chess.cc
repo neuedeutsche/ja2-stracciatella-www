@@ -4499,7 +4499,8 @@ namespace
 			bool resigned;     // only ever true on your games
 			int moves;
 			int control;       // minutes, 0 = daily
-			int day;
+			ST::string date;   // campaign days for your games, the site's
+			                   // own calendar for everything older
 		};
 		ProfRow rows[10];
 		int n = 0;
@@ -4515,7 +4516,7 @@ namespace
 			rows[n++] = ProfRow{ you, nullptr, CH_FLAG_NONE,
 					yours == 2 ? 0 : yours == 0 ? 2 : 1,
 					(r.ubResult & 4) != 0, r.ubMoves, r.ubControl,
-					int(r.usDay) };
+					ST::format("day {}", r.usDay) };
 		}
 		{
 			UINT32 st = UINT32(seat.pid) * 2654435761u + GetWorldDay() * 97u;
@@ -4524,7 +4525,10 @@ namespace
 				st = st * 1103515245u + 12345u;
 				return int((st >> 16) % UINT32(mod));
 			};
-			int day = int(GetWorldDay());
+			// the ledger predates you: dates walk back through the site's
+			// own history, guestbook-fashion, well before day 1
+			int ym = 1999 * 12 + 3;  // april '99, and only downhill from there
+			int dom = 1 + roll(27);
 			while (n < 8)
 			{
 				// an opponent from the rest of the room, the daily man
@@ -4541,27 +4545,26 @@ namespace
 				const int r2 = roll(100);
 				const int res = r2 < edge ? 2 : r2 < edge + 14 ? 1 : 0;
 				static const int clocks[3] = { 1, 3, 10 };
-				day -= roll(2);
+				dom -= 4 + roll(18);
+				while (dom < 1) { dom += 28; --ym; }
+				if (roll(100) < 18) ym -= 5; // a quiet half year, now and then
 				rows[n++] = ProfRow{ ST::string(opp->handle),
 						opp->title[0] ? opp->title : nullptr, opp->flag,
 						res, false, 14 + roll(48),
 						opp == &CHESS_SEAT_ENRICO ? 0 : clocks[roll(3)],
-						std::max(1, day) };
+						ST::format("{02d}/{02d}/{02d}", ym % 12 + 1, dom,
+								(ym / 12) % 100) };
 			}
 		}
-		// the feed reads newest first, real days and invented alike
-		std::stable_sort(rows, rows + n,
-				[](const ProfRow& a, const ProfRow& b)
-				{ return a.day > b.day; });
 		const INT32 cOpp = px + 12;
-		const INT32 cRes = px + 168;
-		const INT32 cMov = px + 208;
+		const INT32 cRes = px + 158;
+		const INT32 cMov = px + 196;
 		const INT32 cDay = px + pw - 12;
 		PrintAt(TINYFONT1, FONT_GRAY4, cOpp, y, "OPPONENT");
 		PrintAt(TINYFONT1, FONT_GRAY4, cRes, y, "RES");
 		PrintAt(TINYFONT1, FONT_GRAY4, cMov, y, "MOV");
 		PrintAt(TINYFONT1, FONT_GRAY4,
-		        cDay - StringPixLength("DAY", TINYFONT1), y, "DAY");
+		        cDay - StringPixLength("DATE", TINYFONT1), y, "DATE");
 		y += 12;
 		for (int i = 0; i < n; ++i)
 		{
@@ -4589,9 +4592,8 @@ namespace
 			PrintAt(FONT10ARIALBOLD, rc, cRes, y, rs);
 			PrintAt(FONT10ARIAL, FONT_GRAY2, cMov, y,
 			        ST::format("{}", r.moves));
-			const ST::string dd = ST::format("day {}", r.day);
 			PrintAt(FONT10ARIAL, FONT_GRAY2,
-			        cDay - StringPixLength(dd, FONT10ARIAL), y, dd);
+			        cDay - StringPixLength(r.date, FONT10ARIAL), y, r.date);
 			y += 15;
 		}
 	}
