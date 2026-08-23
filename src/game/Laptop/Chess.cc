@@ -3165,10 +3165,32 @@ namespace
 	{
 		const PlayControl& pc = CH_PLAY_TIMES[i];
 		const bool on = giPlayMinutes == pc.mins;
-		if (on) FillRounded(bx2 - 2, by2 - 2, bw2 + 4, 28, CH_RGB_CTA, 7, bg);
-		// inside the ring the button's corner notches must blend into the
-		// green, not stamp panel-dark squares over it
-		ChessDrawGreyButton(bx2, by2, bw2, 24, on ? CH_RGB_CTA : bg, on);
+		if (on)
+		{
+			// the ring, and inside it a flat cut of the button: the
+			// two-layer drop foot cannot nest cleanly inside an arc, its
+			// corner notches leak the ring colour into the body
+			FillRounded(bx2 - 2, by2 - 2, bw2 + 4, 28, CH_RGB_CTA, 7, bg);
+			const UINT32 body = FROMRGB(64, 59, 54);
+			const UINT32 bnd  = FROMRGB(86, 80, 73);
+			FillRounded(bx2, by2, bw2, 24, body, 5, CH_RGB_CTA);
+			FillRect(bx2 + 3, by2 + 2, bw2 - 6, 7, bnd);
+			FillRect(bx2 + 5, by2 + 1, bw2 - 10, 1, FROMRGB(102, 95, 87));
+			for (INT32 row = 0; row < 3; ++row)
+			{
+				const INT32 dy = by2 + 9 + row;
+				const INT32 step = row == 2 ? 4 : 2;
+				for (INT32 dx = bx2 + 3 + ((row + 1) & 1); dx < bx2 + bw2 - 3;
+				     dx += step)
+				{
+					FillRect(dx, dy, 1, 1, bnd);
+				}
+			}
+		}
+		else
+		{
+			ChessDrawGreyButton(bx2, by2, bw2, 24, bg, false);
+		}
 		// the badge: bullet streak, blitz bolt, rapid watch, daily sun
 		const INT32 ix = bx2 + 8, iy = by2 + 7;
 		switch (i)
