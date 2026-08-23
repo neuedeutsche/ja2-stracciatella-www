@@ -3961,13 +3961,14 @@ namespace
 		FillRoundedOnly(x, y, w, h - 2, body, 5);
 		FillRect(x + 3, y + 2, w - 6, band, bnd);
 		FillRect(x + 5, y + 1, w - 10, 1, high);
-		// the gradient steps down through three loud dither rows: full
-		// checker, then sparser, band colour over the darker body
-		for (INT32 row = 0; row < 3; ++row)
+		// the gradient steps down through five dither rows, checker into
+		// sparse flecks, band colour thinning into the darker body
+		static const INT32 dsteps[5] = { 2, 2, 3, 4, 6 };
+		for (INT32 row = 0; row < 5; ++row)
 		{
 			const INT32 dy = y + 2 + band + row;
-			const INT32 step = row == 2 ? 4 : 2;
-			for (INT32 dx = x + 2 + ((row + 1) & 1); dx < x + w - 2; dx += step)
+			for (INT32 dx = x + 2 + ((row + 1) & 1); dx < x + w - 2;
+			     dx += dsteps[row])
 			{
 				FillRect(dx, dy, 1, 1, bnd);
 			}
