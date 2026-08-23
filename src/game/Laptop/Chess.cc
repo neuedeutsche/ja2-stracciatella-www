@@ -444,6 +444,7 @@ namespace
 	bool gfChalModal = false;         // the clock picker over a member page
 	MOUSE_REGION gChessChalRegion[6]; // 4 controls, START GAME, nevermind
 	MOUSE_REGION gChessGbNameRegion2[6]; // signer lockups link to their pages
+	MOUSE_REGION gChessCoachRegion;      // ze coach's face is @buns' door
 	int giGbRowTarget[6] = { -3, -3, -3, -3, -3, -3 };
 
 	// a guestbook handle is a member when it matches a seat on the ladder
@@ -2166,6 +2167,14 @@ namespace
 		ChessOpenProfile(-1);
 	}
 
+	void ChessCoachFaceCallback(MOUSE_REGION* region, UINT32 reason)
+	{
+		if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
+		if (gfChessModal) return;
+		if (giChessStub >= 0 && giChessStub != 2) return;
+		ChessOpenProfile(1); // the coach signs her lessons @buns
+	}
+
 	void ChessGbNameCallback(MOUSE_REGION* region, UINT32 reason)
 	{
 		if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
@@ -2450,6 +2459,8 @@ namespace
 		{
 			if (list) r.Enable(); else r.Disable();
 		}
+		if (giChessStub < 0 || giChessStub == 2) gChessCoachRegion.Enable();
+		else gChessCoachRegion.Disable();
 		for (MOUSE_REGION& r : gChessGbNumRegion) { if (list) r.Enable(); else r.Disable(); }
 		const bool compose = gb && gfChessGbCompose;
 		if (compose) { gChessGbPostRegion.Enable();  gChessGbCloseRegion.Enable(); }
@@ -2588,6 +2599,13 @@ namespace
 			gChessProfRowRegion[i].SetFastHelpText("view profile");
 			gChessProfRowRegion[i].Disable();
 		}
+		MSYS_DefineRegion(&gChessCoachRegion,
+		                  UINT16(CH_X(CH_PANEL_X + 4)), UINT16(CH_Y(CH_COACH_Y)),
+		                  UINT16(CH_X(CH_PANEL_X + 36)), UINT16(CH_Y(CH_COACH_Y + 34)),
+		                  MSYS_PRIORITY_HIGH, CURSOR_WWW, MSYS_NO_CALLBACK,
+		                  ChessCoachFaceCallback);
+		gChessCoachRegion.SetFastHelpText("view profile");
+		gChessCoachRegion.Disable();
 		for (int i = 0; i < 6; ++i)
 		{
 			// parked; the guestbook render moves them onto its rows
@@ -2796,6 +2814,7 @@ namespace
 		MSYS_RemoveRegion(&gChessChallengeRegion);
 		for (MOUSE_REGION& r : gChessChalRegion) MSYS_RemoveRegion(&r);
 		for (MOUSE_REGION& r : gChessGbNameRegion2) MSYS_RemoveRegion(&r);
+		MSYS_RemoveRegion(&gChessCoachRegion);
 		MSYS_RemoveRegion(&gChessBannerRegion);
 		MSYS_RemoveRegion(&gChessAdRegion);
 		MSYS_RemoveRegion(&gChessGbPrevRegion);
@@ -3382,7 +3401,7 @@ namespace
 		{
 			ChessDrawGreyButton(CH_PANEL_X + 14, CH_HINT_Y, CH_PANEL_W - 28,
 			                    CH_HINT_H, CH_RGB_PANEL_SUNK, false);
-			PrintCentred(FONT14ARIAL, FONT_GRAY6, cx,
+			PrintCentred(FONT14ARIAL, FONT_GRAY7, cx,
 			             CH_HINT_Y + 8,
 			             "SEEKING...");
 		}
@@ -3565,7 +3584,7 @@ namespace
 		const bool hintLive = gChessState == CHUI_PUZZLE && !(gChessDay.flags & ChessDaily::FLAG_HINT_USED);
 		ChessDrawGreyButton(CH_PANEL_X + 14, CH_HINT_Y, CH_PANEL_W - 28, CH_HINT_H,
 		                    CH_RGB_PANEL_SUNK, hintLive);
-		PrintCentred(FONT14ARIAL, hintLive ? FONT_MCOLOR_WHITE : FONT_GRAY7,
+		PrintCentred(FONT14ARIAL, hintLive ? FONT_GRAY2 : FONT_GRAY7,
 		             cx, CH_HINT_Y + 8, T(CHS_HINT));
 	}
 
