@@ -3170,10 +3170,10 @@ namespace
 			// the ring, and inside it a flat cut of the button: the
 			// two-layer drop foot cannot nest cleanly inside an arc, its
 			// corner notches leak the ring colour into the body
-			FillRounded(bx2 - 2, by2 - 2, bw2 + 4, 28, CH_RGB_CTA, 7, bg);
+			FillRoundedOnly(bx2 - 2, by2 - 2, bw2 + 4, 28, CH_RGB_CTA, 7);
 			const UINT32 body = FROMRGB(64, 59, 54);
 			const UINT32 bnd  = FROMRGB(86, 80, 73);
-			FillRounded(bx2, by2, bw2, 24, body, 5, CH_RGB_CTA);
+			FillRoundedOnly(bx2, by2, bw2, 24, body, 5);
 			FillRect(bx2 + 3, by2 + 2, bw2 - 6, 7, bnd);
 			FillRect(bx2 + 5, by2 + 1, bw2 - 10, 1, FROMRGB(102, 95, 87));
 			for (INT32 row = 0; row < 3; ++row)
@@ -3909,8 +3909,8 @@ namespace
 	void ChessDrawCTAButton(INT32 x, INT32 y, INT32 w, INT32 h, UINT32 bg)
 	{
 		const INT32 band = (h - 2) / 3;
-		FillRounded(x, y + 2, w, h - 2, FROMRGB(86, 128, 45), 5, bg);
-		FillRounded(x, y, w, h - 2, CH_RGB_CTA, 5, bg);
+		FillRoundedOnly(x, y + 2, w, h - 2, FROMRGB(86, 128, 45), 5);
+		FillRoundedOnly(x, y, w, h - 2, CH_RGB_CTA, 5);
 		FillRect(x + 3, y + 2, w - 6, band, FROMRGB(150, 199, 88));
 		FillRect(x + 5, y + 1, w - 10, 1, FROMRGB(184, 221, 130));
 		// the gradient steps down through three loud dither rows: full
@@ -3954,8 +3954,8 @@ namespace
 		const UINT32 body = live ? FROMRGB(64, 59, 54) : FROMRGB(42, 39, 36);
 		const UINT32 bnd  = live ? FROMRGB(86, 80, 73) : FROMRGB(50, 46, 42);
 		const UINT32 high = live ? FROMRGB(102, 95, 87) : FROMRGB(56, 52, 48);
-		FillRounded(x, y + 2, w, h - 2, foot, 5, bg);
-		FillRounded(x, y, w, h - 2, body, 5, bg);
+		FillRoundedOnly(x, y + 2, w, h - 2, foot, 5);
+		FillRoundedOnly(x, y, w, h - 2, body, 5);
 		FillRect(x + 3, y + 2, w - 6, band, bnd);
 		FillRect(x + 5, y + 1, w - 10, 1, high);
 		// the gradient steps down through three loud dither rows: full
