@@ -3784,7 +3784,11 @@ static void MahjongDrawTurnRing(INT32 fx, INT32 fy)
 				Get16BPPColor(FROMRGB(240, 220, 60)));
 }
 
-// void-suit badge: top-right corner of the portrait, red glyph on dark
+static void MahjongDrawStar(INT32 sx, INT32 sy, UINT16 col);
+
+// void-suit badge: top-right corner of the portrait, red glyph on dark.
+// Once the seat has won, the sentence is served - the glyph retires into
+// a silver star, kin to the dotted outline.
 static void MahjongDrawVoidBadge(int seat, INT32 fx, INT32 fy)
 {
 	if (!MahjongGameLive() || !guiMJVoidIcon) return;
@@ -3792,6 +3796,12 @@ static void MahjongDrawVoidBadge(int seat, INT32 fx, INT32 fy)
 	if (suit == MahjongGame::NO_SUIT) return;
 	ColorFillVideoSurfaceArea(FRAME_BUFFER, fx + MJ_FACE65_W - 16, fy, fx + MJ_FACE65_W, fy + 16,
 				Get16BPPColor(FROMRGB(6, 36, 20)));
+	if (MahjongWinOrderOf(seat) >= 0)
+	{
+		MahjongDrawStar(fx + MJ_FACE65_W - 13, fy + 3,
+				Get16BPPColor(FROMRGB(216, 220, 226)));
+		return;
+	}
 	BltVideoObject(FRAME_BUFFER, guiMJVoidIcon, static_cast<UINT16>(suit), fx + MJ_FACE65_W - 14, fy - 1);
 }
 
@@ -4981,7 +4991,8 @@ static void MahjongRenderOverlay()
 			}
 		}
 		if (!cur.empty()) lines.push_back(cur);
-		SetFontAttributes(TINYFONT1, FONT_MCOLOR_DKGRAY, FONT_MCOLOR_BLACK, 0);
+		SetFontAttributes(TINYFONT1, FONT_MCOLOR_LTGREEN, FONT_MCOLOR_BLACK, 0);
+		SetFontForegroundRGB(FROMRGB(88, 138, 102));
 		INT32 fy = y + h - 8 - static_cast<INT32>(lines.size()) * 9;
 		for (ST::string const& ln : lines)
 		{
