@@ -3563,7 +3563,7 @@ namespace
 
 		// the hint button greys out once it has been spent
 		const bool hintLive = gChessState == CHUI_PUZZLE && !(gChessDay.flags & ChessDaily::FLAG_HINT_USED);
-		ChessDrawGreyButton(CH_PANEL_X + 10, CH_HINT_Y, CH_PANEL_W - 20, CH_HINT_H,
+		ChessDrawGreyButton(CH_PANEL_X + 14, CH_HINT_Y, CH_PANEL_W - 28, CH_HINT_H,
 		                    CH_RGB_PANEL_SUNK, hintLive);
 		PrintCentred(FONT14ARIAL, hintLive ? FONT_MCOLOR_WHITE : FONT_GRAY7,
 		             cx, CH_HINT_Y + 8, T(CHS_HINT));
@@ -4385,7 +4385,7 @@ namespace
 		             CH_PANEL_RADIUS, CH_RGB_CHROME);
 		if (gfLearnSolved)
 		{
-			ChessDrawCTAButton(CH_PANEL_X + 10, CH_HINT_Y, CH_PANEL_W - 20,
+			ChessDrawCTAButton(CH_PANEL_X + 14, CH_HINT_Y, CH_PANEL_W - 28,
 			                   CH_HINT_H, CH_RGB_PANEL_SUNK);
 			PrintCentred(FONT14ARIAL, FONT_MCOLOR_WHITE, cx,
 			             CH_HINT_Y + 8,
@@ -4393,7 +4393,7 @@ namespace
 		}
 		else
 		{
-			ChessDrawGreyButton(CH_PANEL_X + 10, CH_HINT_Y, CH_PANEL_W - 20,
+			ChessDrawGreyButton(CH_PANEL_X + 14, CH_HINT_Y, CH_PANEL_W - 28,
 			                    CH_HINT_H, CH_RGB_PANEL_SUNK, true);
 			PrintCentred(FONT14ARIAL, FONT_GRAY2, cx,
 			             CH_HINT_Y + 8,
