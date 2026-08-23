@@ -4878,9 +4878,9 @@ static void MahjongRenderOverlay()
 	INT32 const nameX = textX + 48;
 	for (int i = 0; i < MahjongGame::NUM_PLAYERS; ++i)
 	{
-		// zebra stripes on the token's dark shades - no felt gaps
-		ColorFillVideoSurfaceArea(FRAME_BUFFER, rowL, lineY - 4, rowR, lineY + 30,
-					Get16BPPColor(i % 2 == 0 ? FROMRGB(22, 52, 38) : FROMRGB(14, 38, 28)));
+		// every row on the same lighter green, rounded like a card
+		MahjongFillRounded(rowL, lineY - 4, rowR - rowL, 34, 4,
+					Get16BPPColor(FROMRGB(22, 52, 38)));
 		{
 			int rank = 1;
 			for (int j = 0; j < MahjongGame::NUM_PLAYERS; ++j)
