@@ -2576,8 +2576,8 @@ namespace
 			for (int i = 0; i < 6; ++i)
 			{
 				const INT32 oy = i < 4 ? 122 + i * 30
-				               : i == 4 ? 250 : 280;
-				const INT32 oh = i < 4 ? 24 : i == 4 ? 22 : 14;
+				               : i == 4 ? 246 : 282;
+				const INT32 oh = i < 4 ? 24 : i == 4 ? CH_HINT_H : 14;
 				MSYS_DefineRegion(&gChessChalRegion[i],
 				                  UINT16(CH_X(mx + 16)), UINT16(CH_Y(oy)),
 				                  UINT16(CH_X(mx + 144)),
@@ -4802,10 +4802,20 @@ namespace
 				ChessDrawControlRow(i, mx + 16, 122 + i * 30, 128,
 				                    CH_RGB_PANEL);
 			}
-			ChessDrawCTAButton(mx + 16, 250, 128, 22, CH_RGB_PANEL);
-			PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, mx + 80, 256,
-			             ST::format("PLAY {}", seat.handle));
-			PrintCentred(FONT10ARIAL, FONT_GRAY4, mx + 80, 282, "nevermind");
+			// the START GAME cut: full CTA height, title-bar type
+			ChessDrawCTAButton(mx + 16, 246, 128, CH_HINT_H, CH_RGB_PANEL);
+			const ST::string play = ST::format("PLAY {}", seat.handle);
+			if (StringPixLength(play, FONT14ARIAL) <= 120)
+			{
+				PrintCentred(FONT14ARIAL, FONT_MCOLOR_WHITE, mx + 80, 254,
+				             play);
+			}
+			else
+			{
+				PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, mx + 80, 256,
+				             play);
+			}
+			PrintCentred(FONT10ARIAL, FONT_GRAY4, mx + 80, 284, "nevermind");
 		}
 	}
 
