@@ -78,7 +78,7 @@
 
 // the result card, centred on the board
 #define CH_MODAL_W      204
-#define CH_MODAL_H      116
+#define CH_MODAL_H      120
 #define CH_MODAL_X      (CH_BOARD_X + (CH_BOARD_SIZE - CH_MODAL_W) / 2)
 #define CH_MODAL_Y      (CH_BOARD_Y + (CH_BOARD_SIZE - CH_MODAL_H) / 2)
 
@@ -363,6 +363,13 @@ namespace
 	// tested without a laptop or a save game in sight
 	ChessDaily::State gChessDay;
 
+	// the profile ledger: your rating and the games the server remembers,
+	// persisted with the daily state behind the 0xC6 save marker
+	UINT16 gusProfRating = 0;   // 0 until the first live game finishes
+	UINT16 gusProfWins = 0, gusProfLosses = 0, gusProfDraws = 0;
+	UINT8  gubProfCount = 0;
+	ChessGameRec gProfHist[CHESS_HIST_MAX] = {};
+
 	// Chess.h repeats these bits so the laptop can read them without pulling
 	// the daily module in. They must not drift.
 	static_assert(CHESS_FLAG_SOLVED     == ChessDaily::FLAG_SOLVED,     "flag drift");
@@ -426,6 +433,7 @@ namespace
 	MOUSE_REGION gChessSquare[64];
 	MOUSE_REGION gChessHintRegion;
 	MOUSE_REGION gChessNavRegion[5];
+	MOUSE_REGION gChessMeRegion; // the account row at the rail's foot
 	MOUSE_REGION gChessBannerRegion;
 	MOUSE_REGION gChessAdRegion;
 	MOUSE_REGION gChessSignRegion;
@@ -483,7 +491,7 @@ namespace
 			"solved. come back tomorrow.", "out of tries. the solution is on the board.",
 			"correct. the position is resolved.", "your move again.",
 			"from the archive. this one is finished.",
-			"PERFECT!", "SOLVED", "OUT OF TRIES", "OLDER PUZZLES",
+			"PERFECT!", "SOLVED", "OUT OF TRIES", "SEE YOU TOMORROW",
 			"STREAK", "BEST",
 			"UNATTENDED",
 			"ze proprietor is on contract. yours.",
@@ -1156,6 +1164,12 @@ ChessPersist ChessGetPersist()
 	p.ubFlags         = gChessDay.flags;
 	std::memset(p.szLine, 0, sizeof(p.szLine));
 	std::strncpy(p.szLine, gChessGuestLine.c_str(), sizeof(p.szLine) - 1);
+	p.usRating    = gusProfRating;
+	p.usWins      = gusProfWins;
+	p.usLosses    = gusProfLosses;
+	p.usDraws     = gusProfDraws;
+	p.ubHistCount = gubProfCount;
+	std::copy(std::begin(gProfHist), std::end(gProfHist), std::begin(p.aHist));
 	return p;
 }
 
@@ -1173,6 +1187,21 @@ void ChessSetPersist(const ChessPersist& p)
 		// old saves hold zeroes here; anything unprintable is not ours
 		const char c = p.szLine[i];
 		if (c >= 32 && c < 127) gChessGuestLine += c;
+	}
+	gusProfRating = p.usRating;
+	gusProfWins   = p.usWins;
+	gusProfLosses = p.usLosses;
+	gusProfDraws  = p.usDraws;
+	gubProfCount  = std::min<UINT8>(p.ubHistCount, CHESS_HIST_MAX);
+	std::copy(std::begin(p.aHist), std::end(p.aHist), std::begin(gProfHist));
+	// old saves hold zeroes or noise here; a seat off the ladder is not ours
+	for (int i = 0; i < int(gubProfCount); ++i)
+	{
+		if (gProfHist[i].ubSeat != 0xFE && gProfHist[i].ubSeat >= lengthof(CHESS_SEATS))
+		{
+			gubProfCount = UINT8(i);
+			break;
+		}
 	}
 }
 
@@ -1594,6 +1623,37 @@ namespace
 
 	UINT32 guiPlayModalDue = 0; // the result modal waits a beat
 
+	// The ledger takes the finished game and moves the rating: honest Elo,
+	// with a provisional K while the sample is thin. outcome: 0 loss, 1
+	// draw, 2 win, always from your side of the board.
+	void ChessRecordGame(int outcome, bool resigned)
+	{
+		if (giPlaySeat == -1) return;
+		const ChessSeat& opp = ChessOpponent();
+		const int games = gusProfWins + gusProfLosses + gusProfDraws;
+		if (gusProfRating == 0) gusProfRating = 1200;
+		const double expected = 1.0 /
+			(1.0 + std::pow(10.0, (opp.rating - int(gusProfRating)) / 400.0));
+		const int k = games < 10 ? 40 : 16;
+		const int r = int(gusProfRating) +
+			int(std::lround(k * (outcome * 0.5 - expected)));
+		gusProfRating = UINT16(std::clamp(r, 400, 2400));
+		if      (outcome == 2) ++gusProfWins;
+		else if (outcome == 1) ++gusProfDraws;
+		else                   ++gusProfLosses;
+		for (int i = std::min<int>(gubProfCount, CHESS_HIST_MAX - 1); i > 0; --i)
+		{
+			gProfHist[i] = gProfHist[i - 1];
+		}
+		ChessGameRec& rec = gProfHist[0];
+		rec.usDay     = UINT16(GetWorldDay());
+		rec.ubSeat    = giPlaySeat == -2 ? 0xFE : UINT8(giPlaySeat);
+		rec.ubResult  = UINT8(outcome) | (resigned ? 4 : 0);
+		rec.ubMoves   = UINT8(std::min<size_t>(255, (gPlaySan.size() + 1) / 2));
+		rec.ubControl = UINT8(giPlayControl);
+		if (gubProfCount < CHESS_HIST_MAX) ++gubProfCount;
+	}
+
 	void ChessPlayFinish()
 	{
 		switch (gPlayGame.GetResult())
@@ -1605,6 +1665,8 @@ namespace
 		}
 		giPlayState = 2;
 		giPlayEndReason = 0;
+		ChessRecordGame(giPlaySaid == CHS_PLAY_WIN  ? 2
+		              : giPlaySaid == CHS_PLAY_LOSS ? 0 : 1, false);
 		if (giPlaySeat != -1)
 		{
 			ChessPlayChatSay(ST::string(), "GAME OVER");
@@ -1622,6 +1684,7 @@ namespace
 		giPlaySaid = CHS_PLAY_LOSS;
 		giPlayState = 2;
 		giPlayEndReason = 1;
+		ChessRecordGame(0, true);
 		ChessPlayChatSay(ST::string(), "GAME OVER - you resigned");
 		if (giPlaySeat != -1) ChessPlayChatSay(ChessOpponent().handle, "gg.");
 		gfPlayModal = true;
@@ -1973,7 +2036,8 @@ namespace
 			ChessRedraw();
 			return;
 		}
-		ChessShowDay(giChessViewDay - 1);
+		// a plain dismissal: the next puzzle arrives with tomorrow, and
+		// the archive chevrons are right there for the impatient
 		ChessRedraw();
 	}
 
@@ -2011,6 +2075,28 @@ namespace
 			ChessWatchNewGame();
 			guiWatchNextMove = ChessNow() + 1600 + Random(1800);
 		}
+		ChessRedraw();
+	}
+
+	// the account row at the rail's foot is the door to your own page
+	void ChessMeCallback(MOUSE_REGION* region, UINT32 reason)
+	{
+		if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
+		if (giChessStub != 5)
+		{
+			ChessPlay(CH_SND_CLICK2, LOWVOLUME);
+			++guiChessAdImpression;
+		}
+		if (gfLearnModal)
+		{
+			gfLearnModal = false;
+			ChessSetModal(false);
+		}
+		giChessStub = 5;
+		gChessHintRegion.SetFastHelpText(ST::string());
+		giMoveScroll = 0;
+		giChatScroll = 0;
+		ChessSyncPageRegions();
 		ChessRedraw();
 	}
 
@@ -2291,14 +2377,21 @@ namespace
 			MSYS_SetRegionUserData(&gChessNavRegion[i], 0, i);
 		}
 
+		MSYS_DefineRegion(&gChessMeRegion,
+		                  UINT16(CH_X(CH_NAV_X)), UINT16(CH_Y(CH_PAGE_H - 40)),
+		                  UINT16(CH_X(CH_NAV_X + CH_NAV_W)), UINT16(CH_Y(CH_PAGE_H)),
+		                  MSYS_PRIORITY_HIGH, CURSOR_WWW, MSYS_NO_CALLBACK,
+		                  ChessMeCallback);
+		gChessMeRegion.SetFastHelpText("your page");
+
 		MSYS_DefineRegion(&gChessModalCloseRegion,
 		                  UINT16(CH_X(CH_MODAL_X + CH_MODAL_W - 20)), UINT16(CH_Y(CH_MODAL_Y + 2)),
 		                  UINT16(CH_X(CH_MODAL_X + CH_MODAL_W - 2)),  UINT16(CH_Y(CH_MODAL_Y + 20)),
 		                  MSYS_PRIORITY_HIGHEST, CURSOR_WWW, MSYS_NO_CALLBACK,
 		                  ChessModalCloseCallback);
 		MSYS_DefineRegion(&gChessModalArchiveRegion,
-		                  UINT16(CH_X(CH_MODAL_X + 12)), UINT16(CH_Y(CH_MODAL_Y + 44)),
-		                  UINT16(CH_X(CH_MODAL_X + CH_MODAL_W - 12)), UINT16(CH_Y(CH_MODAL_Y + 72)),
+		                  UINT16(CH_X(CH_MODAL_X + 12)), UINT16(CH_Y(CH_MODAL_Y + 46)),
+		                  UINT16(CH_X(CH_MODAL_X + CH_MODAL_W - 12)), UINT16(CH_Y(CH_MODAL_Y + 74)),
 		                  MSYS_PRIORITY_HIGHEST, CURSOR_WWW, MSYS_NO_CALLBACK,
 		                  ChessModalArchiveCallback);
 		MSYS_DefineRegion(&gChessLearnCtaRegion,
@@ -2455,6 +2548,7 @@ namespace
 		MSYS_RemoveRegion(&gChessModalArchiveRegion);
 		MSYS_RemoveRegion(&gChessLearnCtaRegion);
 		for (MOUSE_REGION& r : gChessNavRegion) MSYS_RemoveRegion(&r);
+		MSYS_RemoveRegion(&gChessMeRegion);
 		MSYS_RemoveRegion(&gChessBannerRegion);
 		MSYS_RemoveRegion(&gChessAdRegion);
 		MSYS_RemoveRegion(&gChessGbPrevRegion);
@@ -2573,6 +2667,11 @@ namespace
 		// height, so a shorter image does not leave it floating
 		const INT32 faceX = CH_NAV_X + 3;
 		const INT32 faceY = CH_PAGE_H - faceH - 5;
+		if (giChessStub == 5)
+		{
+			FillRounded(CH_NAV_X + 2, faceY - 4, CH_NAV_W - 4, faceH + 8,
+			            CH_RGB_PANEL_UP, 3, CH_RGB_PANEL);
+		}
 		if (guiChessSelf)
 		{
 			BltVideoObject(FRAME_BUFFER, guiChessSelf, 0, CH_X(faceX), CH_Y(faceY));
@@ -2763,6 +2862,45 @@ namespace
 		}
 	}
 
+	// The coach's portrait, decoded by hand with a channel lift: the
+	// sample's palette runs dark against the panel, so r, g and b each
+	// gain thirty percent, clamped, on the way to the screen.
+	void ChessBltCoachFace(INT32 px, INT32 py)
+	{
+		if (!guiChessCoach || guiChessCoach->SubregionCount() == 0) return;
+		const ETRLEObject& e = guiChessCoach->SubregionProperties(0);
+		const UINT16* pal = guiChessCoach->Palette16();
+		if (!pal) return;
+		const UINT8* in = guiChessCoach->PixData(e);
+		SGPVSurface::Lock lock(FRAME_BUFFER);
+		UINT16* buf = lock.Buffer<UINT16>();
+		const UINT32 pitch = lock.Pitch() / 2;
+		for (INT32 y = 0; y < e.usHeight; ++y)
+		{
+			INT32 x = 0;
+			while (*in != 0)
+			{
+				const UINT8 code = *in++;
+				const UINT8 run = code & 0x7F;
+				if (code & 0x80) { x += run; continue; }
+				for (UINT8 k = 0; k < run; ++k, ++x)
+				{
+					const UINT16 c = pal[*in++];
+					INT32 r = ((c >> 11) & 31) * 13 / 10;
+					INT32 g = ((c >> 5) & 63) * 13 / 10;
+					INT32 b = (c & 31) * 13 / 10;
+					if (r > 31) r = 31;
+					if (g > 63) g = 63;
+					if (b > 31) b = 31;
+					buf[UINT32(CH_Y(py + y)) * pitch +
+							UINT32(CH_X(px + x))] =
+						UINT16((r << 11) | (g << 5) | b);
+				}
+			}
+			++in;
+		}
+	}
+
 	// The coach: her portrait, bare, with a white bubble beside it. No tile and
 	// no caption - the portrait is the label.
 	void ChessRenderCoach(INT32 y)
@@ -2774,7 +2912,7 @@ namespace
 		if (guiChessCoach)
 		{
 			faceW = guiChessCoach->SubregionProperties(0).usWidth;
-			BltVideoObject(FRAME_BUFFER, guiChessCoach, 0, CH_X(faceX), CH_Y(y));
+			ChessBltCoachFace(faceX, y);
 		}
 
 		const INT32 bubbleX = faceX + faceW + 4;
@@ -3013,7 +3151,7 @@ namespace
 		if (guiChessCoach)
 		{
 			faceW = guiChessCoach->SubregionProperties(0).usWidth;
-			BltVideoObject(FRAME_BUFFER, guiChessCoach, 0, CH_X(mx + 10), CH_Y(my + 42));
+			ChessBltCoachFace(mx + 10, my + 42);
 		}
 		const INT32 bx2 = mx + 10 + faceW + 4;
 		const INT32 bw2 = mx + mw - 10 - bx2;
@@ -3099,11 +3237,48 @@ namespace
 		PrintAt(FONT10ARIALBOLD, FONT_GRAY2, CH_PANEL_X + 10, heartY + 28,
 		        gChessSolver == ChessGame::White ? T(CHS_WHITE_MOVES) : T(CHS_BLACK_MOVES));
 
-		// the streak, at the foot: a flame and a number, nothing else
+		// the streak, at the foot: a flame and a number, nothing else.
+		// At zero the flame goes cold - decoded to grey by luma.
 		if (guiChessIcons)
 		{
-			BltVideoObject(FRAME_BUFFER, guiChessIcons, CH_ICON_FLAME,
-			               CH_X(CH_PANEL_X + 10), CH_Y(CH_PAGE_H - 76));
+			if (gChessDay.streak > 0)
+			{
+				BltVideoObject(FRAME_BUFFER, guiChessIcons, CH_ICON_FLAME,
+				               CH_X(CH_PANEL_X + 10), CH_Y(CH_PAGE_H - 76));
+			}
+			else
+			{
+				const ETRLEObject& e =
+					guiChessIcons->SubregionProperties(CH_ICON_FLAME);
+				const UINT16* pal = guiChessIcons->Palette16();
+				const UINT8* in = guiChessIcons->PixData(e);
+				SGPVSurface::Lock lock(FRAME_BUFFER);
+				UINT16* buf = lock.Buffer<UINT16>();
+				const UINT32 pitch = lock.Pitch() / 2;
+				for (INT32 iy = 0; pal && iy < e.usHeight; ++iy)
+				{
+					INT32 ix = 0;
+					while (*in != 0)
+					{
+						const UINT8 code = *in++;
+						const UINT8 run = code & 0x7F;
+						if (code & 0x80) { ix += run; continue; }
+						for (UINT8 k = 0; k < run; ++k, ++ix)
+						{
+							const UINT16 c = pal[*in++];
+							const INT32 luma =
+								(((c >> 11) & 31) * 2 * 30 +
+								 ((c >> 5) & 63) * 59 +
+								 (c & 31) * 2 * 11) / 200;
+							const INT32 g5 = std::min(31, 6 + luma / 2);
+							buf[UINT32(CH_Y(CH_PAGE_H - 76 + iy)) * pitch +
+									UINT32(CH_X(CH_PANEL_X + 10 + ix))] =
+								UINT16((g5 << 11) | (g5 * 2 << 5) | g5);
+						}
+					}
+					++in;
+				}
+			}
 		}
 		PrintAt(FONT10ARIALBOLD, gChessDay.streak > 0 ? FONT_MCOLOR_WHITE : FONT_GRAY7,
 		        CH_PANEL_X + 28, CH_PAGE_H - 75, ST::format("{}", gChessDay.streak));
@@ -3121,13 +3296,6 @@ namespace
 	// is not one colour.
 	// What the site is when its one man is in the field: still serving, because
 	// the daily puzzle is automated and he is not. Only he is missing.
-	void ChessRenderUnattendedNotice()
-	{
-		FillRect(CH_BOARD_X, CH_BOARD_Y - 17, CH_BOARD_SIZE, 15, CH_RGB_PANEL_SUNK);
-		PrintCentred(FONT10ARIAL, FONT_MCOLOR_LTYELLOW,
-		             CH_BOARD_X + CH_BOARD_SIZE / 2, CH_BOARD_Y - 16, T(CHS_DOWN_1));
-	}
-
 	// The result card, over a scanline-dimmed board. Square corners on purpose:
 	// rounding it would need the board colour behind each corner, and the board
 	// is not one colour.
@@ -3170,8 +3338,7 @@ namespace
 			if (guiChessCoach)
 			{
 				faceW = guiChessCoach->SubregionProperties(0).usWidth;
-				BltVideoObject(FRAME_BUFFER, guiChessCoach, 0,
-				               CH_X(x + 10), CH_Y(y + 28));
+				ChessBltCoachFace(x + 10, y + 28);
 			}
 			const INT32 bubbleX = x + 10 + faceW + 4;
 			const INT32 bubbleW = x + w - 10 - bubbleX;
@@ -3241,14 +3408,14 @@ namespace
 			}
 		}
 
-		ChessDrawCTAButton(x + 12, y + 44, w - 24, 28, CH_RGB_PANEL);
+		ChessDrawCTAButton(x + 12, y + 46, w - 24, 28, CH_RGB_PANEL);
 		// the title bar's 14pt cut: heavy by nature, no faking needed
-		PrintCentred(FONT14ARIAL, FONT_MCOLOR_WHITE, cx, y + 52,
+		PrintCentred(FONT14ARIAL, FONT_MCOLOR_WHITE, cx, y + 54,
 		             T(CHS_MODAL_ARCHIVE));
 
 		// streak and best, side by side on sunk ground
 		const INT32 boxW = (w - 30) / 2;
-		const INT32 boxY = y + 76;
+		const INT32 boxY = y + 80;
 		for (int i = 0; i < 2; ++i)
 		{
 			const INT32 bx = x + 12 + i * (boxW + 6);
@@ -3808,7 +3975,7 @@ namespace
 					// the move on the board wears the badge's dress: a chip
 					// under it, and its own text and piece brightened
 					const INT32 w = ChessMoveWidth(san[ply]);
-					FillRoundedOnly(mx - 4, y, w + 8, 14, CH_RGB_PANEL_UP, 3);
+					FillRoundedOnly(mx - 4, y - 1, w + 8, 14, CH_RGB_PANEL_UP, 3);
 				}
 				ChessPrintSan(mx, y + 2, san[ply], here ? FONT_MCOLOR_WHITE : FONT_GRAY2,
 				              here ? FROMRGB(245, 244, 242) : glyph);
@@ -3841,10 +4008,14 @@ namespace
 	// in the sidebar, where the coach explains it from her bubble.
 	void ChessRenderLearn()
 	{
+		// the door blinks: base colour and highlight take turns
+		const bool blinkOn = (ChessNow() / 450) % 2 == 0;
 		ChessRenderBoardCore(gLearnGame,
 		                     gfLearnSolved ? gubLearnFrom
 		                                   : ChessGame::NO_SQUARE,
-		                     gfLearnSolved ? gubLearnTo : gubLearnTarget,
+		                     gfLearnSolved ? gubLearnTo
+		                     : blinkOn     ? gubLearnTarget
+		                                   : ChessGame::NO_SQUARE,
 		                     gbChessSelected);
 		ChessRenderBoardCoreLate(gLearnGame);
 		// the lifted piece follows the pointer here too
@@ -3903,8 +4074,7 @@ namespace
 		if (guiChessCoach)
 		{
 			faceW = guiChessCoach->SubregionProperties(0).usWidth;
-			BltVideoObject(FRAME_BUFFER, guiChessCoach, 0, CH_X(faceX),
-			               CH_Y(CH_COACH_Y));
+			ChessBltCoachFace(faceX, CH_COACH_Y);
 		}
 		const INT32 bubbleX = faceX + faceW + 4;
 		const INT32 bubbleW = CH_PANEL_X + CH_PANEL_W - 4 - bubbleX;
@@ -4134,6 +4304,208 @@ namespace
 
 	// The guestbook fills the page: the title sits above the book in the
 	// daily header's lockup, the entries carry avatars, and signing is forever.
+	// Your member page, as every 1999 chess site kept one: the rating with
+	// its provisional asterisk, the record, the form line, and a ledger of
+	// games the server refuses to forget.
+	void ChessRenderProfile()
+	{
+		const INT32 px = CH_BOARD_X;
+		const INT32 pw = CH_PANEL_X + CH_PANEL_W - CH_BOARD_X;
+		const ST::string handle = gChessSelfNick.empty()
+			? ST::string("@commander") : ST::format("@{}", gChessSelfNick);
+		const ST::string name = gChessSelfName.empty() ? ST::string("Commander")
+		                                               : gChessSelfName;
+		PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, px + 2, 10, "PROFILE");
+		PrintAt(FONT10ARIAL, FONT_GRAY4,
+		        px + 2 + StringPixLength("PROFILE", FONT10ARIALBOLD) + 10, 10,
+		        "ze server remembers every game. apologies.");
+
+		const INT32 top = CH_GB_TOP;
+		const INT32 cardH = CH_BANNER_Y - 6 - top;
+		FillRounded(px, top, pw, cardH, CH_RGB_PANEL, CH_PANEL_RADIUS,
+		            CH_RGB_CHROME);
+
+		// the header: who you are, and the number the site holds over you
+		if (gGuestSelfFace)
+		{
+			BltVideoSurface(FRAME_BUFFER, gGuestSelfFace, CH_X(px + 12),
+			                CH_Y(top + 10), NULL);
+		}
+		else
+		{
+			FillRounded(px + 12, top + 10, CH_GB_FACE, CH_GB_FACE,
+			            FROMRGB(74, 69, 63), 4, CH_RGB_PANEL);
+		}
+		PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, px + 46, top + 12, name);
+		PrintAt(FONT10ARIAL, FONT_GRAY4,
+		        px + 52 + StringPixLength(name, FONT10ARIALBOLD), top + 12,
+		        handle);
+		PrintAt(FONT10ARIAL, FONT_GRAY4, px + 46, top + 25,
+		        "member no. 2 - ze first is ze proprietor");
+
+		const int games = gusProfWins + gusProfLosses + gusProfDraws;
+		{
+			const ST::string rate =
+				gusProfRating == 0 ? ST::string("unrated")
+				: games < 10 ? ST::format("{}*", gusProfRating)
+				             : ST::format("{}", gusProfRating);
+			PrintAt(FONT14ARIAL, FONT_MCOLOR_WHITE,
+			        px + pw - 14 - StringPixLength(rate, FONT14ARIAL),
+			        top + 8, rate);
+			const char* lbl = gusProfRating == 0 ? "play to earn one"
+			                : games < 10 ? "rating (provisional)" : "rating";
+			PrintAt(TINYFONT1, FONT_GRAY4,
+			        px + pw - 14 - StringPixLength(lbl, TINYFONT1), top + 26,
+			        lbl);
+		}
+
+		// the stat band: record, form, the puzzle habit
+		const INT32 bandY = top + 44;
+		const INT32 boxW = (pw - 24 - 16) / 3;
+		const INT32 boxH = 40;
+		static const char* const caps[3] =
+			{ "RECORD (W-L-D)", "FORM (NEWEST FIRST)", "PUZZLE STREAK" };
+		for (int b = 0; b < 3; ++b)
+		{
+			const INT32 bx = px + 12 + b * (boxW + 8);
+			FillRounded(bx, bandY, boxW, boxH, CH_RGB_PANEL_SUNK, 4,
+			            CH_RGB_PANEL);
+			PrintAt(TINYFONT1, FONT_GRAY4, bx + 8, bandY + 5, caps[b]);
+		}
+		PrintAt(FONT14ARIAL, FONT_MCOLOR_WHITE, px + 20, bandY + 17,
+		        ST::format("{}-{}-{}", gusProfWins, gusProfLosses,
+		                   gusProfDraws));
+		{
+			// the form chips: one square per remembered game, newest left
+			const INT32 fx0 = px + 12 + boxW + 8 + 8;
+			for (int i = 0; i < int(gubProfCount); ++i)
+			{
+				const int r = gProfHist[i].ubResult & 3;
+				const UINT32 c = r == 2 ? CH_RGB_CTA
+				               : r == 1 ? FROMRGB(104, 98, 91)
+				                        : CH_RGB_CHK_DARK;
+				FillRounded(fx0 + i * 12, bandY + 19, 9, 9, c, 3,
+				            CH_RGB_PANEL_SUNK);
+			}
+			if (gubProfCount == 0)
+			{
+				PrintAt(FONT10ARIAL, FONT_GRAY4, fx0, bandY + 19, "-");
+			}
+		}
+		{
+			const INT32 sx = px + 12 + 2 * (boxW + 8) + 8;
+			const ST::string sv = ST::format("{}", gChessDay.streak);
+			PrintAt(FONT14ARIAL, FONT_MCOLOR_WHITE, sx, bandY + 17, sv);
+			PrintAt(FONT10ARIAL, FONT_GRAY4,
+			        sx + StringPixLength(sv, FONT14ARIAL) + 8, bandY + 21,
+			        ST::format("best {}", gChessDay.bestStreak));
+		}
+
+		// the site reads your form back to you, whether you asked or not
+		INT32 y = bandY + boxH + 8;
+		if (gubProfCount > 0)
+		{
+			const int kind = gProfHist[0].ubResult & 3;
+			int run = 0;
+			while (run < int(gubProfCount) &&
+			       (gProfHist[run].ubResult & 3) == kind)
+			{
+				++run;
+			}
+			ST::string say;
+			if (run >= 2 && kind == 0)
+			{
+				say = ST::format("{} losses running. ze other members have "
+				                 "noticed.", run);
+			}
+			else if (run >= 2 && kind == 2)
+			{
+				say = ST::format("{} wins running. ze site suspects nothing, "
+				                 "yet.", run);
+			}
+			else if (run >= 2)
+			{
+				say = ST::format("{} draws running. decisive as always.", run);
+			}
+			else
+			{
+				say = "form: inconclusive. ze data is thin.";
+			}
+			PrintAt(FONT10ARIAL, FONT_GRAY2, px + 12, y, say);
+			y += 16;
+		}
+
+		PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, px + 12, y,
+		        "GAME HISTORY");
+		FillRect(px + 12, y + 13, pw - 24, 1, CH_RGB_ROW_SEP);
+		y += 18;
+		if (gubProfCount == 0)
+		{
+			PrintCentred(FONT10ARIAL, FONT_GRAY4, px + pw / 2, y + 16,
+			             "no games on record. ze board at PLAY is patient.");
+			return;
+		}
+		const INT32 cOpp = px + 14;
+		const INT32 cRes = px + 196;
+		const INT32 cMov = px + 254;
+		const INT32 cCtl = px + 302;
+		const INT32 cDay = px + pw - 14;
+		PrintAt(TINYFONT1, FONT_GRAY4, cOpp, y, "OPPONENT");
+		PrintAt(TINYFONT1, FONT_GRAY4, cRes, y, "RESULT");
+		PrintAt(TINYFONT1, FONT_GRAY4, cMov, y, "MOVES");
+		PrintAt(TINYFONT1, FONT_GRAY4, cCtl, y, "CLOCK");
+		PrintAt(TINYFONT1, FONT_GRAY4,
+		        cDay - StringPixLength("DAY", TINYFONT1), y, "DAY");
+		y += 12;
+		const int maxRows = std::max<INT32>(0, (top + cardH - 8 - y) / 15);
+		const int rows = std::min<int>(gubProfCount, maxRows);
+		for (int i = 0; i < rows; ++i)
+		{
+			const ChessGameRec& r = gProfHist[i];
+			if (i % 2 == 0) FillRect(px + 8, y - 2, pw - 16, 15,
+			                         CH_RGB_ROW_ALT);
+			const ChessSeat& opp = r.ubSeat == 0xFE ? CHESS_SEAT_ENRICO
+			                                        : CHESS_SEATS[r.ubSeat];
+			INT32 tx = cOpp;
+			if (opp.title[0])
+			{
+				// the crimson title chip, chess.com fashion
+				const INT32 tw = StringPixLength(opp.title, TINYFONT1) + 6;
+				FillRounded(tx, y + 1, tw, 10, FROMRGB(146, 44, 44), 2,
+				            i % 2 == 0 ? CH_RGB_ROW_ALT : CH_RGB_PANEL);
+				PrintAt(TINYFONT1, FONT_MCOLOR_WHITE, tx + 3, y + 3,
+				        opp.title);
+				tx += tw + 4;
+			}
+			PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, tx, y, opp.handle);
+			tx += StringPixLength(opp.handle, FONT10ARIALBOLD) + 5;
+			const ST::string orate = ST::format("({})", opp.rating);
+			PrintAt(FONT10ARIAL, FONT_GRAY4, tx, y + 1, orate);
+			tx += StringPixLength(orate, FONT10ARIAL) + 4;
+			ChessDrawFlag(tx, y + 1, opp.flag);
+			const int res = r.ubResult & 3;
+			const UINT8 rc = res == 2 ? FONT_MCOLOR_LTGREEN
+			               : res == 0 ? FONT_MCOLOR_LTRED : FONT_GRAY2;
+			const char* rs = res == 2 ? "1-0" : res == 0 ? "0-1" : "1/2";
+			PrintAt(FONT10ARIALBOLD, rc, cRes, y, rs);
+			if (r.ubResult & 4)
+			{
+				PrintAt(TINYFONT1, FONT_GRAY4,
+				        cRes + StringPixLength(rs, FONT10ARIALBOLD) + 4,
+				        y + 3, "res.");
+			}
+			PrintAt(FONT10ARIAL, FONT_GRAY2, cMov, y,
+			        ST::format("{}", r.ubMoves));
+			PrintAt(FONT10ARIAL, FONT_GRAY2, cCtl, y,
+			        r.ubControl == 0 ? ST::string("1 day")
+			                         : ST::format("{} min", r.ubControl));
+			const ST::string dd = ST::format("day {}", r.usDay);
+			PrintAt(FONT10ARIAL, FONT_GRAY2,
+			        cDay - StringPixLength(dd, FONT10ARIAL), y, dd);
+			y += 15;
+		}
+	}
+
 	void ChessRenderGuestbook()
 	{
 		ChessIconLabel(CH_ICON_COMMUNITY, CH_BOARD_X + 2, 15, FONT10ARIALBOLD,
@@ -4664,6 +5036,11 @@ void RenderChess()
 		ChessRenderGuestAd();
 		ChessRenderGuestCompose();
 	}
+	else if (giChessStub == 5)
+	{
+		ChessRenderProfile();
+		ChessRenderBanner();
+	}
 	else if (giChessStub == 2)
 	{
 		ChessRenderLearn();
@@ -4684,14 +5061,16 @@ void RenderChess()
 		const int pPlies = int(gPlaySan.size());
 		if (giPlayState == 3 || giPlayState == 4 || giPlaySeat == -1)
 		{
-			// no opponent yet: the reference's grey tile with a dark bust,
-			// labelled Opponent; the seek line takes over while one runs
-			FillRounded(CH_BOARD_X, CH_ROW_TOP_Y, CH_SQ, CH_SQ,
+			// no opponent yet: a grey tile with a dark bust, cut to the
+			// exact footprint a real face chip occupies in the row
+			const INT32 tileX = CH_BOARD_X + (CH_SQ - CH_ROW_FACE) / 2;
+			const INT32 tileY = CH_ROW_TOP_Y + (CH_SQ - CH_ROW_FACE) / 2;
+			FillRounded(tileX, tileY, CH_ROW_FACE, CH_ROW_FACE,
 			            FROMRGB(74, 69, 63), 3, CH_RGB_CHROME);
 			const UINT32 bust = FROMRGB(40, 37, 33);
-			FillRounded(CH_BOARD_X + 13, CH_ROW_TOP_Y + 7, 8, 8, bust, 3,
+			FillRounded(tileX + 11, tileY + 5, 8, 8, bust, 3,
 			            FROMRGB(74, 69, 63));
-			FillRounded(CH_BOARD_X + 7, CH_ROW_TOP_Y + 18, 20, 14, bust, 6,
+			FillRounded(tileX + 5, tileY + 15, 20, 13, bust, 6,
 			            FROMRGB(74, 69, 63));
 			PrintAt(FONT10ARIALBOLD, FONT_GRAY4, CH_BOARD_X + CH_SQ + 2,
 			        CH_ROW_TOP_Y + 3, "Opponent");
@@ -4734,7 +5113,6 @@ void RenderChess()
 	else
 	{
 		ChessRenderBoard();
-		if (gfChessOffline) ChessRenderUnattendedNotice();
 		ChessRenderBanner();
 		ChessRenderPanel();
 		ChessRenderFooter();
@@ -4757,6 +5135,18 @@ void HandleChess()
 		ChessPlay(CH_SND_GAMEEND);
 		ChessSyncPageRegions();
 		ChessRedraw();
+	}
+
+	// the lesson's target square blinks while the move is owed
+	if (giChessStub == 2 && !gfLearnSolved)
+	{
+		static UINT32 sBlink = 0;
+		const UINT32 blink = ChessNow() / 450;
+		if (blink != sBlink)
+		{
+			sBlink = blink;
+			ChessRedraw();
+		}
 	}
 
 	// the hover ring follows the pointer across the board
