@@ -4998,8 +4998,14 @@ static void MahjongRenderOverlay()
 	// mini profile rows: avatar, stacked identity, results in columns
 	INT32 const rowL = textX - 4, rowR = x + w - 12;
 	INT32 const nameX = textX + 48;
-	for (int i = 0; i < MahjongGame::NUM_PLAYERS; ++i)
+	// the card ranks the room: first place reads first, seat order does not
+	int seatOrder[MahjongGame::NUM_PLAYERS] = { 0, 1, 2, 3 };
+	std::stable_sort(std::begin(seatOrder), std::end(seatOrder),
+			[](int a, int b)
+			{ return gGame->player(a).score > gGame->player(b).score; });
+	for (int oi = 0; oi < MahjongGame::NUM_PLAYERS; ++oi)
 	{
+		const int i = seatOrder[oi];
 		int rank = 1;
 		for (int j = 0; j < MahjongGame::NUM_PLAYERS; ++j)
 		{
