@@ -4572,8 +4572,8 @@ namespace
 			const INT32 bx = px + boxW + 8;
 			if (vw + vl + vd == 0)
 			{
-				PrintAt(FONT10ARIAL, FONT_GRAY4, bx + 8, bandY + 20,
-				        "no games yet");
+				// the blank state is a dash, not a sentence
+				PrintAt(FONT14ARIAL, FONT_GRAY4, bx + 8, bandY + 17, "-");
 			}
 			else
 			{
