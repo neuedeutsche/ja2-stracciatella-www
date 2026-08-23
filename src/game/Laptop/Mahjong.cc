@@ -5122,7 +5122,7 @@ static void MahjongRenderOverlay()
 		UINT16 const body = Get16BPPColor(hot ? FROMRGB(238, 208, 62) : FROMRGB(216, 184, 44));
 		UINT16 const bandc = Get16BPPColor(hot ? FROMRGB(250, 228, 100) : FROMRGB(236, 208, 76));
 		UINT16 const high = Get16BPPColor(hot ? FROMRGB(255, 246, 172) : FROMRGB(250, 232, 130));
-		MahjongFillRounded(bx, by, bw, bh, 5, Get16BPPColor(FROMRGB(140, 112, 18)));
+		MahjongFillRounded(bx, by + 2, bw, bh - 2, 5, Get16BPPColor(FROMRGB(140, 112, 18)));
 		MahjongFillRounded(bx, by, bw, bh - 2, 5, body);
 		ColorFillVideoSurfaceArea(FRAME_BUFFER, bx + 3, by + 2, bx + bw - 3, by + 2 + band, bandc);
 		ColorFillVideoSurfaceArea(FRAME_BUFFER, bx + 5, by + 1, bx + bw - 5, by + 2, high);

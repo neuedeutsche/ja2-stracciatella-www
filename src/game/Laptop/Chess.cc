@@ -3887,7 +3887,7 @@ namespace
 	void ChessDrawCTAButton(INT32 x, INT32 y, INT32 w, INT32 h, UINT32 bg)
 	{
 		const INT32 band = (h - 2) / 3;
-		FillRounded(x, y, w, h, FROMRGB(86, 128, 45), 5, bg);
+		FillRounded(x, y + 2, w, h - 2, FROMRGB(86, 128, 45), 5, bg);
 		FillRounded(x, y, w, h - 2, CH_RGB_CTA, 5, bg);
 		FillRect(x + 3, y + 2, w - 6, band, FROMRGB(150, 199, 88));
 		FillRect(x + 5, y + 1, w - 10, 1, FROMRGB(184, 221, 130));
@@ -3932,7 +3932,7 @@ namespace
 		const UINT32 body = live ? FROMRGB(64, 59, 54) : FROMRGB(42, 39, 36);
 		const UINT32 bnd  = live ? FROMRGB(86, 80, 73) : FROMRGB(50, 46, 42);
 		const UINT32 high = live ? FROMRGB(102, 95, 87) : FROMRGB(56, 52, 48);
-		FillRounded(x, y, w, h, foot, 5, bg);
+		FillRounded(x, y + 2, w, h - 2, foot, 5, bg);
 		FillRounded(x, y, w, h - 2, body, 5, bg);
 		FillRect(x + 3, y + 2, w - 6, band, bnd);
 		FillRect(x + 5, y + 1, w - 10, 1, high);
