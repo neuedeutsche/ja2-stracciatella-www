@@ -1583,22 +1583,31 @@ static void MahjongUpdateButtons()
 	bool const canClaim =
 		(guiMJState == MJUI_PLAYER_TURN && gGame && gGame->CanTsumo()) ||
 		guiMJState == MJUI_RON_WINDOW || guiMJState == MJUI_ROB_WINDOW;
-	if (guiMJMahjongBtn)
+	bool const canPong = guiMJState == MJUI_CLAIM_WINDOW;
+	bool const canKong =
+		(guiMJState == MJUI_CLAIM_WINDOW && gfMJClaimKongPossible) ||
+		(guiMJState == MJUI_PLAYER_TURN && gGame && !gGame->SelfKongOptions().empty());
+	// the claim row anchors on the left edge and packs in a fixed order,
+	// so a lone Kong! cant float where Mahjong! usually sits
 	{
-		if (canClaim) ShowButton(guiMJMahjongBtn);
-		else          HideButton(guiMJMahjongBtn);
-	}
-	if (guiMJPongBtn)
-	{
-		if (guiMJState == MJUI_CLAIM_WINDOW) ShowButton(guiMJPongBtn);
-		else                                 HideButton(guiMJPongBtn);
-	}
-	if (guiMJKongBtn)
-	{
-		bool const claimKong = guiMJState == MJUI_CLAIM_WINDOW && gfMJClaimKongPossible;
-		bool const selfKong = guiMJState == MJUI_PLAYER_TURN && gGame && !gGame->SelfKongOptions().empty();
-		if (claimKong || selfKong) ShowButton(guiMJKongBtn);
-		else                       HideButton(guiMJKongBtn);
+		INT32 bx = MJ_CLAIM_BTN_X;
+		auto const place = [&bx](GUIButtonRef const& b, bool show, INT32 w)
+		{
+			if (!b) return;
+			if (!show)
+			{
+				HideButton(b);
+				return;
+			}
+			INT16 const nx = static_cast<INT16>(MJ_X(bx));
+			b->Area.RegionTopLeftX = nx;
+			b->Area.RegionBottomRightX = static_cast<INT16>(nx + w);
+			ShowButton(b);
+			bx += w + 8;
+		};
+		place(guiMJMahjongBtn, canClaim, 120);
+		place(guiMJPongBtn, canPong, 88);
+		place(guiMJKongBtn, canKong, 88);
 	}
 
 	switch (guiMJState)
@@ -4775,8 +4784,14 @@ static void MahjongStampVoidIcon(UINT16 frame, INT32 sx, INT32 sy, UINT16 col)
 			{
 				for (UINT8 k = 0; k < run; ++k, ++x, ++in)
 				{
-					out[static_cast<UINT32>(sy + y) * pitch +
-							static_cast<UINT32>(sx + x)] = col;
+					INT32 const px = sx + x, py = sy + y;
+					if (x >= e.usWidth || px < 0 || px >= SCREEN_WIDTH ||
+						py < 0 || py >= SCREEN_HEIGHT)
+					{
+						continue;
+					}
+					out[static_cast<UINT32>(py) * pitch +
+							static_cast<UINT32>(px)] = col;
 				}
 			}
 		}
