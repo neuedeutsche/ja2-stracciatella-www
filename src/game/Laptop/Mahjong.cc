@@ -4687,8 +4687,13 @@ static void MahjongRenderHand()
 				guiMJState == MJUI_RON_WINDOW;
 	bool const inPlay = guiMJState == MJUI_PLAYER_TURN || guiMJState == MJUI_AI_THINK ||
 				guiMJState == MJUI_RON_WINDOW || guiMJState == MJUI_ANNOUNCE;
+	// never while it is your action: with a drawn tile - or right after a
+	// claim - the hand is momentarily 14 tiles and the wait math reads it
+	// as 'complete', which printed as '-1 tiles from a waiting hand'
 	if (inPlay && !canClaim && !gGame->player(0).finished && voidSuit != MahjongGame::NO_SUIT &&
-		!(gGame->currentPlayer() == 0 && gGame->drawnTile() != MahjongGame::NO_TILE))
+		!(gGame->currentPlayer() == 0 &&
+			(gGame->drawnTile() != MahjongGame::NO_TILE ||
+			 guiMJState == MJUI_PLAYER_TURN)))
 	{
 		std::vector<MahjongGame::TileId> const waits = gGame->WinningTilesFor(0);
 		if (!waits.empty())
@@ -4706,7 +4711,11 @@ static void MahjongRenderHand()
 		{
 			int const shanten = gGame->ShantenFor(0);
 			SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_WHITE, FONT_MCOLOR_BLACK, 0);
-			MPrint(MJ_X(MJ_HAND_X), MJ_Y(198), shanten == 1
+			// a waiting shape with no legal waits means the void suit is
+			// standing in the door
+			MPrint(MJ_X(MJ_HAND_X), MJ_Y(198), shanten <= 0
+					? ST::string("your wait is blocked by ze void suit")
+					: shanten == 1
 					? ST::string("1 tile from a waiting hand")
 					: ST::format("{} tiles from a waiting hand", shanten));
 		}
