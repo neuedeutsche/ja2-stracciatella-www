@@ -199,18 +199,11 @@ PIECES = {
     # muzzle bar and an ear - then one big circle carved out at the throat,
     # which is the cut that makes it read as a horse.
     "knight": [
-        # One continuous mass, twelve long segments: up the back to the crest,
-        # over the ear, down the brow to a drooping muzzle, jaw tucking back
-        # in, chest falling to the base. The composed variants kept falling
-        # apart; this one holds.
-        ("poly", [
-            (76, 88), (74, 48), (68, 22), (58, 6), (50, 19), (42, 9),
-            (24, 34), (10, 50), (14, 60), (32, 58), (38, 70), (36, 88),
-        ]),
-        # the belly: a semicircle low in front, bulging past the chest line.
-        # Everything is shaved flat at the foot line and the queen's foot bar
-        # is overlaid after the cut.
-        ("circle", 46, 88, 26),
+        # Three parts, per the construction guide: the body is a vertical
+        # semicircle (this disc, cut flat on the left below), the head a
+        # tilted capsule, the base a trapezoid - both overlaid after the
+        # cuts so the flattening cannot slice them.
+        ("circle", 50, 46, 31),
     ],
 }
 
@@ -240,9 +233,10 @@ CUTOUTS = {
         # the slot: cut from above the egg straight down into it
         ("rect", 52, 3, 60, 52, 2),
     ],
-    # the floor: body and belly are shaved flat at the foot's top line; the
-    # foot itself is an overlay, so it survives this cut
+    # the flat of the semicircle: the disc loses its left half, leaving
+    # the back's bulge to the right; then the floor shave at the foot line
     "knight": [
+        ("rect", 0, 0, 50, 112, 0),
         ("rect", 0, 76, 100, 112, 0),
     ],
 }
@@ -251,8 +245,20 @@ CUTOUTS = {
 # knob rides over the slot rather than being notched by it.
 OVERLAYS = {
     "bishop": [("circle", 50, 16, 10)],
-    # the same foot bar the queen stands on
-    "knight": [("rect", 18, 76, 82, 95, 8)],
+    # the guide's other two parts ride over the cuts: the head capsule
+    # (two circles bridged by a quad) running ear to muzzle, and the
+    # trapezoid base with its shoulders clipped - plus the foot bar
+    "knight": [
+        # the head capsule: thicker through the muzzle, ear kept below
+        # the crown line
+        ("circle", 54, 24, 11),
+        ("circle", 24, 46, 11),
+        ("poly", [(47.5, 15.1), (60.5, 32.9), (30.5, 54.9), (17.5, 37.1)]),
+        # the body: one triangle - apex tucked under the jaw, base
+        # spreading onto the foot bar
+        ("poly", [(50, 38), (79, 80), (19, 80)]),
+        ("rect", 18, 76, 82, 95, 8),
+    ],
 }
 
 # Bilaterally symmetric pieces are mirrored mechanically: the left half is
@@ -477,7 +483,7 @@ HEAD_BAND = {"rook"}
 # queen's four get one apiece under the ball, which is where the crown would
 # actually catch a shadow.
 SHADE_MARKS = {
-    "knight": [(44, 27, 5)],
+    "knight": [(45, 32, 9)],  # a round 3x3 eye, set into the brow
     "queen":  [(34, 24, 7), (66, 24, 7), (13.4, 41, 7), (86.6, 41, 7)],
 }
 
@@ -508,6 +514,12 @@ def render_piece(name, inks, size, margin=1, directional=False):
     # the pawn joins at its collar, not its foot: two bands hug the collar
     # bar, one above it under the head, one below it on the bell
     foot = _foot_row(rows, size) if name != "pawn" else None
+    if foot is None and name != "pawn":
+        # a body that tapers into the slab (the king) walks the finder
+        # clean past it; every major stands on the same slab at y=76
+        foot = int(margin + 76 * (size - 2 * margin) / 100.0 + 0.5)
+    if name == "knight" and foot is not None:
+        foot += 1  # the belly curve fools the waist finder by one row
     for y in (foot, head - 2 if head else None):
         if y is not None:
             shaded.update(range(y, min(size, y + band_h)))

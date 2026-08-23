@@ -9,6 +9,9 @@ struct ChessLesson
 	const char* title;
 	const char* fen;
 	const char* lines[3];
+	const char* answer;  // the move the lesson is about, UCI
+	const char* answer2; // an equally correct second door, or nullptr
+	const char* deny;    // what ze coach says to anything else
 };
 
 constexpr int CHESS_LESSON_COUNT = 8;

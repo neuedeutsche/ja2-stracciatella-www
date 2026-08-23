@@ -86,8 +86,8 @@
 #define CH_COACH_Y      78
 #define CH_COACH_TILE   36
 #define CH_FOOT_Y       (CH_PAGE_H - CH_INSET - 38)
-#define CH_HINT_Y       (CH_FOOT_Y + 8)
-#define CH_HINT_H       22
+#define CH_HINT_Y       (CH_FOOT_Y + 5)
+#define CH_HINT_H       28
 
 // The day stepper's arrows sit at fixed points on the panel edges while the
 // chip between them is centred and changes width with the day number. Glyphs
@@ -213,6 +213,17 @@ namespace
 	int    giChessStub      = -1;
 	// Learn: which of the lessons is open, and its position on the board
 	int    giChessLesson    = 0;
+	bool   gfLearnSolved    = false;      // the lesson's move has been played
+	const char* gzLearnSay  = nullptr;    // coach override: praise, deny, hint
+	UINT8  gubLearnFrom     = 0x7F;       // the solved move, for the highlight
+	UINT8  gubLearnTo       = 0x7F;
+
+	void ChessLearnTryMove(UINT8 from, UINT8 to);
+
+	UINT8 gubLearnTarget = 0x7F; // the answer's destination, kept lit
+	bool  gfLearnModal   = false; // the last lesson's graduation card
+
+	void ChessLearnReset();
 	ChessGame gLearnGame;
 	// Watch: the house plays itself while nobody minds the shop
 	ChessGame gWatchGame;
@@ -235,7 +246,8 @@ namespace
 		const char* handle;
 		const char* title;  // "IM"-style chess title; "" for the untitled
 		int         rating;
-		int         depth;
+		int         depth;  // iteration cap: the weak seats bind on this
+		int         ms;     // think budget: the strong seats bind on this
 		int         err;    // percent of moves played at random
 		int         greed;  // percent chance any available capture is taken
 		int         flag;   // where their A.I.M. bio puts them
@@ -246,18 +258,18 @@ namespace
 	// Spider have no nationality on file, which in 1999 meant American.
 	static const ChessSeat CHESS_SEATS[6] =
 	{
-		{ IVAN,   "@ivan_d",  "IM", 2145, 3,  4, 25, CH_FLAG_RU },
-		{ BUNS,   "@buns",    "FM", 1994, 3, 10, 40, CH_FLAG_DK },
-		{ SCOPE,  "@scope",   "CM", 1873, 2,  8, 50, CH_FLAG_GB },
-		{ FOX,    "@foxtrot", "",   1731, 2, 16, 65, CH_FLAG_US },
-		{ IGOR,   "@igor_k",  "",   1677, 2, 24, 70, CH_FLAG_RU },
-		{ SPIDER, "@spider",  "",   1512, 1, 30, 80, CH_FLAG_US },
+		{ IVAN,   "@ivan_d",  "IM", 2145, 64, 350,  2, 10, CH_FLAG_RU },
+		{ BUNS,   "@buns",    "FM", 1994,  8, 200,  6, 30, CH_FLAG_DK },
+		{ SCOPE,  "@scope",   "CM", 1873,  6, 120,  8, 45, CH_FLAG_GB },
+		{ FOX,    "@foxtrot", "",   1731,  4,  80, 16, 60, CH_FLAG_US },
+		{ IGOR,   "@igor_k",  "",   1677,  3,  60, 24, 70, CH_FLAG_RU },
+		{ SPIDER, "@spider",  "",   1512,  2,  30, 30, 80, CH_FLAG_US },
 	};
 
 	// daily chess is played against one man, by letter, one move a day. He
 	// signs the guestbook the same way, under the flag he is fighting for.
 	static const ChessSeat CHESS_SEAT_ENRICO =
-		{ ENRICO, "@a_free_arulco", "", 1899, 3, 6, 15, CH_FLAG_AR };
+		{ ENRICO, "@a_free_arulco", "", 1899, 7, 150, 5, 15, CH_FLAG_AR };
 
 	// the guestbook looks a signer's title up by their handle
 	const char* ChessTitleForHandle(const ST::string& handle)
@@ -726,6 +738,8 @@ namespace
 	#define CH_SND_OPPONENT SOUNDSDIR "/laptop/chach-move-opponent.mp3"
 	#define CH_SND_CAPTURE  SOUNDSDIR "/laptop/chach-capture.mp3"
 	#define CH_SND_CHECK    SOUNDSDIR "/laptop/chach-move-check.mp3"
+	#define CH_SND_GAMESTART SOUNDSDIR "/laptop/chach-game-start.mp3"
+	#define CH_SND_GAMEEND   SOUNDSDIR "/laptop/chach-game-end.mp3"
 	#define CH_SND_CASTLE   SOUNDSDIR "/laptop/chach-castle.mp3"
 	#define CH_SND_PROMOTE  SOUNDSDIR "/laptop/chach-promote.mp3"
 	#define CH_SND_WRONG    SOUNDSDIR "/laptop/chach-incorrect.mp3"
@@ -746,6 +760,8 @@ namespace
 
 	// Which cue a move earns, in chess.com's order of precedence: the special
 	// cases speak first, and check outranks the capture that delivered it.
+	// A mating move gives check, so it carries the check cue; the game-end
+	// sample answers separately when the result card lands.
 	const char* ChessMoveSound(const ChessGame::Move& m, bool givesCheck, bool byUs)
 	{
 		if (givesCheck)                  return CH_SND_CHECK;
@@ -925,7 +941,10 @@ namespace
 			if (!best.IsNull()) return best;
 		}
 
-		const ChessGame::Move thought = game.Search(seat.depth, 0, seed);
+		ChessGame::SearchParams params;
+		params.maxDepth = seat.depth;
+		params.msBudget = seat.ms;
+		const ChessGame::Move thought = game.SearchTimed(params, seed).move;
 		if (seat.err > 0 && int((roll() >> 16) % 100) < seat.err)
 		{
 			// a pawn to the titled seats, a whole knight to the bottom of
@@ -951,8 +970,11 @@ namespace
 
 	ChessGame::Move ChessWatchPickMove()
 	{
-		const ChessSeat& seat = CHESS_SEATS[
+		// ambient chess must never hitch the page: the exhibition plays
+		// the same personas with their budgets clamped
+		ChessSeat seat = CHESS_SEATS[
 			gWatchSeat[gWatchGame.SideToMove() == ChessGame::White ? 0 : 1]];
+		if (seat.ms > 150) seat.ms = 150;
 		return ChessPickMoveFor(gWatchGame, seat, guiWatchSeed);
 	}
 
@@ -1091,9 +1113,14 @@ namespace
 	ChessGame& ChessActiveGame()
 	{
 		if (ChessPlayReviewing()) return gPlayHist[size_t(giPlayView)];
+		if (giChessStub == 2) return gLearnGame;
 		return giChessStub == 0 ? gPlayGame : gChessGame;
 	}
-	ChessGame::Color ChessActiveSolver()  { return giChessStub == 0 ? ChessGame::White : gChessSolver; }
+	ChessGame::Color ChessActiveSolver()
+	{
+		if (giChessStub == 2) return gLearnGame.SideToMove();
+		return giChessStub == 0 ? ChessGame::White : gChessSolver;
+	}
 	UINT8 ChessActiveFrom()
 	{
 		if (ChessPlayReviewing()) return ChessGame::NO_SQUARE;
@@ -1552,6 +1579,8 @@ namespace
 
 	void ChessSyncPageRegions();
 
+	UINT32 guiPlayModalDue = 0; // the result modal waits a beat
+
 	void ChessPlayFinish()
 	{
 		switch (gPlayGame.GetResult())
@@ -1568,7 +1597,8 @@ namespace
 			ChessPlayChatSay(ST::string(), "GAME OVER");
 			ChessPlayChatSay(ChessOpponent().handle,
 			                 giPlaySaid == CHS_PLAY_LOSS ? "gg." : "gg. rematch?");
-			gfPlayModal = true;
+			// let the final position breathe before the card covers it
+			guiPlayModalDue = ChessNow() + 900;
 		}
 		ChessSyncPageRegions();
 	}
@@ -1582,7 +1612,7 @@ namespace
 		ChessPlayChatSay(ST::string(), "GAME OVER - you resigned");
 		if (giPlaySeat != -1) ChessPlayChatSay(ChessOpponent().handle, "gg.");
 		gfPlayModal = true;
-		ChessPlay(CH_SND_CLICK2, LOWVOLUME);
+		ChessPlay(CH_SND_GAMEEND);
 		ChessSyncPageRegions();
 	}
 
@@ -1686,11 +1716,16 @@ namespace
 		}
 		if (!(reason & MSYS_CALLBACK_REASON_POINTER_DWN)) return;
 		if (gfChessModal) return;
-		const bool playMode = giChessStub == 0;
-		if (!playMode && giChessStub >= 0) return;
+		const bool playMode  = giChessStub == 0;
+		const bool learnMode = giChessStub == 2;
+		if (!playMode && !learnMode && giChessStub >= 0) return;
 		if (playMode)
 		{
 			if (giPlayState != 0) return;
+		}
+		else if (learnMode)
+		{
+			if (gfLearnSolved) return;
 		}
 		else
 		{
@@ -1712,8 +1747,54 @@ namespace
 		else if (gbChessSelected >= 0)
 		{
 			// click-to-move: second click lands the piece already selected
-			if (playMode) ChessPlayTryMove(UINT8(gbChessSelected), sq);
-			else          ChessTryMove(UINT8(gbChessSelected), sq);
+			if (playMode)       ChessPlayTryMove(UINT8(gbChessSelected), sq);
+			else if (learnMode) ChessLearnTryMove(UINT8(gbChessSelected), sq);
+			else                ChessTryMove(UINT8(gbChessSelected), sq);
+		}
+		ChessRedraw();
+	}
+
+	void ChessLearnReset()
+	{
+		gfLearnSolved = false;
+		gzLearnSay    = nullptr;
+		gubLearnFrom  = 0x7F;
+		gubLearnTo    = 0x7F;
+		const ChessGame::Move want =
+			gLearnGame.ParseUci(CHESS_LESSONS[giChessLesson].answer);
+		gubLearnTarget = want.IsNull() ? 0x7F : want.to;
+	}
+
+	void ChessLearnTryMove(UINT8 from, UINT8 to)
+	{
+		const ChessLesson& lesson = CHESS_LESSONS[giChessLesson];
+		ChessGame::Move want = gLearnGame.ParseUci(lesson.answer);
+		if (!(want.from == from && want.to == to) && lesson.answer2)
+		{
+			// some lessons have two equally correct doors
+			want = gLearnGame.ParseUci(lesson.answer2);
+		}
+		gbChessSelected = -1;
+		if (!want.IsNull() && want.from == from && want.to == to)
+		{
+			gLearnGame.MakeMove(want);
+			gfLearnSolved = true;
+			gubLearnFrom  = from;
+			gubLearnTo    = to;
+			gzLearnSay    = "ja. exactly zat.";
+			ChessPlay(ChessMoveSound(want,
+					gLearnGame.IsInCheck(gLearnGame.SideToMove()), true));
+			if (giChessLesson == CHESS_LESSON_COUNT - 1)
+			{
+				gfLearnModal = true;
+				ChessSetModal(true);
+				ChessPlay(CH_SND_GAMEEND);
+			}
+		}
+		else
+		{
+			gzLearnSay = lesson.deny;
+			ChessPlay(CH_SND_WRONG, LOWVOLUME);
 		}
 		ChessRedraw();
 	}
@@ -1760,6 +1841,10 @@ namespace
 			ChessPlayTryMove(from, to);
 			gfChessDropMove = false;
 		}
+		else if (giChessStub == 2)
+		{
+			ChessLearnTryMove(from, to);
+		}
 		else
 		{
 			gfChessDropMove = true;
@@ -1783,8 +1868,22 @@ namespace
 		}
 		if (giChessStub == 2)
 		{
+			if (gfChessModal) return; // the graduation card owns the click
+			if (!gfLearnSolved)
+			{
+				// the hint: the coach repeats her middle line and the
+				// piece in question lights up
+				const ChessGame::Move want = gLearnGame.ParseUci(
+						CHESS_LESSONS[giChessLesson].answer);
+				if (!want.IsNull()) gbChessSelected = INT8(want.from);
+				gzLearnSay = CHESS_LESSONS[giChessLesson].lines[1];
+				ChessPlay(CH_SND_CLICK);
+				ChessRedraw();
+				return;
+			}
 			giChessLesson = (giChessLesson + 1) % CHESS_LESSON_COUNT;
 			gLearnGame.SetFen(CHESS_LESSONS[giChessLesson].fen);
+			ChessLearnReset();
 			ChessPlay(CH_SND_CLICK);
 			ChessRedraw();
 			return;
@@ -1814,6 +1913,7 @@ namespace
 			if (wantLesson < 0 || wantLesson >= CHESS_LESSON_COUNT) return;
 			giChessLesson = wantLesson;
 			gLearnGame.SetFen(CHESS_LESSONS[giChessLesson].fen);
+			ChessLearnReset();
 			ChessPlay(CH_SND_CLICK, LOWVOLUME);
 			ChessRedraw();
 			return;
@@ -1842,6 +1942,7 @@ namespace
 		if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
 		if (!gfChessModal) return;
 		ChessPlay(CH_SND_CLICK, LOWVOLUME);
+		gfLearnModal = false;
 		ChessSetModal(false);
 		ChessRedraw();
 	}
@@ -1852,6 +1953,13 @@ namespace
 		if (!gfChessModal) return;
 		ChessPlay(CH_SND_CLICK, LOWVOLUME);
 		ChessSetModal(false);
+		if (gfLearnModal)
+		{
+			// graduation: the card takes its bow and the book stays open
+			gfLearnModal = false;
+			ChessRedraw();
+			return;
+		}
 		ChessShowDay(giChessViewDay - 1);
 		ChessRedraw();
 	}
@@ -1869,6 +1977,11 @@ namespace
 			ChessPlay(CH_SND_CLICK2, LOWVOLUME);
 			++guiChessAdImpression;
 		}
+		if (gfLearnModal)
+		{
+			gfLearnModal = false;
+			ChessSetModal(false);
+		}
 		giChessStub = want;
 		gChessHintRegion.SetFastHelpText(want < 0 ? "Costs one attempt" : ST::string());
 		giMoveScroll = 0;
@@ -1878,6 +1991,7 @@ namespace
 		if (want == 2)
 		{
 			gLearnGame.SetFen(CHESS_LESSONS[giChessLesson].fen);
+			ChessLearnReset();
 		}
 		if (want == 3 && guiWatchNextMove == 0)
 		{
@@ -2170,8 +2284,8 @@ namespace
 		                  MSYS_PRIORITY_HIGHEST, CURSOR_WWW, MSYS_NO_CALLBACK,
 		                  ChessModalCloseCallback);
 		MSYS_DefineRegion(&gChessModalArchiveRegion,
-		                  UINT16(CH_X(CH_MODAL_X + 12)), UINT16(CH_Y(CH_MODAL_Y + 46)),
-		                  UINT16(CH_X(CH_MODAL_X + CH_MODAL_W - 12)), UINT16(CH_Y(CH_MODAL_Y + 68)),
+		                  UINT16(CH_X(CH_MODAL_X + 12)), UINT16(CH_Y(CH_MODAL_Y + 44)),
+		                  UINT16(CH_X(CH_MODAL_X + CH_MODAL_W - 12)), UINT16(CH_Y(CH_MODAL_Y + 72)),
 		                  MSYS_PRIORITY_HIGHEST, CURSOR_WWW, MSYS_NO_CALLBACK,
 		                  ChessModalArchiveCallback);
 		gChessModalCloseRegion.Disable();
@@ -2484,33 +2598,33 @@ namespace
 			}
 		}
 
-		// the men with a move to make wear a quiet inset ring: the
-		// affordance that says these are yours to pick up
+		// the man under the pointer wears a ring when he has a move:
+		// the affordance that says this one is yours to pick up
 		if (&game == &ChessActiveGame() && !gfChessModal &&
-		    !ChessPlayReviewing() &&
+		    !ChessPlayReviewing() && !gfChessDragging &&
 		    game.SideToMove() == ChessActiveSolver() &&
 		    (gChessState != CHUI_PUZZLE || guiChessReplyDue == 0))
 		{
-			ChessGame::Move moves[256];
-			const int n = const_cast<ChessGame&>(game).GenerateLegal(moves);
-			bool movable[64] = {};
-			for (int i = 0; i < n; ++i)
+			const UINT8 hov = ChessSquareUnderPointer();
+			if (hov < 64)
 			{
-				if (moves[i].from < 64) movable[moves[i].from] = true;
-			}
-			for (int row = 0; row < 8; ++row)
-			{
-				for (int col = 0; col < 8; ++col)
+				ChessGame::Move moves[256];
+				const int n =
+					const_cast<ChessGame&>(game).GenerateLegal(moves);
+				bool can = false;
+				for (int i = 0; i < n && !can; ++i)
 				{
-					const UINT8 sq = ScreenToSquare(col, row);
-					if (!movable[sq]) continue;
-					const INT32 x = CH_BOARD_X + col * CH_SQ + 1;
-					const INT32 y = CH_BOARD_Y + row * CH_SQ + 1;
+					can = moves[i].from == hov;
+				}
+				if (can)
+				{
+					INT32 x, y;
+					SquareToScreen(hov, x, y);
 					const UINT32 ring = FROMRGB(252, 252, 250);
-					FillRect(x, y, CH_SQ - 2, 1, ring);
-					FillRect(x, y + CH_SQ - 3, CH_SQ - 2, 1, ring);
-					FillRect(x, y, 1, CH_SQ - 2, ring);
-					FillRect(x + CH_SQ - 3, y, 1, CH_SQ - 2, ring);
+					FillRect(x, y, CH_SQ, 2, ring);
+					FillRect(x, y + CH_SQ - 2, CH_SQ, 2, ring);
+					FillRect(x, y, 2, CH_SQ, ring);
+					FillRect(x + CH_SQ - 2, y, 2, CH_SQ, ring);
 				}
 			}
 		}
@@ -2762,9 +2876,11 @@ namespace
 						FillRect(ix + 7, iy + 4, 2, 1, FROMRGB(226, 186, 60));
 						break;
 				}
+				// the duration is the decision, chess.com fashion: it
+				// leads; the format name trails as the detail
 				PrintAt(FONT10ARIALBOLD, on ? FONT_MCOLOR_WHITE : FONT_GRAY4,
-				        bx2 + 24, by2 + 7, pc.name);
-				const ST::string t = pc.time;
+				        bx2 + 24, by2 + 7, pc.time);
+				const ST::string t = pc.name;
 				PrintAt(FONT10ARIAL, on ? FONT_MCOLOR_WHITE : FONT_GRAY6,
 				        bx2 + bw2 - 8 - StringPixLength(t, FONT10ARIAL), by2 + 7, t);
 			}
@@ -2830,16 +2946,16 @@ namespace
 		{
 			ChessDrawGreyButton(CH_PANEL_X + 10, CH_HINT_Y, CH_PANEL_W - 20,
 			                    CH_HINT_H, CH_RGB_PANEL_SUNK, false);
-			PrintCentred(FONT10ARIALBOLD, FONT_GRAY6, cx,
-			             CH_HINT_Y + (CH_HINT_H - GetFontHeight(FONT10ARIALBOLD)) / 2,
+			PrintCentred(FONT14ARIAL, FONT_GRAY6, cx,
+			             CH_HINT_Y + 8,
 			             "SEEKING...");
 		}
 		else
 		{
 			ChessDrawCTAButton(CH_PANEL_X + 10, CH_HINT_Y, CH_PANEL_W - 20, CH_HINT_H,
 			                   CH_RGB_PANEL_SUNK);
-			PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, cx,
-			             CH_HINT_Y + (CH_HINT_H - GetFontHeight(FONT10ARIALBOLD)) / 2,
+			PrintCentred(FONT14ARIAL, FONT_MCOLOR_WHITE, cx,
+			             CH_HINT_Y + 8,
 			             giPlayState == 4 ? ST::string("START GAME") : ST::string(T(CHS_PLAY_NEW)));
 		}
 	}
@@ -2976,8 +3092,8 @@ namespace
 		const bool hintLive = gChessState == CHUI_PUZZLE && !(gChessDay.flags & ChessDaily::FLAG_HINT_USED);
 		ChessDrawGreyButton(CH_PANEL_X + 10, CH_HINT_Y, CH_PANEL_W - 20, CH_HINT_H,
 		                    CH_RGB_PANEL_SUNK, hintLive);
-		PrintCentred(FONT10ARIALBOLD, hintLive ? FONT_MCOLOR_WHITE : FONT_GRAY7,
-		             cx, CH_HINT_Y + (CH_HINT_H - GetFontHeight(FONT10ARIALBOLD)) / 2, T(CHS_HINT));
+		PrintCentred(FONT14ARIAL, hintLive ? FONT_MCOLOR_WHITE : FONT_GRAY7,
+		             cx, CH_HINT_Y + 8, T(CHS_HINT));
 	}
 
 	// The result card, over a scanline-dimmed board. Square corners on purpose:
@@ -3019,6 +3135,46 @@ namespace
 	{
 		if (!gfChessModal) return;
 
+		if (gfLearnModal)
+		{
+			const INT32 w = CH_MODAL_W, h = CH_MODAL_H;
+			const INT32 x = CH_MODAL_X, y = CH_MODAL_Y;
+			const INT32 cx2 = x + w / 2;
+			FillRoundedOnly(x - 1, y - 1, w + 2, h + 2, CH_RGB_PANEL_UP, 6);
+			FillRoundedOnly(x, y, w, h, CH_RGB_PANEL, 5);
+			PrintAt(FONT10ARIAL, FONT_GRAY4, x + w - 14, y + 4, "X");
+			PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, cx2, y + 12,
+			             "ZE BOOK IS FINISHED");
+			ChessDrawCTAButton(x + 12, y + 44, w - 24, 28, CH_RGB_PANEL);
+			PrintCentred(FONT14ARIAL, FONT_MCOLOR_WHITE, cx2, y + 52,
+			             "DANKE, COACH");
+			// the coach gets the last word, from her own bubble
+			INT32 faceW = 26;
+			if (guiChessCoach)
+			{
+				faceW = guiChessCoach->SubregionProperties(0).usWidth;
+				BltVideoObject(FRAME_BUFFER, guiChessCoach, 0,
+				               CH_X(x + 10), CH_Y(y + 78));
+			}
+			const INT32 bubbleX = x + 10 + faceW + 4;
+			const INT32 bubbleW = x + w - 10 - bubbleX;
+			FillRounded(bubbleX, y + 76, bubbleW, 34, CH_RGB_BUBBLE, 3,
+			            CH_RGB_PANEL);
+			for (int i = 0; i < 4; ++i)
+			{
+				const INT32 th = 8 - 2 * i;
+				if (th <= 0) break;
+				FillRect(bubbleX - 1 - i, y + 91 - th / 2, 1, th,
+				         CH_RGB_BUBBLE);
+			}
+			DisplayWrappedString(UINT16(CH_X(bubbleX + 4)),
+			                     UINT16(CH_Y(y + 81)), UINT16(bubbleW - 8), 1,
+			                     FONT10ARIAL, FONT_MCOLOR_BLACK,
+			                     "eight lessons. no refunds. go play.",
+			                     FONT_MCOLOR_WHITE, LEFT_JUSTIFIED);
+			return;
+		}
+
 		const INT32 w = CH_MODAL_W, h = CH_MODAL_H;
 		const INT32 x = CH_MODAL_X, y = CH_MODAL_Y;
 		const INT32 cx = x + w / 2;
@@ -3052,8 +3208,10 @@ namespace
 			}
 		}
 
-		ChessDrawCTAButton(x + 12, y + 46, w - 24, 22, CH_RGB_PANEL);
-		PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, cx, y + 52, T(CHS_MODAL_ARCHIVE));
+		ChessDrawCTAButton(x + 12, y + 44, w - 24, 28, CH_RGB_PANEL);
+		// the title bar's 14pt cut: heavy by nature, no faking needed
+		PrintCentred(FONT14ARIAL, FONT_MCOLOR_WHITE, cx, y + 52,
+		             T(CHS_MODAL_ARCHIVE));
 
 		// streak and best, side by side on sunk ground
 		const INT32 boxW = (w - 30) / 2;
@@ -3314,10 +3472,10 @@ namespace
 	void ChessDrawCTAButton(INT32 x, INT32 y, INT32 w, INT32 h, UINT32 bg)
 	{
 		const INT32 band = (h - 2) / 3;
-		FillRounded(x, y, w, h, FROMRGB(86, 128, 45), 3, bg);
-		FillRounded(x, y, w, h - 2, CH_RGB_CTA, 3, bg);
-		FillRect(x + 2, y + 2, w - 4, band, FROMRGB(150, 199, 88));
-		FillRect(x + 3, y + 1, w - 6, 1, FROMRGB(184, 221, 130));
+		FillRounded(x, y, w, h, FROMRGB(86, 128, 45), 5, bg);
+		FillRounded(x, y, w, h - 2, CH_RGB_CTA, 5, bg);
+		FillRect(x + 3, y + 2, w - 6, band, FROMRGB(150, 199, 88));
+		FillRect(x + 5, y + 1, w - 10, 1, FROMRGB(184, 221, 130));
 		// the gradient steps down through three loud dither rows: full
 		// checker, offset checker, then a sparse tail into the body
 		for (INT32 row = 0; row < 3; ++row)
@@ -3650,8 +3808,24 @@ namespace
 	// in the sidebar, where the coach explains it from her bubble.
 	void ChessRenderLearn()
 	{
-		ChessRenderBoardCore(gLearnGame, ChessGame::NO_SQUARE, ChessGame::NO_SQUARE, -1);
+		ChessRenderBoardCore(gLearnGame,
+		                     gfLearnSolved ? gubLearnFrom
+		                                   : ChessGame::NO_SQUARE,
+		                     gfLearnSolved ? gubLearnTo : gubLearnTarget,
+		                     gbChessSelected);
 		ChessRenderBoardCoreLate(gLearnGame);
+		// the lifted piece follows the pointer here too
+		if (gfChessDragging && !gLearnGame.IsEmpty(gubChessDragFrom) &&
+		    guiChessPieces)
+		{
+			const UINT8 type = gLearnGame.PieceAt(gubChessDragFrom);
+			const UINT16 frame = UINT16((type - 1) +
+				(gLearnGame.ColorAt(gubChessDragFrom) == ChessGame::Black
+					? 6 : 0));
+			BltVideoObject(FRAME_BUFFER, guiChessPieces, frame,
+			               INT32(gusMouseXPos) - CH_SQ / 2,
+			               INT32(gusMouseYPos) - CH_SQ / 2);
+		}
 	}
 
 	void ChessRenderLearnPanel()
@@ -3712,23 +3886,36 @@ namespace
 		}
 		DisplayWrappedString(UINT16(CH_X(bubbleX + 4)), UINT16(CH_Y(CH_COACH_Y + 5)),
 		                     UINT16(bubbleW - 8), 1, FONT10ARIAL, FONT_MCOLOR_BLACK,
-		                     lesson.lines[0], FONT_MCOLOR_WHITE, LEFT_JUSTIFIED);
+		                     gzLearnSay ? ST::string(gzLearnSay)
+		                                : ST::string(lesson.lines[0]),
+		                     FONT_MCOLOR_WHITE, LEFT_JUSTIFIED);
 
 		DisplayWrappedString(UINT16(CH_X(CH_PANEL_X + 10)), UINT16(CH_Y(128)),
 		                     UINT16(CH_PANEL_W - 20), 2, FONT10ARIAL, FONT_GRAY2,
 		                     ST::format("{} {}", lesson.lines[1], lesson.lines[2]),
 		                     FONT_MCOLOR_BLACK, LEFT_JUSTIFIED);
 
-		// NEXT LESSON in the CTA green, padded inside the same sunk footer
-		// band the other sidebars carry
+		// the footer is contextual: a quiet HINT while the move is owed,
+		// the green NEXT LESSON once it has been played
 		FillRect(CH_PANEL_X, CH_FOOT_Y, CH_PANEL_W, 38, CH_RGB_PANEL_SUNK);
 		RoundCorners(CH_PANEL_X, CH_INSET, CH_PANEL_W, CH_PAGE_H - 2 * CH_INSET,
 		             CH_PANEL_RADIUS, CH_RGB_CHROME);
-		ChessDrawCTAButton(CH_PANEL_X + 10, CH_HINT_Y, CH_PANEL_W - 20, CH_HINT_H,
-		                   CH_RGB_PANEL_SUNK);
-		PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, cx,
-		             CH_HINT_Y + (CH_HINT_H - GetFontHeight(FONT10ARIALBOLD)) / 2,
-		             T(CHS_LEARN_NEXT));
+		if (gfLearnSolved)
+		{
+			ChessDrawCTAButton(CH_PANEL_X + 10, CH_HINT_Y, CH_PANEL_W - 20,
+			                   CH_HINT_H, CH_RGB_PANEL_SUNK);
+			PrintCentred(FONT14ARIAL, FONT_MCOLOR_WHITE, cx,
+			             CH_HINT_Y + 8,
+			             T(CHS_LEARN_NEXT));
+		}
+		else
+		{
+			ChessDrawGreyButton(CH_PANEL_X + 10, CH_HINT_Y, CH_PANEL_W - 20,
+			                    CH_HINT_H, CH_RGB_PANEL_SUNK, true);
+			PrintCentred(FONT14ARIAL, FONT_GRAY2, cx,
+			             CH_HINT_Y + 8,
+			             "HINT");
+		}
 	}
 
 	// Watch: the exhibition board between its two player rows, the move list
@@ -4388,7 +4575,11 @@ void EnterChess()
 		if (want >= 0)
 		{
 			giChessStub = want;
-			if (want == 2) gLearnGame.SetFen(CHESS_LESSONS[giChessLesson].fen);
+			if (want == 2)
+			{
+				gLearnGame.SetFen(CHESS_LESSONS[giChessLesson].fen);
+				ChessLearnReset();
+			}
 			if (want == 3 && guiWatchNextMove == 0)
 			{
 				ChessWatchNewGame();
@@ -4446,6 +4637,7 @@ void RenderChess()
 		ChessRenderBanner();
 		ChessRenderLearnPanel();
 		ChessRenderFooter();
+		ChessRenderModal(); // the graduation card, on the last lesson
 	}
 	else if (giChessStub == 3)
 	{
@@ -4504,6 +4696,7 @@ void RenderChess()
 		ChessRenderStub();
 		ChessRenderBanner();
 		ChessRenderFooter();
+		ChessRenderModal();
 	}
 	else
 	{
@@ -4523,6 +4716,27 @@ void RenderChess()
 
 void HandleChess()
 {
+	// the result card arrives a beat after the final move
+	if (guiPlayModalDue != 0 && ChessNow() >= guiPlayModalDue)
+	{
+		guiPlayModalDue = 0;
+		gfPlayModal = true;
+		ChessPlay(CH_SND_GAMEEND);
+		ChessSyncPageRegions();
+		ChessRedraw();
+	}
+
+	// the hover ring follows the pointer across the board
+	{
+		static UINT8 sHoverSq = ChessGame::NO_SQUARE;
+		const UINT8 hov = ChessSquareUnderPointer();
+		if (hov != sHoverSq)
+		{
+			sHoverSq = hov;
+			ChessRedraw();
+		}
+	}
+
 	// the seek spinner turns on its own clock
 	if (giChessStub == 0 && giPlayState == 3)
 	{
@@ -4574,6 +4788,7 @@ void HandleChess()
 		giPlaySeat = giPlayRematchSeat != -1 ? giPlayRematchSeat
 		           : giPlayControl == 0     ? -2 : int(Random(6));
 		giPlayRematchSeat = -1;
+		ChessPlay(CH_SND_GAMESTART); // the connect: an opponent is found
 		try
 		{
 			const ChessSeat& opp = ChessOpponent();
