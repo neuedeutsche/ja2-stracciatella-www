@@ -433,7 +433,11 @@ namespace
 	MOUSE_REGION gChessSquare[64];
 	MOUSE_REGION gChessHintRegion;
 	MOUSE_REGION gChessNavRegion[5];
-	MOUSE_REGION gChessMeRegion; // the account row at the rail's foot
+	MOUSE_REGION gChessMeRegion;      // the account row at the rail's foot
+	MOUSE_REGION gChessFaceRegion[2]; // the row portraits, top and bottom
+	int giChessProfSeat = -1;         // -1 you, 0..5 the ladder, -2 the daily man
+	SGPVSurface* gProfFace = nullptr; // baked portrait for the open member page
+	int giProfFaceFor = -3;
 	MOUSE_REGION gChessBannerRegion;
 	MOUSE_REGION gChessAdRegion;
 	MOUSE_REGION gChessSignRegion;
@@ -2078,10 +2082,24 @@ namespace
 		ChessRedraw();
 	}
 
-	// the account row at the rail's foot is the door to your own page
-	void ChessMeCallback(MOUSE_REGION* region, UINT32 reason)
+	// one door to any member page: yours (-1), a ladder seat, or the
+	// daily man (-2). Seat portraits bake lazily and stick around.
+	void ChessOpenProfile(int seat)
 	{
-		if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
+		if (seat != -1 && giProfFaceFor != seat)
+		{
+			if (gProfFace) { DeleteVideoSurface(gProfFace); gProfFace = nullptr; }
+			const ChessSeat& who = seat == -2 ? CHESS_SEAT_ENRICO
+			                                  : CHESS_SEATS[seat];
+			try
+			{
+				gProfFace = ChessBakeFace(
+						ChessLoadPortrait(GetProfile(who.pid)), CH_GB_FACE);
+			}
+			catch (...) { gProfFace = nullptr; }
+			giProfFaceFor = seat;
+		}
+		giChessProfSeat = seat;
 		if (giChessStub != 5)
 		{
 			ChessPlay(CH_SND_CLICK2, LOWVOLUME);
@@ -2098,6 +2116,32 @@ namespace
 		giChatScroll = 0;
 		ChessSyncPageRegions();
 		ChessRedraw();
+	}
+
+	// the account row at the rail's foot is the door to your own page
+	void ChessMeCallback(MOUSE_REGION* region, UINT32 reason)
+	{
+		if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
+		ChessOpenProfile(-1);
+	}
+
+	// the row portraits open whoever is sitting there
+	void ChessFaceCallback(MOUSE_REGION* region, UINT32 reason)
+	{
+		if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
+		if (gfChessModal || gfPlayModal) return;
+		const int row = int(MSYS_GetRegionUserData(region, 0)); // 0 top, 1 bottom
+		if (giChessStub == 0)
+		{
+			if (row == 1) { ChessOpenProfile(-1); return; }
+			if (giPlayState == 3 || giPlayState == 4 || giPlaySeat == -1) return;
+			ChessOpenProfile(giPlaySeat);
+			return;
+		}
+		if (giChessStub == 3)
+		{
+			ChessOpenProfile(gWatchSeat[row == 0 ? 1 : 0]);
+		}
 	}
 
 	void ChessBannerCallback(MOUSE_REGION* region, UINT32 reason)
@@ -2323,6 +2367,11 @@ namespace
 		// the same strip is either the controls or the button, never both
 		if (giChessStub == 0 && playOngoing) gChessHintRegion.Disable();
 		else gChessHintRegion.Enable();
+		const bool faces = giChessStub == 0 || giChessStub == 3;
+		for (MOUSE_REGION& r : gChessFaceRegion)
+		{
+			if (faces) r.Enable(); else r.Disable();
+		}
 	}
 
 	void ChessPlaceRegions()
@@ -2383,6 +2432,22 @@ namespace
 		                  MSYS_PRIORITY_HIGH, CURSOR_WWW, MSYS_NO_CALLBACK,
 		                  ChessMeCallback);
 		gChessMeRegion.SetFastHelpText("your page");
+
+		for (int i = 0; i < 2; ++i)
+		{
+			const INT32 fx = CH_BOARD_X + (CH_SQ - CH_ROW_FACE) / 2;
+			const INT32 fy = (i == 0 ? CH_ROW_TOP_Y : CH_ROW_BOT_Y) +
+			                 (CH_SQ - CH_ROW_FACE) / 2;
+			MSYS_DefineRegion(&gChessFaceRegion[i],
+			                  UINT16(CH_X(fx)), UINT16(CH_Y(fy)),
+			                  UINT16(CH_X(fx + CH_ROW_FACE)),
+			                  UINT16(CH_Y(fy + CH_ROW_FACE)),
+			                  MSYS_PRIORITY_HIGH + 1, CURSOR_WWW,
+			                  MSYS_NO_CALLBACK, ChessFaceCallback);
+			MSYS_SetRegionUserData(&gChessFaceRegion[i], 0, i);
+			gChessFaceRegion[i].SetFastHelpText("view profile");
+			gChessFaceRegion[i].Disable();
+		}
 
 		MSYS_DefineRegion(&gChessModalCloseRegion,
 		                  UINT16(CH_X(CH_MODAL_X + CH_MODAL_W - 20)), UINT16(CH_Y(CH_MODAL_Y + 2)),
@@ -2549,6 +2614,7 @@ namespace
 		MSYS_RemoveRegion(&gChessLearnCtaRegion);
 		for (MOUSE_REGION& r : gChessNavRegion) MSYS_RemoveRegion(&r);
 		MSYS_RemoveRegion(&gChessMeRegion);
+		for (MOUSE_REGION& r : gChessFaceRegion) MSYS_RemoveRegion(&r);
 		MSYS_RemoveRegion(&gChessBannerRegion);
 		MSYS_RemoveRegion(&gChessAdRegion);
 		MSYS_RemoveRegion(&gChessGbPrevRegion);
@@ -2667,7 +2733,7 @@ namespace
 		// height, so a shorter image does not leave it floating
 		const INT32 faceX = CH_NAV_X + 3;
 		const INT32 faceY = CH_PAGE_H - faceH - 5;
-		if (giChessStub == 5)
+		if (giChessStub == 5 && giChessProfSeat == -1)
 		{
 			FillRounded(CH_NAV_X + 2, faceY - 4, CH_NAV_W - 4, faceH + 8,
 			            CH_RGB_PANEL_UP, 3, CH_RGB_PANEL);
@@ -4304,11 +4370,178 @@ namespace
 
 	// The guestbook fills the page: the title sits above the book in the
 	// daily header's lockup, the entries carry avatars, and signing is forever.
+	// A ladder member's page: invented site totals in their voice, and the
+	// real head-to-head ledger against you.
+	void ChessRenderMemberProfile()
+	{
+		const ChessSeat& seat = giChessProfSeat == -2 ? CHESS_SEAT_ENRICO
+		                                              : CHESS_SEATS[giChessProfSeat];
+		const INT32 px = CH_BOARD_X;
+		const INT32 pw = CH_PANEL_X + CH_PANEL_W - CH_BOARD_X;
+		PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, px + 2, 10, "PROFILE");
+		PrintAt(FONT10ARIAL, FONT_GRAY4,
+		        px + 2 + StringPixLength("PROFILE", FONT10ARIALBOLD) + 10, 10,
+		        "every member, on ze record.");
+		const INT32 top = CH_GB_TOP;
+		const INT32 cardH = CH_BANNER_Y - 6 - top;
+		FillRounded(px, top, pw, cardH, CH_RGB_PANEL, CH_PANEL_RADIUS,
+		            CH_RGB_CHROME);
+
+		if (gProfFace)
+		{
+			BltVideoSurface(FRAME_BUFFER, gProfFace, CH_X(px + 12),
+			                CH_Y(top + 10), NULL);
+		}
+		else
+		{
+			FillRounded(px + 12, top + 10, CH_GB_FACE, CH_GB_FACE,
+			            FROMRGB(74, 69, 63), 4, CH_RGB_PANEL);
+		}
+		INT32 hx = px + 46;
+		if (seat.title[0])
+		{
+			const INT32 tw = StringPixLength(seat.title, TINYFONT1) + 6;
+			FillRounded(hx, top + 13, tw, 10, FROMRGB(146, 44, 44), 2,
+			            CH_RGB_PANEL);
+			PrintAt(TINYFONT1, FONT_MCOLOR_WHITE, hx + 3, top + 15, seat.title);
+			hx += tw + 4;
+		}
+		PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, hx, top + 12, seat.handle);
+		hx += StringPixLength(seat.handle, FONT10ARIALBOLD) + 5;
+		ChessDrawFlag(hx, top + 13, seat.flag);
+		// the bios follow the ladder's order; the daily man closes the list
+		static const char* const bios[6] = {
+			"answers in moves. mostly winning ones.",
+			"shot for denmark in atlanta. ze clock flinches.",
+			"ex s.a.s. plays ze english, naturally.",
+			"moves fast, reasons later.",
+			"plays ze family opening. an uncle taught it.",
+			"hangs ze queen and calls it a web.",
+		};
+		PrintAt(FONT10ARIAL, FONT_GRAY4, px + 46, top + 25,
+		        giChessProfSeat == -2 ? "one move a day, for a free arulco."
+		                              : bios[giChessProfSeat]);
+		{
+			const ST::string rate = ST::format("{}", seat.rating);
+			PrintAt(FONT14ARIAL, FONT_MCOLOR_WHITE,
+			        px + pw - 14 - StringPixLength(rate, FONT14ARIAL),
+			        top + 8, rate);
+			PrintAt(TINYFONT1, FONT_GRAY4,
+			        px + pw - 14 - StringPixLength("rating", TINYFONT1),
+			        top + 26, "rating");
+		}
+
+		// the stat band: their site totals (invented, but consistently),
+		// and the head-to-head that is entirely real
+		const INT32 bandY = top + 44;
+		const INT32 boxW = (pw - 24 - 16) / 3;
+		const INT32 boxH = 40;
+		static const char* const caps[3] =
+			{ "RECORD (W-L-D)", "VS YOU (W-L-D)", "BEST STREAK" };
+		for (int b = 0; b < 3; ++b)
+		{
+			const INT32 bx = px + 12 + b * (boxW + 8);
+			FillRounded(bx, bandY, boxW, boxH, CH_RGB_PANEL_SUNK, 4,
+			            CH_RGB_PANEL);
+			PrintAt(TINYFONT1, FONT_GRAY4, bx + 8, bandY + 5, caps[b]);
+		}
+		{
+			const int games = 96 + (int(seat.pid) * 37) % 320;
+			const int wpct = std::clamp(32 + (seat.rating - 1500) / 18, 22, 72);
+			const int w = games * wpct / 100;
+			const int d = games * 11 / 100;
+			PrintAt(FONT14ARIAL, FONT_MCOLOR_WHITE, px + 20, bandY + 17,
+			        ST::format("{}-{}-{}", w, games - w - d, d));
+		}
+		{
+			int vw = 0, vl = 0, vd = 0;
+			const UINT8 want = giChessProfSeat == -2 ? 0xFE
+			                                         : UINT8(giChessProfSeat);
+			for (int i = 0; i < int(gubProfCount); ++i)
+			{
+				if (gProfHist[i].ubSeat != want) continue;
+				const int r = gProfHist[i].ubResult & 3;
+				if (r == 2) ++vw; else if (r == 0) ++vl; else ++vd;
+			}
+			const INT32 bx = px + 12 + boxW + 8;
+			if (vw + vl + vd == 0)
+			{
+				PrintAt(FONT10ARIAL, FONT_GRAY4, bx + 8, bandY + 20,
+				        "no games yet");
+			}
+			else
+			{
+				PrintAt(FONT14ARIAL, FONT_MCOLOR_WHITE, bx + 8, bandY + 17,
+				        ST::format("{}-{}-{}", vw, vl, vd));
+			}
+		}
+		PrintAt(FONT14ARIAL, FONT_MCOLOR_WHITE, px + 12 + 2 * (boxW + 8) + 8,
+		        bandY + 17,
+		        ST::format("{}", 3 + (int(seat.pid) * 5) % 19));
+
+		// the ledger between you, newest first - the only table the site
+		// can back with receipts
+		INT32 y = bandY + boxH + 12;
+		PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, px + 12, y,
+		        "GAMES AGAINST YOU");
+		FillRect(px + 12, y + 13, pw - 24, 1, CH_RGB_ROW_SEP);
+		y += 18;
+		const UINT8 want = giChessProfSeat == -2 ? 0xFE
+		                                         : UINT8(giChessProfSeat);
+		int shown = 0;
+		const INT32 cRes = px + 14;
+		const INT32 cMov = px + 110;
+		const INT32 cCtl = px + 180;
+		const INT32 cDay = px + pw - 14;
+		for (int i = 0; i < int(gubProfCount); ++i)
+		{
+			if (gProfHist[i].ubSeat != want) continue;
+			if (y > top + cardH - 20) break;
+			const ChessGameRec& r = gProfHist[i];
+			if (shown % 2 == 0)
+			{
+				FillRect(px + 8, y - 2, pw - 16, 15, CH_RGB_ROW_ALT);
+			}
+			// the result flips: their page, their score first
+			const int res = r.ubResult & 3;
+			const UINT8 rc = res == 0 ? FONT_MCOLOR_LTGREEN
+			               : res == 2 ? FONT_MCOLOR_LTRED : FONT_GRAY2;
+			const char* rs = res == 0 ? "1-0" : res == 2 ? "0-1" : "1/2";
+			PrintAt(FONT10ARIALBOLD, rc, cRes, y, rs);
+			if (r.ubResult & 4)
+			{
+				PrintAt(TINYFONT1, FONT_GRAY4,
+				        cRes + StringPixLength(rs, FONT10ARIALBOLD) + 4,
+				        y + 3, "you resigned");
+			}
+			PrintAt(FONT10ARIAL, FONT_GRAY2, cMov, y,
+			        ST::format("{} moves", r.ubMoves));
+			PrintAt(FONT10ARIAL, FONT_GRAY2, cCtl, y,
+			        r.ubControl == 0 ? ST::string("1 day")
+			                         : ST::format("{} min", r.ubControl));
+			const ST::string dd = ST::format("day {}", r.usDay);
+			PrintAt(FONT10ARIAL, FONT_GRAY2,
+			        cDay - StringPixLength(dd, FONT10ARIAL), y, dd);
+			y += 15;
+			++shown;
+		}
+		if (shown == 0)
+		{
+			PrintCentred(FONT10ARIAL, FONT_GRAY4, px + pw / 2, y + 10,
+			             "no games between you. ze board at PLAY is patient.");
+		}
+	}
+
 	// Your member page, as every 1999 chess site kept one: the rating with
 	// its provisional asterisk, the record, the form line, and a ledger of
 	// games the server refuses to forget.
 	void ChessRenderProfile()
 	{
+		if (giChessProfSeat != -1)
+		{
+			ChessRenderMemberProfile();
+			return;
+		}
 		const INT32 px = CH_BOARD_X;
 		const INT32 pw = CH_PANEL_X + CH_PANEL_W - CH_BOARD_X;
 		const ST::string handle = gChessSelfNick.empty()
@@ -5016,6 +5249,9 @@ void ExitChess()
 	if (gPlayOppFace)      { DeleteVideoSurface(gPlayOppFace);      gPlayOppFace      = nullptr; }
 	if (guiChessCoachHalf) { DeleteVideoSurface(guiChessCoachHalf); guiChessCoachHalf = nullptr; }
 	if (gGuestSelfFace)    { DeleteVideoSurface(gGuestSelfFace);    gGuestSelfFace    = nullptr; }
+	if (gProfFace)         { DeleteVideoSurface(gProfFace);         gProfFace         = nullptr; }
+	giProfFaceFor = -3;
+	giChessProfSeat = -1;
 	for (SGPVSurface*& f : gGuestFace)
 	{
 		if (f) { DeleteVideoSurface(f); f = nullptr; }
