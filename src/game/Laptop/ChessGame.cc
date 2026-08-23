@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstring>
+#include <chrono>
 #include <random>
 #include <sstream>
 
@@ -113,6 +114,7 @@ namespace
 	}
 
 	constexpr int MATE_SCORE = 30000;
+	constexpr int MATE_BOUND = MATE_SCORE - 256; // scores past this carry a mate
 
 	char PieceLetter(std::uint8_t type)
 	{
@@ -911,7 +913,31 @@ ChessGame::Result ChessGame::GetResult()
 
 int ChessGame::Evaluate() const
 {
-	int score = 0;
+	// Michniewski's endgame king: centralise once the queens come off.
+	// The other tables serve both phases; only the king is interpolated.
+	static const int PST_KING_EG[64] =
+	{
+		-50,-40,-30,-20,-20,-30,-40,-50,
+		-30,-20,-10,  0,  0,-10,-20,-30,
+		-30,-10, 20, 30, 30, 20,-10,-30,
+		-30,-10, 30, 40, 40, 30,-10,-30,
+		-30,-10, 30, 40, 40, 30,-10,-30,
+		-30,-10, 20, 30, 30, 20,-10,-30,
+		-30,-30,  0,  0,  0,  0,-30,-30,
+		-50,-30,-30,-30,-30,-30,-30,-50,
+	};
+	static const int PASSED_BONUS[8] = { 0, 10, 15, 25, 40, 60, 90, 0 };
+
+	int mg = 0, eg = 0, phase = 0;
+	int pawnsOnFile[2][8] = {};
+	// per file: the furthest a pawn of each colour reaches toward its
+	// promotion, for the passed-pawn test
+	int maxWhitePawnRank[8], minBlackPawnRank[8];
+	for (int f = 0; f < 8; ++f) { maxWhitePawnRank[f] = -1; minBlackPawnRank[f] = 8; }
+	int bishops[2] = {};
+	std::uint8_t rooks[2][2] = {};
+	int rookCount[2] = {};
+
 	for (int sq = 0; sq < 128; ++sq)
 	{
 		if (sq & 0x88) continue;
@@ -919,16 +945,129 @@ int ChessGame::Evaluate() const
 		if (!p) continue;
 		const std::uint8_t type = p & 0x07;
 		const Color c = Color((p >> 3) & 1);
+		const int sign = c == White ? 1 : -1;
 
 		const int file = FileOf(std::uint8_t(sq));
 		const int rank = RankOf(std::uint8_t(sq));
 		// tables are written rank 8 first, so White reads them flipped
 		const int index = c == White ? (7 - rank) * 8 + file : rank * 8 + file;
-		const int value = PIECE_VALUE[type] + PST_FOR[type][index];
 
-		score += c == White ? value : -value;
+		switch (type)
+		{
+			case Knight: case Bishop: phase += 1; break;
+			case Rook:                phase += 2; break;
+			case Queen:               phase += 4; break;
+			default: break;
+		}
+		if (type == Pawn)
+		{
+			++pawnsOnFile[c][file];
+			if (c == White)
+			{
+				if (rank > maxWhitePawnRank[file]) maxWhitePawnRank[file] = rank;
+			}
+			else if (rank < minBlackPawnRank[file])
+			{
+				minBlackPawnRank[file] = rank;
+			}
+		}
+		else if (type == Bishop)
+		{
+			++bishops[c];
+		}
+		else if (type == Rook && rookCount[c] < 2)
+		{
+			rooks[c][rookCount[c]++] = std::uint8_t(sq);
+		}
+
+		if (type == King)
+		{
+			mg += sign * PST_FOR[King][index];
+			eg += sign * PST_KING_EG[index];
+		}
+		else
+		{
+			const int value = PIECE_VALUE[type] + PST_FOR[type][index];
+			mg += sign * value;
+			eg += sign * value;
+		}
+	}
+	if (phase > 24) phase = 24;
+
+	// pawn structure, bishop pair, rook files, one colour at a time
+	for (int c = 0; c < 2; ++c)
+	{
+		const int sign = c == White ? 1 : -1;
+		for (int f = 0; f < 8; ++f)
+		{
+			const int n = pawnsOnFile[c][f];
+			if (n == 0) continue;
+			if (n > 1) { mg += sign * -12 * (n - 1); eg += sign * -12 * (n - 1); }
+			const bool leftMate  = f > 0 && pawnsOnFile[c][f - 1] > 0;
+			const bool rightMate = f < 7 && pawnsOnFile[c][f + 1] > 0;
+			if (!leftMate && !rightMate) { mg += sign * -15; eg += sign * -15; }
+		}
+		if (bishops[c] >= 2) { mg += sign * 30; eg += sign * 30; }
+		for (int r = 0; r < rookCount[c]; ++r)
+		{
+			const int f = FileOf(rooks[c][r]);
+			const bool own   = pawnsOnFile[c][f] > 0;
+			const bool their = pawnsOnFile[c ^ 1][f] > 0;
+			if (!own && !their)   { mg += sign * 20; eg += sign * 20; }
+			else if (!own)        { mg += sign * 10; eg += sign * 10; }
+		}
 	}
 
+	// passed pawns, found from the per-file reach tables
+	for (int sq = 0; sq < 128; ++sq)
+	{
+		if (sq & 0x88) continue;
+		const std::uint8_t p = mBoard[sq];
+		if (!p || (p & 0x07) != Pawn) continue;
+		const Color c = Color((p >> 3) & 1);
+		const int file = FileOf(std::uint8_t(sq));
+		const int rank = RankOf(std::uint8_t(sq));
+		bool passed = true;
+		for (int f = file - 1; f <= file + 1 && passed; ++f)
+		{
+			if (f < 0 || f > 7) continue;
+			if (c == White) { if (minBlackPawnRank[f] < 8 && minBlackPawnRank[f] > rank) passed = false; }
+			else            { if (maxWhitePawnRank[f] >= 0 && maxWhitePawnRank[f] < rank) passed = false; }
+		}
+		if (!passed) continue;
+		const int steps = c == White ? rank : 7 - rank;
+		const int sign = c == White ? 1 : -1;
+		mg += sign * PASSED_BONUS[steps];
+		eg += sign * 2 * PASSED_BONUS[steps];
+	}
+
+	// the king's pawn shield matters while the heavy pieces are on
+	if (phase >= 14)
+	{
+		for (int c = 0; c < 2; ++c)
+		{
+			const std::uint8_t k = mKingSq[c];
+			if (k == NO_SQUARE) continue;
+			const int kf = FileOf(k);
+			const int sign = c == White ? 1 : -1;
+			for (int f = kf - 1; f <= kf + 1; ++f)
+			{
+				if (f < 0 || f > 7) continue;
+				bool covered = false;
+				for (int r = (c == White ? 1 : 5);
+						r <= (c == White ? 2 : 6) && !covered; ++r)
+				{
+					const std::uint8_t sq2 = MakeSquare(f, r);
+					const std::uint8_t q = mBoard[sq2];
+					covered = q != 0 && (q & 0x07) == Pawn &&
+							Color((q >> 3) & 1) == Color(c);
+				}
+				if (!covered) mg += sign * -12;
+			}
+		}
+	}
+
+	int score = (mg * phase + eg * (24 - phase)) / 24;
 	score += MopUp();
 	return score;
 }
@@ -998,24 +1137,138 @@ int ChessGame::MopUp() const
 	return strong == White ? bonus : -bonus;
 }
 
+// --- the search context ------------------------------------------------------
+// One search runs at a time, on the main thread, so the heavy furniture
+// lives here at file scope: ChessGame itself stays cheap to copy (the UI
+// snapshots boards into history vectors every move).
+namespace
+{
+	struct TTEntry
+	{
+		std::uint64_t key;
+		std::int16_t  score;
+		std::uint8_t  depth;
+		std::uint8_t  boundAge; // low 2 bits bound, high 6 generation
+		std::uint8_t  from, to, promo, pad;
+	};
+	enum { TT_EXACT = 0, TT_LOWER = 1, TT_UPPER = 2 };
+	constexpr std::size_t TT_SIZE = std::size_t(1) << 18; // 4 MB
+	std::vector<TTEntry> gTT;
+	std::uint8_t gTTGen = 0;
+	bool gUseTT = true;
+
+	constexpr int MAX_PLY = 64;
+	ChessGame::Move gKillers[MAX_PLY][2];
+	int gHistoryHeur[2][128][128];
+
+	std::uint64_t gNodes = 0;
+	std::uint64_t gNodeBudget = 0;
+	std::chrono::steady_clock::time_point gDeadline;
+	bool gUseDeadline = false;
+	bool gAbort = false;
+
+	inline bool SearchAborted()
+	{
+		if (gAbort) return true;
+		if ((gNodes & 2047) == 0)
+		{
+			if (gNodeBudget != 0 && gNodes >= gNodeBudget) gAbort = true;
+			else if (gUseDeadline &&
+					std::chrono::steady_clock::now() >= gDeadline)
+			{
+				gAbort = true;
+			}
+		}
+		return gAbort;
+	}
+
+	inline bool SameMove(const ChessGame::Move& a, std::uint8_t from,
+			std::uint8_t to, std::uint8_t promo)
+	{
+		return a.from == from && a.to == to && a.promo == promo;
+	}
+}
+
+void ChessGame::ClearHash()
+{
+	if (!gTT.empty()) std::fill(gTT.begin(), gTT.end(), TTEntry{});
+	gTTGen = 0;
+}
+
+bool ChessGame::HasNonPawn(Color c) const
+{
+	for (int sq = 0; sq < 128; ++sq)
+	{
+		if (sq & 0x88) continue;
+		const std::uint8_t p = mBoard[sq];
+		if (!p || Color((p >> 3) & 1) != c) continue;
+		const std::uint8_t type = p & 0x07;
+		if (type != Pawn && type != King) return true;
+	}
+	return false;
+}
+
+// Passing the turn for the null-move test. The key history is left alone
+// on purpose: subtree repetition checks stay conservative, which is safe.
+void ChessGame::DoNull(std::uint8_t& epSave)
+{
+	epSave = mEp;
+	if (mEp != NO_SQUARE) mKey ^= Keys().epFile[FileOf(mEp)];
+	mEp = NO_SQUARE;
+	mSide = Color(mSide ^ 1);
+	mKey ^= Keys().side;
+}
+
+void ChessGame::UndoNull(std::uint8_t epSave)
+{
+	mSide = Color(mSide ^ 1);
+	mKey ^= Keys().side;
+	mEp = epSave;
+	if (mEp != NO_SQUARE) mKey ^= Keys().epFile[FileOf(mEp)];
+}
+
 int ChessGame::Quiesce(int alpha, int beta)
 {
+	++gNodes;
+	if (SearchAborted()) return alpha;
+
 	const int standPat = mSide == White ? Evaluate() : -Evaluate();
 	if (standPat >= beta) return beta;
 	if (standPat > alpha) alpha = standPat;
 
 	Move moves[MAX_MOVES];
-	const int count = GenerateLegalCaptures(moves);
-	// most-valuable-victim first: cheap ordering, big cutoff win
-	std::sort(moves, moves + count, [this](const Move& a, const Move& b) {
-		return PIECE_VALUE[PieceAt(a.to)] > PIECE_VALUE[PieceAt(b.to)];
-	});
-
+	const int count = GeneratePseudo(moves, true);
+	int scores[MAX_MOVES];
 	for (int i = 0; i < count; ++i)
 	{
-		if (!MakeMove(moves[i])) continue;
+		const int victim = (moves[i].flags & MF_EN_PASSANT)
+			? PIECE_VALUE[Pawn] : PIECE_VALUE[PieceAt(moves[i].to)];
+		scores[i] = 16 * victim - PIECE_VALUE[PieceAt(moves[i].from)]
+			+ PIECE_VALUE[moves[i].promo];
+	}
+
+	for (int done = 0; done < count; ++done)
+	{
+		int pick = done;
+		for (int j = done + 1; j < count; ++j)
+		{
+			if (scores[j] > scores[pick]) pick = j;
+		}
+		std::swap(moves[done], moves[pick]);
+		std::swap(scores[done], scores[pick]);
+		const Move& m = moves[done];
+
+		const int victim = (m.flags & MF_EN_PASSANT)
+			? PIECE_VALUE[Pawn] : PIECE_VALUE[PieceAt(m.to)];
+		// delta pruning: even winning this capture cannot rescue alpha
+		if (m.promo == NoPiece && standPat + victim + 200 <= alpha) continue;
+		// a capture the exchange refutes is not worth the nodes
+		if (m.promo == NoPiece && See(m) < 0) continue;
+
+		if (!MakeMove(m)) continue;
 		const int score = -Quiesce(-beta, -alpha);
 		Unmake();
+		if (gAbort) return alpha;
 		if (score >= beta) return beta;
 		if (score > alpha) alpha = score;
 	}
@@ -1037,74 +1290,284 @@ bool ChessGame::IsRepetition() const
 	return false;
 }
 
-int ChessGame::Negamax(int depth, int alpha, int beta)
+int ChessGame::Negamax(int depth, int ply, int alpha, int beta, bool allowNull)
 {
+	++gNodes;
+	if (SearchAborted()) return alpha;
 	if (IsRepetition()) return 0;
-	if (depth <= 0) return Quiesce(alpha, beta);
-
-	Move moves[MAX_MOVES];
-	const int count = GenerateLegal(moves);
-	if (count == 0)
-	{
-		// Mate scores carry their distance: more remaining depth means the mate
-		// lands sooner, so it must score worse for the side being mated and
-		// better for the attacker once negated up the tree.
-		return IsInCheck(mSide) ? -MATE_SCORE - depth : 0;
-	}
 	if (mHalfmove >= 100) return 0;
 
-	std::sort(moves, moves + count, [this](const Move& a, const Move& b) {
-		return PIECE_VALUE[PieceAt(a.to)] > PIECE_VALUE[PieceAt(b.to)];
-	});
+	const bool inCheck = IsInCheck(mSide);
+	if (inCheck && ply < MAX_PLY - 4) ++depth; // check extension
+	if (depth <= 0) return Quiesce(alpha, beta);
 
+	// transposition table: an exact earlier answer is an answer; even a
+	// mere bound still donates its best move to the ordering
+	std::uint8_t ttFrom = NO_SQUARE, ttTo = NO_SQUARE, ttPromo = NoPiece;
+	if (gUseTT && !gTT.empty())
+	{
+		const TTEntry& e = gTT[mKey & (TT_SIZE - 1)];
+		if (e.key == mKey)
+		{
+			ttFrom = e.from; ttTo = e.to; ttPromo = e.promo;
+			if (int(e.depth) >= depth && mHalfmove < 90)
+			{
+				int sc = e.score;
+				if (sc > MATE_BOUND) sc -= ply;
+				else if (sc < -MATE_BOUND) sc += ply;
+				const int bound = e.boundAge & 3;
+				if (bound == TT_EXACT) return sc;
+				if (bound == TT_LOWER && sc >= beta) return sc;
+				if (bound == TT_UPPER && sc <= alpha) return sc;
+			}
+		}
+	}
+
+	// the null move: hand over the turn - if the position still beats
+	// beta, a real move certainly would. Guarded against zugzwang.
+	if (allowNull && !inCheck && depth >= 3 && HasNonPawn(mSide))
+	{
+		const int ev = mSide == White ? Evaluate() : -Evaluate();
+		if (ev >= beta)
+		{
+			std::uint8_t epSave;
+			DoNull(epSave);
+			const int sc = -Negamax(depth - 3, ply + 1, -beta, -beta + 1,
+					false);
+			UndoNull(epSave);
+			if (!gAbort && sc >= beta) return beta;
+		}
+	}
+
+	Move moves[MAX_MOVES];
+	const int count = GeneratePseudo(moves, false);
+	int scores[MAX_MOVES];
 	for (int i = 0; i < count; ++i)
 	{
-		if (!MakeMove(moves[i])) continue;
-		const int score = -Negamax(depth - 1, -beta, -alpha);
+		const Move& m = moves[i];
+		if (SameMove(m, ttFrom, ttTo, ttPromo))
+		{
+			scores[i] = 1000000;
+		}
+		else if ((m.flags & MF_CAPTURE) || m.promo != NoPiece)
+		{
+			const int victim = (m.flags & MF_EN_PASSANT)
+				? PIECE_VALUE[Pawn] : PIECE_VALUE[PieceAt(m.to)];
+			scores[i] = 100000 + 16 * victim
+				- PIECE_VALUE[PieceAt(m.from)] + PIECE_VALUE[m.promo];
+		}
+		else if (ply < MAX_PLY &&
+				SameMove(m, gKillers[ply][0].from, gKillers[ply][0].to,
+						gKillers[ply][0].promo))
+		{
+			scores[i] = 90000;
+		}
+		else if (ply < MAX_PLY &&
+				SameMove(m, gKillers[ply][1].from, gKillers[ply][1].to,
+						gKillers[ply][1].promo))
+		{
+			scores[i] = 80000;
+		}
+		else
+		{
+			scores[i] = gHistoryHeur[mSide][m.from][m.to];
+		}
+	}
+
+	int made = 0;
+	int best = -MATE_SCORE * 2;
+	Move bestMove;
+	const int alphaIn = alpha;
+	for (int done = 0; done < count; ++done)
+	{
+		int pick = done;
+		for (int j = done + 1; j < count; ++j)
+		{
+			if (scores[j] > scores[pick]) pick = j;
+		}
+		std::swap(moves[done], moves[pick]);
+		std::swap(scores[done], scores[pick]);
+		const Move m = moves[done];
+
+		if (!MakeMove(m)) continue;
+		++made;
+		const int score = -Negamax(depth - 1, ply + 1, -beta, -alpha, true);
 		Unmake();
-		if (score >= beta) return beta;
+		if (gAbort) return alpha;
+
+		if (score > best)
+		{
+			best = score;
+			bestMove = m;
+		}
+		if (score >= beta)
+		{
+			if (gUseTT && !gTT.empty())
+			{
+				TTEntry& e = gTT[mKey & (TT_SIZE - 1)];
+				int store = score;
+				if (store > MATE_BOUND) store += ply;
+				else if (store < -MATE_BOUND) store -= ply;
+				e = TTEntry{ mKey, std::int16_t(store),
+						std::uint8_t(depth),
+						std::uint8_t(TT_LOWER | (gTTGen << 2)),
+						m.from, m.to, m.promo, 0 };
+			}
+			if (!(m.flags & MF_CAPTURE) && m.promo == NoPiece &&
+					ply < MAX_PLY)
+			{
+				if (!SameMove(gKillers[ply][0], m.from, m.to, m.promo))
+				{
+					gKillers[ply][1] = gKillers[ply][0];
+					gKillers[ply][0] = m;
+				}
+				int& h = gHistoryHeur[mSide][m.from][m.to];
+				h += depth * depth;
+				if (h > 1 << 20) h /= 2;
+			}
+			return beta;
+		}
 		if (score > alpha) alpha = score;
+	}
+
+	if (made == 0)
+	{
+		// the mate score carries its distance from the root, so nearer
+		// mates outrank later ones on the way back up
+		return inCheck ? -(MATE_SCORE - ply) : 0;
+	}
+
+	if (gUseTT && !gTT.empty())
+	{
+		TTEntry& e = gTT[mKey & (TT_SIZE - 1)];
+		const std::uint8_t gen = std::uint8_t(gTTGen << 2);
+		const bool replace = (e.key != mKey) ||
+				(e.boundAge >> 2) != gTTGen || int(e.depth) <= depth;
+		if (replace)
+		{
+			int store = alpha;
+			if (store > MATE_BOUND) store += ply;
+			else if (store < -MATE_BOUND) store -= ply;
+			e = TTEntry{ mKey, std::int16_t(store), std::uint8_t(depth),
+					std::uint8_t((alpha > alphaIn ? TT_EXACT : TT_UPPER)
+							| gen),
+					bestMove.from, bestMove.to, bestMove.promo, 0 };
+		}
 	}
 	return alpha;
 }
 
-ChessGame::Move ChessGame::Search(int depth, int errorPercent, std::uint32_t& seed)
+ChessGame::SearchResult ChessGame::SearchTimed(const SearchParams& p,
+		std::uint32_t& seed)
 {
+	SearchResult out;
 	Move moves[MAX_MOVES];
 	const int count = GenerateLegal(moves);
-	if (count == 0) return Move();
+	if (count == 0) return out;
 
 	std::mt19937 rng(seed);
 	seed = rng();
 
-	// a weaker opponent throws away its turn some of the time - this is the
-	// whole rating spread across the bot ladder
-	if (errorPercent > 0 && int(rng() % 100) < errorPercent)
+	// a weaker opponent throws away its turn some of the time - this is
+	// the bottom half of the bot ladder's rating spread
+	if (p.errorPercent > 0 && int(rng() % 100) < p.errorPercent)
 	{
-		return moves[rng() % unsigned(count)];
+		out.move = moves[rng() % unsigned(count)];
+		return out;
 	}
 
-	int bestScore = -MATE_SCORE * 2;
-	std::vector<Move> best;
-	for (int i = 0; i < count; ++i)
+	// the shuffle replaces the old collect-ties-and-roll: alpha-beta keeps
+	// the first strictly best move, so tied moves resolve by this order -
+	// same distribution, deterministic per seed, stable across iterations
+	std::shuffle(moves, moves + count, rng);
+
+	if (gTT.empty()) gTT.resize(TT_SIZE);
+	gTTGen = std::uint8_t((gTTGen + 1) & 0x3F);
+	gUseTT = p.useTT;
+	std::memset(gHistoryHeur, 0, sizeof gHistoryHeur);
+	for (auto& k : gKillers) { k[0] = Move(); k[1] = Move(); }
+	gNodes = 0;
+	gAbort = false;
+	gNodeBudget = p.nodeBudget;
+	gUseDeadline = p.msBudget > 0;
+	if (gUseDeadline)
 	{
-		if (!MakeMove(moves[i])) continue;
-		const int score = -Negamax(depth - 1, -MATE_SCORE * 2, MATE_SCORE * 2);
-		Unmake();
-		if (score > bestScore)
-		{
-			bestScore = score;
-			best.clear();
-			best.push_back(moves[i]);
-		}
-		else if (score == bestScore)
-		{
-			best.push_back(moves[i]);
-		}
+		gDeadline = std::chrono::steady_clock::now() +
+				std::chrono::milliseconds(p.msBudget);
 	}
-	if (best.empty()) return moves[0];
-	// break ties at random so the bots do not replay the same game every night
-	return best[rng() % best.size()];
+
+	Move best = moves[0];
+	int bestScore = 0;
+	int completed = 0;
+	const int maxDepth = std::max(1, std::min(p.maxDepth, MAX_PLY - 8));
+	for (int d = 1; d <= maxDepth; ++d)
+	{
+		// the incumbent opens the iteration
+		if (d > 1)
+		{
+			for (int i = 1; i < count; ++i)
+			{
+				if (SameMove(moves[i], best.from, best.to, best.promo))
+				{
+					std::rotate(moves, moves + i, moves + i + 1);
+					std::rotate(moves + 1, moves + 1, moves + i + 1);
+					std::swap(moves[0], moves[0]);
+					const Move keep = moves[i];
+					for (int j = i; j > 0; --j) moves[j] = moves[j - 1];
+					moves[0] = keep;
+					break;
+				}
+			}
+		}
+
+		int alpha = -MATE_SCORE * 2;
+		Move iterBest;
+		bool aborted = false;
+		for (int i = 0; i < count; ++i)
+		{
+			if (!MakeMove(moves[i])) continue;
+			const int sc = -Negamax(d - 1, 1, -MATE_SCORE * 2, -alpha,
+					true);
+			Unmake();
+			if (gAbort) { aborted = true; break; }
+			if (sc > alpha)
+			{
+				alpha = sc;
+				iterBest = moves[i];
+			}
+		}
+		if (aborted)
+		{
+			// a partial iteration proves nothing; keep the last full one.
+			// Unless nothing at all is finished - then the partial best
+			// beats a coin flip.
+			if (completed == 0 && !iterBest.IsNull())
+			{
+				best = iterBest;
+				bestScore = alpha;
+			}
+			break;
+		}
+		best = iterBest.IsNull() ? best : iterBest;
+		bestScore = alpha;
+		completed = d;
+		if (bestScore > MATE_BOUND) break; // a found mate needs no polish
+	}
+
+	out.move = best;
+	out.score = bestScore;
+	out.depth = completed;
+	out.nodes = gNodes;
+	return out;
+}
+
+ChessGame::Move ChessGame::Search(int depth, int errorPercent,
+		std::uint32_t& seed)
+{
+	SearchParams p;
+	p.maxDepth = depth;
+	p.errorPercent = errorPercent;
+	return SearchTimed(p, seed).move;
 }
 
 std::string ChessGame::Uci(const Move& m) const

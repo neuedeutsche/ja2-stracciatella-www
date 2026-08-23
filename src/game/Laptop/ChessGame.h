@@ -124,6 +124,28 @@ public:
 	// Not const: the search makes and unmakes moves on this board. It always
 	// restores the position before returning.
 	Move Search(int depth, int errorPercent, std::uint32_t& seed);
+
+	// The budgeted search: iterative deepening under a wall-clock or node
+	// cap, with a shared transposition table, ordering heuristics and a
+	// tapered evaluation. Search() above is a thin wrapper over this.
+	struct SearchParams
+	{
+		int           maxDepth     = 64;
+		int           msBudget     = 0;  // 0 = no wall-clock limit
+		std::uint64_t nodeBudget   = 0;  // 0 = unlimited; deterministic cap
+		int           errorPercent = 0;
+		bool          useTT        = true;
+	};
+	struct SearchResult
+	{
+		Move          move;
+		int           score = 0;  // centipawns, side-to-move's view
+		int           depth = 0;  // deepest fully completed iteration
+		std::uint64_t nodes = 0;
+	};
+	SearchResult SearchTimed(const SearchParams& p, std::uint32_t& seed);
+	// wipes the shared transposition table; tests use it between runs
+	static void ClearHash();
 	// Static evaluation in centipawns, positive meaning good for White.
 	int Evaluate() const;
 	// The endgame half of it, exposed for the tests: zero in any position
@@ -187,7 +209,11 @@ private:
 	bool IsRepetition() const;
 
 	int  Quiesce(int alpha, int beta);
-	int  Negamax(int depth, int alpha, int beta);
+	int  Negamax(int depth, int ply, int alpha, int beta, bool allowNull);
+	// the null move: pass the turn, keys kept honest, ep suspended
+	void DoNull(std::uint8_t& epSave);
+	void UndoNull(std::uint8_t epSave);
+	bool HasNonPawn(Color c) const;
 };
 
 #endif

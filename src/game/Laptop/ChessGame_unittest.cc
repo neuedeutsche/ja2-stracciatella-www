@@ -6,6 +6,7 @@
 
 #include <sstream>
 #include <string>
+#include <chrono>
 #include <vector>
 
 namespace
@@ -461,19 +462,29 @@ TEST(ChessLessons, EachDiagramProvesItsClaim)
 {
 	ChessGame game;
 
-	// lesson 1: the position after 1.e4, Black to move
+	// lesson 1: the start position, and the answer plants a pawn on e4
 	ASSERT_TRUE(game.SetFen(CHESS_LESSONS[0].fen));
-	EXPECT_EQ(ChessGame::Black, game.SideToMove());
-	EXPECT_EQ(ChessGame::Pawn, game.PieceAt(ChessGame::MakeSquare(4, 3)));
+	EXPECT_EQ(ChessGame::White, game.SideToMove());
+	{
+		const ChessGame::Move e4 = game.ParseUci(CHESS_LESSONS[0].answer);
+		ASSERT_FALSE(e4.IsNull());
+		ASSERT_TRUE(game.MakeMove(e4));
+		EXPECT_EQ(ChessGame::Pawn, game.PieceAt(ChessGame::MakeSquare(4, 3)));
+	}
 
-	// lesson 2: the knight forks rook and king - it attacks both squares
+	// lesson 2: the answer lands the knight where it forks rook and king
 	ASSERT_TRUE(game.SetFen(CHESS_LESSONS[1].fen));
-	const std::uint8_t rookSq = ChessGame::MakeSquare(2, 6);
-	const std::uint8_t kingSq = ChessGame::MakeSquare(4, 6);
-	EXPECT_EQ(ChessGame::Rook, game.PieceAt(rookSq));
-	EXPECT_EQ(ChessGame::King, game.PieceAt(kingSq));
-	EXPECT_TRUE(game.IsSquareAttacked(rookSq, ChessGame::White));
-	EXPECT_TRUE(game.IsSquareAttacked(kingSq, ChessGame::White));
+	{
+		const ChessGame::Move fork = game.ParseUci(CHESS_LESSONS[1].answer);
+		ASSERT_FALSE(fork.IsNull());
+		ASSERT_TRUE(game.MakeMove(fork));
+		const std::uint8_t rookSq = ChessGame::MakeSquare(2, 7);
+		const std::uint8_t kingSq = ChessGame::MakeSquare(6, 7);
+		EXPECT_EQ(ChessGame::Rook, game.PieceAt(rookSq));
+		EXPECT_EQ(ChessGame::King, game.PieceAt(kingSq));
+		EXPECT_TRUE(game.IsSquareAttacked(rookSq, ChessGame::White));
+		EXPECT_TRUE(game.IsSquareAttacked(kingSq, ChessGame::White));
+	}
 
 	// lesson 3: Re8 is mate, exactly as the caption says
 	ASSERT_TRUE(game.SetFen(CHESS_LESSONS[2].fen));
@@ -503,19 +514,30 @@ TEST(ChessLessons, EachDiagramProvesItsClaim)
 		}
 	}
 
-	// lesson 6: both sides castled short - kings on g1/g8, rooks on f1/f8
+	// lesson 6: black already castled; white still can, and the answer
+	// is exactly that castle
 	ASSERT_TRUE(game.SetFen(CHESS_LESSONS[5].fen));
-	EXPECT_EQ(ChessGame::King, game.PieceAt(ChessGame::MakeSquare(6, 0)));
-	EXPECT_EQ(ChessGame::Rook, game.PieceAt(ChessGame::MakeSquare(5, 0)));
 	EXPECT_EQ(ChessGame::King, game.PieceAt(ChessGame::MakeSquare(6, 7)));
 	EXPECT_EQ(ChessGame::Rook, game.PieceAt(ChessGame::MakeSquare(5, 7)));
+	{
+		const ChessGame::Move castle = game.ParseUci(CHESS_LESSONS[5].answer);
+		ASSERT_FALSE(castle.IsNull());
+		ASSERT_TRUE(game.MakeMove(castle));
+		EXPECT_EQ(ChessGame::King, game.PieceAt(ChessGame::MakeSquare(6, 0)));
+		EXPECT_EQ(ChessGame::Rook, game.PieceAt(ChessGame::MakeSquare(5, 0)));
+	}
 
-	// lesson 7: the rook checks the king with the queen behind on the file
+	// lesson 7: the answer skewers - rook checks the king, the queen
+	// stands behind him on the file
 	ASSERT_TRUE(game.SetFen(CHESS_LESSONS[6].fen));
-	EXPECT_EQ(ChessGame::Black, game.SideToMove());
-	EXPECT_TRUE(game.IsInCheck(ChessGame::Black));
-	EXPECT_EQ(ChessGame::King, game.PieceAt(ChessGame::MakeSquare(4, 2)));
-	EXPECT_EQ(ChessGame::Queen, game.PieceAt(ChessGame::MakeSquare(4, 4)));
+	{
+		const ChessGame::Move skewer = game.ParseUci(CHESS_LESSONS[6].answer);
+		ASSERT_FALSE(skewer.IsNull());
+		ASSERT_TRUE(game.MakeMove(skewer));
+		EXPECT_TRUE(game.IsInCheck(ChessGame::Black));
+		EXPECT_EQ(ChessGame::King, game.PieceAt(ChessGame::MakeSquare(4, 3)));
+		EXPECT_EQ(ChessGame::Queen, game.PieceAt(ChessGame::MakeSquare(4, 4)));
+	}
 
 	// lesson 8: the d1 rook stands on a file with no pawns at all
 	ASSERT_TRUE(game.SetFen(CHESS_LESSONS[7].fen));
@@ -524,4 +546,179 @@ TEST(ChessLessons, EachDiagramProvesItsClaim)
 	{
 		EXPECT_NE(ChessGame::Pawn, game.PieceAt(ChessGame::MakeSquare(3, rank)));
 	}
+}
+
+TEST(ChessLessons, EachLessonAnswerIsLegalAndSound)
+{
+	for (int i = 0; i < CHESS_LESSON_COUNT; ++i)
+	{
+		ChessGame game;
+		ASSERT_TRUE(game.SetFen(CHESS_LESSONS[i].fen)) << "lesson " << i;
+		const ChessGame::Move want = game.ParseUci(CHESS_LESSONS[i].answer);
+		ASSERT_FALSE(want.IsNull()) << "lesson " << i;
+		ASSERT_TRUE(game.MakeMove(want)) << "lesson " << i;
+		game.Unmake();
+		if (CHESS_LESSONS[i].answer2)
+		{
+			const ChessGame::Move alt = game.ParseUci(CHESS_LESSONS[i].answer2);
+			ASSERT_FALSE(alt.IsNull()) << "lesson " << i << " alt";
+			ASSERT_TRUE(game.MakeMove(alt)) << "lesson " << i << " alt";
+			game.Unmake();
+		}
+		// the tactical diagrams are forced: a shallow search agrees with
+		// the book. The positional ones (centre, pawn push, open file)
+		// admit taste, so only legality is demanded of them.
+		const bool forced = i == 1 || i == 2 || i == 3 || i == 6;
+		if (!forced) continue;
+		std::uint32_t seed = 7;
+		const ChessGame::Move engine = game.Search(3, 0, seed);
+		EXPECT_EQ(want.from, engine.from) << "lesson " << i;
+		EXPECT_EQ(want.to, engine.to) << "lesson " << i;
+	}
+}
+
+// --- the budgeted search -----------------------------------------------------
+
+TEST(ChessSearch, TTGivesSameResultAsPlainSearch)
+{
+	static const char* const fens[] =
+	{
+		"r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
+		"6k1/5ppp/8/8/8/8/5PPP/4R1K1 w - - 0 1",
+		"2r3k1/8/8/3N4/8/8/8/4K3 w - - 0 1",
+	};
+	for (const char* fen : fens)
+	{
+		ChessGame a, b;
+		ASSERT_TRUE(a.SetFen(fen));
+		ASSERT_TRUE(b.SetFen(fen));
+		ChessGame::SearchParams p;
+		p.maxDepth = 4;
+		ChessGame::ClearHash();
+		std::uint32_t seedA = 11;
+		const ChessGame::SearchResult withTT = a.SearchTimed(p, seedA);
+		p.useTT = false;
+		std::uint32_t seedB = 11;
+		const ChessGame::SearchResult without = b.SearchTimed(p, seedB);
+		// the table may reorder the walk, never the answer's value
+		EXPECT_EQ(withTT.score, without.score) << fen;
+	}
+}
+
+TEST(ChessSearch, TimeBudgetIsRespected)
+{
+	ChessGame game;
+	ASSERT_TRUE(game.SetFen(
+		"r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1"));
+	ChessGame::SearchParams p;
+	p.msBudget = 100;
+	ChessGame::ClearHash();
+	std::uint32_t seed = 3;
+	const auto before = std::chrono::steady_clock::now();
+	const ChessGame::SearchResult r = game.SearchTimed(p, seed);
+	const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+			std::chrono::steady_clock::now() - before).count();
+	EXPECT_LT(ms, 500); // loose 5x bound: CI boxes wheeze
+	EXPECT_GE(r.depth, 3);
+	// the returned move is a legal one in the position
+	Move moves[ChessGame::MAX_MOVES];
+	const int count = game.GenerateLegal(moves);
+	bool found = false;
+	for (int i = 0; i < count && !found; ++i) found = moves[i] == r.move;
+	EXPECT_TRUE(found);
+}
+
+TEST(ChessSearch, DeterministicGivenSeed)
+{
+	static const char* const fen =
+		"r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
+	ChessGame::SearchParams p;
+	p.nodeBudget = 50000;
+	ChessGame a, b;
+	ASSERT_TRUE(a.SetFen(fen));
+	ASSERT_TRUE(b.SetFen(fen));
+	ChessGame::ClearHash();
+	std::uint32_t seedA = 42;
+	const ChessGame::SearchResult ra = a.SearchTimed(p, seedA);
+	ChessGame::ClearHash();
+	std::uint32_t seedB = 42;
+	const ChessGame::SearchResult rb = b.SearchTimed(p, seedB);
+	EXPECT_TRUE(ra.move == rb.move);
+	EXPECT_EQ(ra.score, rb.score);
+	EXPECT_EQ(ra.nodes, rb.nodes);
+}
+
+TEST(ChessSearch, StrongerThanTheOldLadder)
+{
+	// a short deterministic match: the budgeted searcher against the old
+	// ceiling, fixed depth 3. Colours alternate; node budgets keep it
+	// machine-independent.
+	double newSide = 0.0;
+	for (int g = 0; g < 4; ++g)
+	{
+		ChessGame game;
+		std::uint32_t seed = std::uint32_t(100 + g);
+		const bool newPlaysWhite = (g % 2) == 0;
+		int plies = 0;
+		while (game.GetResult() == ChessGame::Result::Ongoing &&
+				plies < 140)
+		{
+			const bool newToMove =
+				(game.SideToMove() == ChessGame::White) == newPlaysWhite;
+			ChessGame::SearchParams p;
+			if (newToMove) { p.nodeBudget = 25000; }
+			else           { p.maxDepth = 3; p.useTT = false; }
+			const ChessGame::Move m = game.SearchTimed(p, seed).move;
+			if (m.IsNull() || !game.MakeMove(m)) break;
+			++plies;
+		}
+		const ChessGame::Result r = game.GetResult();
+		if (r == ChessGame::Result::WhiteMates)
+		{
+			newSide += newPlaysWhite ? 1.0 : 0.0;
+		}
+		else if (r == ChessGame::Result::BlackMates)
+		{
+			newSide += newPlaysWhite ? 0.0 : 1.0;
+		}
+		else
+		{
+			newSide += 0.5; // draws and unfinished grinds split the point
+		}
+	}
+	EXPECT_GE(newSide, 2.5) << "the upgraded engine should win the match";
+}
+
+TEST(ChessSearch, FindsForcedMatesAtBudget)
+{
+	// every puzzle whose recorded line ends in mate right after the
+	// solver's first move is a forced find at this budget
+	int checked = 0, found = 0;
+	for (int i = 0; i < NUM_CHESS_PUZZLES && checked < 12; ++i)
+	{
+		const ChessPuzzle& puzzle = CHESS_PUZZLES[i];
+		const std::vector<std::string> moves = SplitMoves(puzzle.moves);
+		if (moves.size() != 2) continue; // setup + the mating move
+
+		ChessGame game;
+		ASSERT_TRUE(game.SetFen(puzzle.fen)) << puzzle.id;
+		ASSERT_TRUE(game.MakeMove(game.ParseUci(moves[0]))) << puzzle.id;
+		const ChessGame::Move answer = game.ParseUci(moves[1]);
+		if (answer.IsNull()) continue;
+		ASSERT_TRUE(game.MakeMove(answer)) << puzzle.id;
+		const bool mates = game.GetResult() == ChessGame::Result::WhiteMates ||
+				game.GetResult() == ChessGame::Result::BlackMates;
+		game.Unmake();
+		if (!mates) continue;
+
+		ChessGame::SearchParams p;
+		p.nodeBudget = 50000;
+		ChessGame::ClearHash();
+		std::uint32_t seed = std::uint32_t(7 + i);
+		const ChessGame::Move best = game.SearchTimed(p, seed).move;
+		++checked;
+		if (best == answer) ++found;
+	}
+	ASSERT_GT(checked, 0);
+	EXPECT_EQ(checked, found) << "a budgeted search must not miss a mate in one";
 }
