@@ -38,8 +38,10 @@ ecosystem.
 | Site | Status | |
 |---|---|---|
 | **San Mona Mahjong Parlour** — a gambling establishment, and its regulars | live | [details ›](docs/sites/mahjong.md) |
-| **Chach.com** — one merc's chess site, daily puzzle and all | live | [details ›](docs/sites/chach.md) |
-| A dating site | planned | |
+| **Chach.com** — one merc's chess site: daily puzzle, lessons, a ladder, your own member page | live | [details ›](docs/sites/chach.md) |
+| **C.U.P.I.D.** — Mercs & Kisses, the Certified Union of Professionals In Dating | live | |
+| **The Arulco Feline Society** — a cat club with a guestbook and a webring | live | [details ›](docs/sites/feline.md) |
+| *…and the webring goes somewhere* | hidden | |
 
 Each site's page documents it in full. **Those pages contain spoilers** — how
 you find it, who you meet, what it costs. The sites are written to introduce
@@ -74,12 +76,10 @@ translation unit with unit tests, separate from the page that draws it.
 
 ## Branches
 
-| branch | what |
-|---|---|
-| `main` | everything shipped, always playable |
-| `site/<name>` | one site under construction |
-
-A site lives on its own branch until it is finished, then lands on `main`.
+Everything lives on `main`, always playable. Older `*-site` branches are
+historical — the sites turned out to grow into each other (shared laptop
+wiring, cross-site events, one save format), so one branch per site stopped
+being true and the scheme was retired.
 
 ## Credits & license
 
