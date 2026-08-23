@@ -4880,49 +4880,58 @@ namespace
 		PrintAt(TINYFONT1, FONT_GRAY4,
 		        cDay - StringPixLength("DAY", TINYFONT1), y, "DAY");
 		y += 12;
-		const int maxRows = std::max<INT32>(0, (top + cardH - 8 - y) / 15);
+		const int maxRows = std::max<INT32>(0, (top + cardH - 8 - y) / 20);
 		const int rows = std::min<int>(gubProfCount, maxRows);
 		for (int i = 0; i < rows; ++i)
 		{
 			const ChessGameRec& r = gProfHist[i];
-			if (i % 2 == 0) FillRect(px + 8, y - 2, pw - 16, 15,
+			if (i % 2 == 0) FillRect(px + 8, y - 3, pw - 16, 19,
 			                         CH_RGB_ROW_ALT);
-			const ChessSeat& opp = r.ubSeat == 0xFE ? CHESS_SEAT_ENRICO
-			                                        : CHESS_SEATS[r.ubSeat];
-			INT32 tx = cOpp;
+			const int seatIdx = r.ubSeat == 0xFE ? -2 : int(r.ubSeat);
+			const ChessSeat& opp = seatIdx == -2 ? CHESS_SEAT_ENRICO
+			                                     : CHESS_SEATS[seatIdx];
+			if (SGPVSurface* chip = ChessSeatChip(seatIdx))
+			{
+				BltVideoSurface(FRAME_BUFFER, chip, CH_X(cOpp), CH_Y(y - 1),
+				                NULL);
+			}
+			INT32 tx = cOpp + 18;
 			if (opp.title[0])
 			{
 				// the crimson title chip, chess.com fashion
 				const INT32 tw = StringPixLength(opp.title, TINYFONT1) + 6;
-				FillRounded(tx, y + 1, tw, 10, FROMRGB(146, 44, 44), 2,
+				FillRounded(tx, y + 2, tw, 10, FROMRGB(146, 44, 44), 2,
 				            i % 2 == 0 ? CH_RGB_ROW_ALT : CH_RGB_PANEL);
-				PrintAt(TINYFONT1, FONT_MCOLOR_WHITE, tx + 3, y + 3,
+				PrintAt(TINYFONT1, FONT_MCOLOR_WHITE, tx + 3, y + 4,
 				        opp.title);
 				tx += tw + 4;
 			}
-			PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, tx, y, opp.handle);
+			PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, tx, y + 2, opp.handle);
 			tx += StringPixLength(opp.handle, FONT10ARIALBOLD) + 5;
-			const ST::string orate = ST::format("({})", opp.rating);
-			PrintAt(FONT10ARIAL, FONT_GRAY4, tx, y + 1, orate);
-			tx += StringPixLength(orate, FONT10ARIAL) + 4;
-			ChessDrawFlag(tx, y + 1, opp.flag);
+			ChessDrawFlag(tx, y + 3, opp.flag);
 			const int res = r.ubResult & 3;
 			const UINT8 rc = res == 2 ? FONT_MCOLOR_LTGREEN
 			               : res == 0 ? FONT_MCOLOR_LTRED : FONT_GRAY2;
 			const char* rs = res == 2 ? "1-0" : res == 0 ? "0-1" : "1/2";
-			PrintAt(FONT10ARIALBOLD, rc, cRes, y, rs);
+			PrintAt(FONT10ARIALBOLD, rc, cRes, y + 2, rs);
 			if (r.ubResult & 4)
 			{
 				PrintAt(TINYFONT1, FONT_GRAY4,
 				        cRes + StringPixLength(rs, FONT10ARIALBOLD) + 4,
-				        y + 3, "res.");
+				        y + 5, "res.");
 			}
-			PrintAt(FONT10ARIAL, FONT_GRAY2, cMov, y,
+			PrintAt(FONT10ARIAL, FONT_GRAY2, cMov, y + 2,
 			        ST::format("{}", r.ubMoves));
 			const ST::string dd = ST::format("day {}", r.usDay);
 			PrintAt(FONT10ARIAL, FONT_GRAY2,
-			        cDay - StringPixLength(dd, FONT10ARIAL), y, dd);
-			y += 15;
+			        cDay - StringPixLength(dd, FONT10ARIAL), y + 2, dd);
+			MOUSE_REGION& rr = gChessProfRowRegion[i];
+			rr.RegionTopLeftX = INT16(CH_X(cOpp));
+			rr.RegionTopLeftY = INT16(CH_Y(y - 3));
+			rr.RegionBottomRightX = INT16(CH_X(cRes - 8));
+			rr.RegionBottomRightY = INT16(CH_Y(y + 16));
+			giProfRowTarget[i] = seatIdx;
+			y += 20;
 		}
 	}
 
