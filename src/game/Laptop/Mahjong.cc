@@ -1525,6 +1525,19 @@ static bool MahjongExchangeSelectionValid()
 }
 
 
+static INT32 MahjongModalHeight()
+{
+	if (!gGame) return 306;
+	INT32 c = 36 + 4 * 38;
+	if (guiMJState == MJUI_HAND_END)
+	{
+		size_t const winLines = gGame->wins().empty() ? 1 : gGame->wins().size();
+		c += static_cast<INT32>(winLines) * 13 + 4;
+	}
+	if (guiMJState == MJUI_MATCH_END && giMJLastNetGain != 0) c += 24;
+	return c + 64;
+}
+
 static void MahjongUpdateButtons()
 {
 	if (gfMJChatBig && guiMJState != MJUI_LOBBY && guiMJState != MJUI_LADDER)
@@ -1598,8 +1611,14 @@ static void MahjongUpdateButtons()
 		case MJUI_HAND_END:
 		case MJUI_MATCH_END:
 			// the verdict card draws its own gold CTA; the grey stock
-			// button stays out of it
+			// button stays out of it. The card is content-sized, so the
+			// click region chases the button's actual row.
 			if (guiMJNewGameBtn) HideButton(guiMJNewGameBtn);
+			{
+				INT16 const top = static_cast<INT16>(MJ_Y(24 + MahjongModalHeight() - 58));
+				gMJModalCTARegion.RegionTopLeftY = top;
+				gMJModalCTARegion.RegionBottomRightY = static_cast<INT16>(top + 30);
+			}
 			gMJModalCTARegion.Enable();
 			break;
 		default:
@@ -4833,7 +4852,7 @@ static void MahjongRenderOverlay()
 	// the table dims under the verdict, chach.com fashion
 	FRAME_BUFFER->ShadowRect(MJ_X(2), MJ_Y(2), MJ_X(500), MJ_Y(398));
 
-	INT32 const x = MJ_X(135), y = MJ_Y(24), w = 232, h = 306;
+	INT32 const x = MJ_X(135), y = MJ_Y(24), w = 232, h = MahjongModalHeight();
 	MahjongFillRounded(x, y, w, h, 7, Get16BPPColor(FROMRGB(240, 220, 60)));
 	MahjongFillRounded(x + 2, y + 2, w - 4, h - 4, 6, Get16BPPColor(FROMRGB(16, 40, 30)));
 
