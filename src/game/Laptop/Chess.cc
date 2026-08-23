@@ -443,6 +443,19 @@ namespace
 	MOUSE_REGION gChessChallengeRegion;
 	bool gfChalModal = false;         // the clock picker over a member page
 	MOUSE_REGION gChessChalRegion[6]; // 4 controls, START GAME, nevermind
+	MOUSE_REGION gChessGbNameRegion2[6]; // signer lockups link to their pages
+	int giGbRowTarget[6] = { -3, -3, -3, -3, -3, -3 };
+
+	// a guestbook handle is a member when it matches a seat on the ladder
+	int ChessSeatForHandle(const ST::string& handle)
+	{
+		for (int i = 0; i < int(lengthof(CHESS_SEATS)); ++i)
+		{
+			if (handle == CHESS_SEATS[i].handle) return i;
+		}
+		if (handle == CHESS_SEAT_ENRICO.handle) return -2;
+		return -3;
+	}
 	SGPVSurface* gSeatChip[7] = {};   // 14px row chips: the ladder + the daily man
 	SGPVSurface* ChessSeatChip(int seat);
 	MOUSE_REGION gChessBannerRegion;
@@ -2153,6 +2166,15 @@ namespace
 		ChessOpenProfile(-1);
 	}
 
+	void ChessGbNameCallback(MOUSE_REGION* region, UINT32 reason)
+	{
+		if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
+		if (giChessStub != 4 || gfChessGbCompose) return;
+		const int t = giGbRowTarget[MSYS_GetRegionUserData(region, 0)];
+		if (t < -2) return;
+		ChessOpenProfile(t);
+	}
+
 	void ChessProfRowCallback(MOUSE_REGION* region, UINT32 reason)
 	{
 		if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
@@ -2424,6 +2446,10 @@ namespace
 		// the profile pages share the guestbook's ad column
 		if (list || giChessStub == 5) gChessAdRegion.Enable();
 		else gChessAdRegion.Disable();
+		for (MOUSE_REGION& r : gChessGbNameRegion2)
+		{
+			if (list) r.Enable(); else r.Disable();
+		}
 		for (MOUSE_REGION& r : gChessGbNumRegion) { if (list) r.Enable(); else r.Disable(); }
 		const bool compose = gb && gfChessGbCompose;
 		if (compose) { gChessGbPostRegion.Enable();  gChessGbCloseRegion.Enable(); }
@@ -2561,6 +2587,17 @@ namespace
 			MSYS_SetRegionUserData(&gChessProfRowRegion[i], 0, i);
 			gChessProfRowRegion[i].SetFastHelpText("view profile");
 			gChessProfRowRegion[i].Disable();
+		}
+		for (int i = 0; i < 6; ++i)
+		{
+			// parked; the guestbook render moves them onto its rows
+			MSYS_DefineRegion(&gChessGbNameRegion2[i],
+			                  UINT16(CH_X(CH_BOARD_X)), UINT16(CH_Y(0)),
+			                  UINT16(CH_X(CH_BOARD_X + 1)), UINT16(CH_Y(1)),
+			                  MSYS_PRIORITY_HIGH, CURSOR_WWW, MSYS_NO_CALLBACK,
+			                  ChessGbNameCallback);
+			MSYS_SetRegionUserData(&gChessGbNameRegion2[i], 0, i);
+			gChessGbNameRegion2[i].Disable();
 		}
 		MSYS_DefineRegion(&gChessChallengeRegion,
 		                  UINT16(CH_X(CH_BOARD_X + 12)),
@@ -2758,6 +2795,7 @@ namespace
 		for (MOUSE_REGION& r : gChessProfRowRegion) MSYS_RemoveRegion(&r);
 		MSYS_RemoveRegion(&gChessChallengeRegion);
 		for (MOUSE_REGION& r : gChessChalRegion) MSYS_RemoveRegion(&r);
+		for (MOUSE_REGION& r : gChessGbNameRegion2) MSYS_RemoveRegion(&r);
 		MSYS_RemoveRegion(&gChessBannerRegion);
 		MSYS_RemoveRegion(&gChessAdRegion);
 		MSYS_RemoveRegion(&gChessGbPrevRegion);
@@ -5069,10 +5107,21 @@ namespace
 		            CH_RGB_PANEL, CH_PANEL_RADIUS, CH_RGB_CHROME);
 
 		INT32 y = CH_GB_TOP + 8;
+		for (int& t : giGbRowTarget) t = -3;
 		const size_t first = size_t(giChessGbPage) * CH_GB_PER_PAGE;
 		size_t shown = 0;
 		for (size_t i = first; i < first + CH_GB_PER_PAGE && i < CH_GB_COUNT; ++i, ++shown)
 		{
+			// members' lockups click through to their pages
+			const int target =
+					ChessSeatForHandle(ST::string(CHESS_GUESTBOOK[i].handle));
+			MOUSE_REGION& rr = gChessGbNameRegion2[shown];
+			rr.RegionTopLeftX = INT16(CH_X(CH_BOARD_X + 12));
+			rr.RegionTopLeftY = INT16(CH_Y(y + 6));
+			rr.RegionBottomRightX = INT16(CH_X(CH_BOARD_X + 200));
+			rr.RegionBottomRightY = INT16(CH_Y(y + 34));
+			rr.SetFastHelpText(target >= -2 ? "view profile" : "");
+			giGbRowTarget[shown] = target;
 			y += ChessRenderGuestRow(y, gGuestFace[i], CHESS_GUESTBOOK[i].tint,
 			                         gGuestName[i], CHESS_GUESTBOOK[i].handle,
 			                         CHESS_GUESTBOOK[i].date,
@@ -5090,6 +5139,13 @@ namespace
 			const int mlines = int(std::min<size_t>(3, std::strlen(mine) / 39 + 1));
 			const ST::string name = gChessSelfName.empty() ? ST::string("Commander")
 			                                               : gChessSelfName;
+			MOUSE_REGION& rr = gChessGbNameRegion2[5];
+			rr.RegionTopLeftX = INT16(CH_X(CH_BOARD_X + 12));
+			rr.RegionTopLeftY = INT16(CH_Y(y + 6));
+			rr.RegionBottomRightX = INT16(CH_X(CH_BOARD_X + 200));
+			rr.RegionBottomRightY = INT16(CH_Y(y + 34));
+			rr.SetFastHelpText("your page");
+			giGbRowTarget[5] = -1;
 			ChessRenderGuestRow(y, gGuestSelfFace, 0, name, handle, "today",
 			                    mine, mlines, shown > 0);
 		}
