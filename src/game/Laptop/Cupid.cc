@@ -5523,13 +5523,81 @@ namespace
 			}
 			FillRect(lx, ly + 3, 106, 1, CP_RGB_CARD_DIM);
 			ly += 9;
-			const ST::string act =
-				status == CPS_STATUS_GONE ? ST::string(T(CPS_ACTIVE_LONG))
-				: status == CPS_STATUS_ONLINE ||
-				  status == CPS_STATUS_PAYROLL
-					? ST::string(T(CPS_ACTIVE_24))
-					: ST::format(T(CPS_ACTIVE_DAYS),
-							2 + (card.pid * 7) % 5);
+			// last-seen: seeded per member so the whole deck doesn't
+			// read off a single clock
+			ST::string act;
+			if (status == CPS_STATUS_GONE)
+			{
+				act = T(CPS_ACTIVE_LONG);
+			}
+			else if (status == CPS_STATUS_ONLINE)
+			{
+				switch (card.pid % 4)
+				{
+					case 0:
+						act = gfCupidGerman ? "jetzt online"
+								: "online now";
+						break;
+					case 1:
+						act = ST::format(gfCupidGerman
+										? "aktiv vor {} Minuten"
+										: "active {} minutes ago",
+								3 + (int(card.pid) * 13) % 55);
+						break;
+					case 2:
+						act = ST::format(gfCupidGerman
+										? "aktiv vor {} Stunden"
+										: "active {} hours ago",
+								1 + (int(card.pid) * 5) % 9);
+						break;
+					default:
+						act = T(CPS_ACTIVE_24);
+						break;
+				}
+			}
+			else if (status == CPS_STATUS_PAYROLL)
+			{
+				switch (card.pid % 3)
+				{
+					case 0:
+						act = gfCupidGerman
+								? "meldet sich zwischen den Gefechten"
+								: "logs in between firefights";
+						break;
+					case 1:
+						act = ST::format(gfCupidGerman
+										? "aktiv vor {} Stunden (im Einsatz)"
+										: "active {} hours ago (from the "
+										  "field)",
+								2 + (int(card.pid) * 3) % 8);
+						break;
+					default:
+						act = T(CPS_ACTIVE_24);
+						break;
+				}
+			}
+			else
+			{
+				const int d = 2 + (card.pid * 7) % 5;
+				switch (card.pid % 3)
+				{
+					case 0:
+						act = ST::format(T(CPS_ACTIVE_DAYS), d);
+						break;
+					case 1:
+						act = ST::format(gfCupidGerman
+										? "zuletzt gesehen vor {} Tagen"
+										: "last seen {} days ago", d);
+						break;
+					default:
+						act = ST::format(gfCupidGerman
+										? "seit {} Tagen still. Vertrag, "
+										  "vermutlich."
+										: "quiet for {} days. on contract, "
+										  "probably.", d);
+						break;
+				}
+			}
 			ly += DisplayWrappedString(UINT16(CP_X(lx)), UINT16(CP_Y(ly)),
 					106, 2, FONT10ARIAL, FONT_GRAY4,
 					ClampLines(act, 106, 2), FONT_MCOLOR_BLACK,
