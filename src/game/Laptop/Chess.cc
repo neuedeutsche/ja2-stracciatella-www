@@ -4552,7 +4552,7 @@ namespace
 			const INT32 tw = StringPixLength(seat.title, TINYFONT1) + 2;
 			FillRounded(hx, top + 14, tw, 8, FROMRGB(146, 44, 44), 2,
 			            CH_RGB_PANEL);
-			PrintAt(TINYFONT1, FONT_MCOLOR_WHITE, hx + 1, top + 15, seat.title);
+			PrintAt(TINYFONT1, FONT_MCOLOR_WHITE, hx + 1, top + 14, seat.title);
 			hx += tw + 4;
 		}
 		PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, hx, top + 12, seat.handle);
@@ -4760,7 +4760,7 @@ namespace
 				const INT32 tw = StringPixLength(r.title, TINYFONT1) + 2;
 				FillRounded(tx, y + 3, tw, 8, FROMRGB(146, 44, 44), 2,
 				            i % 2 == 0 ? CH_RGB_ROW_ALT : CH_RGB_PANEL);
-				PrintAt(TINYFONT1, FONT_MCOLOR_WHITE, tx + 1, y + 4, r.title);
+				PrintAt(TINYFONT1, FONT_MCOLOR_WHITE, tx + 1, y + 3, r.title);
 				tx += tw + 4;
 			}
 			PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, tx, y + 2, r.opp);
@@ -4997,7 +4997,7 @@ namespace
 				const INT32 tw = StringPixLength(opp.title, TINYFONT1) + 2;
 				FillRounded(tx, y + 3, tw, 8, FROMRGB(146, 44, 44), 2,
 				            i % 2 == 0 ? CH_RGB_ROW_ALT : CH_RGB_PANEL);
-				PrintAt(TINYFONT1, FONT_MCOLOR_WHITE, tx + 1, y + 4,
+				PrintAt(TINYFONT1, FONT_MCOLOR_WHITE, tx + 1, y + 3,
 				        opp.title);
 				tx += tw + 4;
 			}
