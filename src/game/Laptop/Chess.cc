@@ -2651,10 +2651,10 @@ namespace
 		                  MSYS_PRIORITY_HIGH, CURSOR_WWW, MSYS_NO_CALLBACK,
 		                  ChessGbPageCallback);
 		MSYS_SetRegionUserData(&gChessGbNextRegion, 0, 1);
-		// resign's text row, full width above the scrubber
+		// resign's text row, full width in the strip's extended headroom
 		MSYS_DefineRegion(&gChessResignRegion,
-		                  UINT16(CH_X(CH_PANEL_X + 14)), UINT16(CH_Y(CH_FOOT_Y + 2)),
-		                  UINT16(CH_X(CH_PANEL_X + CH_PANEL_W - 14)), UINT16(CH_Y(CH_FOOT_Y + 16)),
+		                  UINT16(CH_X(CH_PANEL_X + 14)), UINT16(CH_Y(CH_FOOT_Y - 13)),
+		                  UINT16(CH_X(CH_PANEL_X + CH_PANEL_W - 14)), UINT16(CH_Y(CH_FOOT_Y + 1)),
 		                  MSYS_PRIORITY_HIGH, CURSOR_WWW, MSYS_NO_CALLBACK,
 		                  ChessResignCallback);
 		// the finished-game card's three actions and its X
@@ -2713,8 +2713,8 @@ namespace
 		{
 			const INT32 hx = CH_PANEL_X + 14 + i * 29;
 			MSYS_DefineRegion(&gChessHistRegion[i],
-			                  UINT16(CH_X(hx)), UINT16(CH_Y(CH_FOOT_Y + 18)),
-			                  UINT16(CH_X(hx + 26)), UINT16(CH_Y(CH_FOOT_Y + 36)),
+			                  UINT16(CH_X(hx)), UINT16(CH_Y(CH_FOOT_Y + 10)),
+			                  UINT16(CH_X(hx + 26)), UINT16(CH_Y(CH_FOOT_Y + 28)),
 			                  MSYS_PRIORITY_HIGH, CURSOR_WWW, MSYS_NO_CALLBACK,
 			                  ChessHistCallback);
 			MSYS_SetRegionUserData(&gChessHistRegion[i], 0, i);
@@ -3237,8 +3237,8 @@ namespace
 	// Arrows grey out at the live end and at the start of the game.
 	void ChessRenderScrubber(const std::vector<ChessGame>& hist, int view)
 	{
-		// four buttons spanning the strip, resign's text row above them
-		const INT32 y = CH_FOOT_Y + 18;
+		// four buttons spanning the strip, centred in its base band
+		const INT32 y = CH_FOOT_Y + 10;
 		const int last = int(hist.size()) - 1;
 		const int cur = (view < 0 || view > last) ? last : view;
 		for (int i = 0; i < 4; ++i)
@@ -3267,7 +3267,18 @@ namespace
 	void ChessRenderPlayPanel()
 	{
 		const INT32 cx = ChessRenderSectionPanel(CH_ICON_PLAY, CHS_NAV_PLAY);
-		FillRect(CH_PANEL_X, CH_FOOT_Y, CH_PANEL_W, 38, CH_RGB_PANEL_SUNK);
+		const bool fPlayLive = giPlayState == 0 || giPlayState == 1 ||
+		                       giPlayState == 5;
+		// resign borrows headroom: the strip extends upward for its row
+		if (fPlayLive)
+		{
+			FillRect(CH_PANEL_X, CH_FOOT_Y - 14, CH_PANEL_W, 52,
+			         CH_RGB_PANEL_SUNK);
+		}
+		else
+		{
+			FillRect(CH_PANEL_X, CH_FOOT_Y, CH_PANEL_W, 38, CH_RGB_PANEL_SUNK);
+		}
 		RoundCorners(CH_PANEL_X, CH_INSET, CH_PANEL_W, CH_PAGE_H - 2 * CH_INSET,
 		             CH_PANEL_RADIUS, CH_RGB_CHROME);
 
@@ -3308,7 +3319,7 @@ namespace
 			ChessRenderPanelTabs(giPlayTab);
 			if (giPlayTab == 0)
 			{
-				ChessRenderMoveList(gPlaySan, 58, CH_FOOT_Y - 4, &giMoveScroll, giPlayView);
+				ChessRenderMoveList(gPlaySan, 58, CH_FOOT_Y - 18, &giMoveScroll, giPlayView);
 			}
 			else
 			{
@@ -3321,12 +3332,12 @@ namespace
 		if (giPlayState == 0 || giPlayState == 1 || giPlayState == 5)
 		{
 			ChessRenderScrubber(gPlayHist, giPlayView);
-			// resign, as a quiet text row; armed, it turns red and asks
-			// you to mean it
+			// resign, as a quiet text row in the borrowed headroom; armed,
+			// it turns red and asks you to mean it
 			const bool armed = ChessNow() < guiResignArmUntil;
 			PrintCentred(FONT10ARIAL,
 			             armed ? FONT_MCOLOR_LTRED : FONT_GRAY4,
-			             CH_PANEL_X + CH_PANEL_W / 2, CH_FOOT_Y + 5,
+			             CH_PANEL_X + CH_PANEL_W / 2, CH_FOOT_Y - 10,
 			             armed ? "click again to resign" : "resign");
 		}
 		else if (giPlayState == 3)
