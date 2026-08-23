@@ -2060,7 +2060,9 @@ static void MahjongEnterState(MahjongUiState state)
 			}
 			else if (gGame->aborted())
 			{
-				gMJMessage = "Hand VOID. Nobody pays, nobody forgets.";
+				// the card's header already says HAND VOID; the footnote
+				// only adds the sentiment
+				gMJMessage = "Nobody pays, nobody forgets.";
 				MahjongEventSay("Hand over - VOID after an irregularity");
 			}
 			else
