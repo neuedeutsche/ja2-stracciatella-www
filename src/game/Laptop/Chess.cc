@@ -444,6 +444,7 @@ namespace
 	MOUSE_REGION gChessNextDayRegion;
 	MOUSE_REGION gChessModalCloseRegion;
 	MOUSE_REGION gChessModalArchiveRegion;
+	MOUSE_REGION gChessLearnCtaRegion; // the graduation card's lower button
 	// sits behind everything and catches a piece released off the board, which
 	// would otherwise leave it stuck to the cursor
 	MOUSE_REGION gChessDropRegion;
@@ -1484,12 +1485,24 @@ namespace
 		if (up)
 		{
 			gChessModalCloseRegion.Enable();
-			gChessModalArchiveRegion.Enable();
+			// the graduation card seats its button lower, under the
+			// coach; the puzzle card keeps the original spot
+			if (gfLearnModal)
+			{
+				gChessLearnCtaRegion.Enable();
+				gChessModalArchiveRegion.Disable();
+			}
+			else
+			{
+				gChessModalArchiveRegion.Enable();
+				gChessLearnCtaRegion.Disable();
+			}
 		}
 		else
 		{
 			gChessModalCloseRegion.Disable();
 			gChessModalArchiveRegion.Disable();
+			gChessLearnCtaRegion.Disable();
 		}
 	}
 
@@ -2288,8 +2301,14 @@ namespace
 		                  UINT16(CH_X(CH_MODAL_X + CH_MODAL_W - 12)), UINT16(CH_Y(CH_MODAL_Y + 72)),
 		                  MSYS_PRIORITY_HIGHEST, CURSOR_WWW, MSYS_NO_CALLBACK,
 		                  ChessModalArchiveCallback);
+		MSYS_DefineRegion(&gChessLearnCtaRegion,
+		                  UINT16(CH_X(CH_MODAL_X + 12)), UINT16(CH_Y(CH_MODAL_Y + 66)),
+		                  UINT16(CH_X(CH_MODAL_X + CH_MODAL_W - 12)), UINT16(CH_Y(CH_MODAL_Y + 94)),
+		                  MSYS_PRIORITY_HIGHEST, CURSOR_WWW, MSYS_NO_CALLBACK,
+		                  ChessModalArchiveCallback);
 		gChessModalCloseRegion.Disable();
 		gChessModalArchiveRegion.Disable();
+		gChessLearnCtaRegion.Disable();
 
 		MSYS_DefineRegion(&gChessBannerRegion,
 		                  UINT16(CH_X(CH_BOARD_X)), UINT16(CH_Y(CH_PAGE_H - CH_INSET - 48)),
@@ -2434,6 +2453,7 @@ namespace
 		MSYS_RemoveRegion(&gChessHintRegion);
 		MSYS_RemoveRegion(&gChessModalCloseRegion);
 		MSYS_RemoveRegion(&gChessModalArchiveRegion);
+		MSYS_RemoveRegion(&gChessLearnCtaRegion);
 		for (MOUSE_REGION& r : gChessNavRegion) MSYS_RemoveRegion(&r);
 		MSYS_RemoveRegion(&gChessBannerRegion);
 		MSYS_RemoveRegion(&gChessAdRegion);
@@ -3137,7 +3157,7 @@ namespace
 
 		if (gfLearnModal)
 		{
-			const INT32 w = CH_MODAL_W, h = CH_MODAL_H;
+			const INT32 w = CH_MODAL_W, h = 140;
 			const INT32 x = CH_MODAL_X, y = CH_MODAL_Y;
 			const INT32 cx2 = x + w / 2;
 			FillRoundedOnly(x - 1, y - 1, w + 2, h + 2, CH_RGB_PANEL_UP, 6);
@@ -3145,33 +3165,46 @@ namespace
 			PrintAt(FONT10ARIAL, FONT_GRAY4, x + w - 14, y + 4, "X");
 			PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, cx2, y + 12,
 			             "ZE BOOK IS FINISHED");
-			ChessDrawCTAButton(x + 12, y + 44, w - 24, 28, CH_RGB_PANEL);
-			PrintCentred(FONT14ARIAL, FONT_MCOLOR_WHITE, cx2, y + 52,
-			             "DANKE, COACH");
-			// the coach gets the last word, from her own bubble
+			// the coach speaks beneath the heading, above the button
 			INT32 faceW = 26;
 			if (guiChessCoach)
 			{
 				faceW = guiChessCoach->SubregionProperties(0).usWidth;
 				BltVideoObject(FRAME_BUFFER, guiChessCoach, 0,
-				               CH_X(x + 10), CH_Y(y + 78));
+				               CH_X(x + 10), CH_Y(y + 28));
 			}
 			const INT32 bubbleX = x + 10 + faceW + 4;
 			const INT32 bubbleW = x + w - 10 - bubbleX;
-			FillRounded(bubbleX, y + 76, bubbleW, 34, CH_RGB_BUBBLE, 3,
+			FillRounded(bubbleX, y + 26, bubbleW, 34, CH_RGB_BUBBLE, 3,
 			            CH_RGB_PANEL);
 			for (int i = 0; i < 4; ++i)
 			{
 				const INT32 th = 8 - 2 * i;
 				if (th <= 0) break;
-				FillRect(bubbleX - 1 - i, y + 91 - th / 2, 1, th,
+				FillRect(bubbleX - 1 - i, y + 41 - th / 2, 1, th,
 				         CH_RGB_BUBBLE);
 			}
 			DisplayWrappedString(UINT16(CH_X(bubbleX + 4)),
-			                     UINT16(CH_Y(y + 81)), UINT16(bubbleW - 8), 1,
+			                     UINT16(CH_Y(y + 31)), UINT16(bubbleW - 8), 1,
 			                     FONT10ARIAL, FONT_MCOLOR_BLACK,
 			                     "eight lessons. no refunds. go play.",
 			                     FONT_MCOLOR_WHITE, LEFT_JUSTIFIED);
+			ChessDrawCTAButton(x + 12, y + 66, w - 24, 28, CH_RGB_PANEL);
+			PrintCentred(FONT14ARIAL, FONT_MCOLOR_WHITE, cx2, y + 74,
+			             "DANKE, COACH");
+			const INT32 boxW = (w - 30) / 2;
+			const INT32 boxY = y + 102;
+			static const char* const vals[2] = { "8", "$0" };
+			static const char* const tags[2] = { "LESSONS", "TUITION" };
+			for (int i = 0; i < 2; ++i)
+			{
+				const INT32 bx = x + 12 + i * (boxW + 6);
+				FillRect(bx, boxY, boxW, 28, CH_RGB_PANEL_SUNK);
+				PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE,
+				             bx + boxW / 2, boxY + 3, vals[i]);
+				PrintCentred(FONT10ARIAL, FONT_GRAY4, bx + boxW / 2,
+				             boxY + 15, tags[i]);
+			}
 			return;
 		}
 
