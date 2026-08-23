@@ -1402,7 +1402,13 @@ namespace
 	void RingCallback(MOUSE_REGION* region, UINT32 reason)
 	{
 		if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
-		gFelineTicker = "the webring neighbour does not answer. it has "
+		if (MSYS_GetRegionUserData(region, 0) == 1)
+		{
+			// next in the ring: the neighbour with a warehouse
+			GoToHiddenSite(LAPTOP_MODE_CATZON);
+			return;
+		}
+		gFelineTicker = "the previous neighbour does not answer. it has "
 				"not answered since the invasion.";
 		FelineRedraw();
 	}
@@ -1460,6 +1466,7 @@ namespace
 					UINT16(FE_Y(FE_PAGE_H - 8)),
 					MSYS_PRIORITY_HIGH, CURSOR_WWW, MSYS_NO_CALLBACK,
 					RingCallback);
+			MSYS_SetRegionUserData(&gFelineRingRegion[i], 0, i);
 		}
 		SyncRegions();
 	}

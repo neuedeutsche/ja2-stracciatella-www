@@ -86,10 +86,14 @@ enum LaptopMode
 	LAPTOP_MODE_CHESS,
 	LAPTOP_MODE_CUPID,
 	LAPTOP_MODE_FELINE,
+	LAPTOP_MODE_CATZON,
 	LAPTOP_MODE_END
 };
 
 extern LaptopMode  guiCurrentLaptopMode;
+// banner destinations: sites without a bookmark, reached by a link on
+// another site - the way half of 1999 was reached
+void GoToHiddenSite(LaptopMode mode);
 extern LaptopMode  guiPreviousLaptopMode;
 extern INT32       giCurrentSubPage;
 extern BOOLEAN     fReDrawScreenFlag;

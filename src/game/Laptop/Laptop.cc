@@ -50,6 +50,7 @@
 #include "Funeral.h"
 #include "Chess.h"
 #include "Cupid.h"
+#include "Catzon.h"
 #include "Feline.h"
 #include "Mahjong.h"
 #include "Finances.h"
@@ -184,6 +185,12 @@ LaptopMode        guiPreviousLaptopMode;
 // Used to prevent double free problems. Fixes Stracciatella issue #68:
 LaptopMode        guiLastExitedLaptopMode = LAPTOP_MODE_NONE;
 static LaptopMode guiCurrentWWWMode = LAPTOP_MODE_NONE;
+
+void GoToHiddenSite(LaptopMode mode)
+{
+	guiCurrentWWWMode    = mode;
+	guiCurrentLaptopMode = mode;
+}
 INT32  giCurrentSubPage;
 
 
@@ -670,6 +677,14 @@ static void EnterLaptop(void)
 		fFirstTimeInLaptop = FALSE;
 		fNewMailFlag       = FALSE;
 	}
+	// ...and the store at the end of its webring
+	if (getenv("JA2_DEV_CATZON"))
+	{
+		guiCurrentWWWMode    = LAPTOP_MODE_CATZON;
+		guiCurrentLaptopMode = LAPTOP_MODE_CATZON;
+		fFirstTimeInLaptop = FALSE;
+		fNewMailFlag       = FALSE;
+	}
 
 	DrawDeskTopBackground();
 
@@ -853,6 +868,7 @@ static void RenderLaptop(void)
 		case LAPTOP_MODE_CHESS:                    RenderChess();             break;
 		case LAPTOP_MODE_CUPID:                    RenderCupid();             break;
 		case LAPTOP_MODE_FELINE:                   RenderFeline();            break;
+		case LAPTOP_MODE_CATZON:                   RenderCatzon();            break;
 
 		case LAPTOP_MODE_FINANCES:                 RenderFinances();          break;
 		case LAPTOP_MODE_PERSONNEL:                RenderPersonnel();         break;
@@ -1053,6 +1069,7 @@ do_nothing:
 		case LAPTOP_MODE_CHESS:                    EnterChess();             break;
 		case LAPTOP_MODE_CUPID:                    EnterCupid();             break;
 		case LAPTOP_MODE_FELINE:                   EnterFeline();            break;
+		case LAPTOP_MODE_CATZON:                   EnterCatzon();            break;
 
 		case LAPTOP_MODE_FINANCES:                 EnterFinances();          break;
 		case LAPTOP_MODE_PERSONNEL:                EnterPersonnel();         break;
@@ -1107,6 +1124,7 @@ static void HandleLapTopHandles(void)
 		case LAPTOP_MODE_CHESS:                    HandleChess();             break;
 		case LAPTOP_MODE_CUPID:                    HandleCupid();             break;
 		case LAPTOP_MODE_FELINE:                   HandleFeline();            break;
+		case LAPTOP_MODE_CATZON:                   HandleCatzon();            break;
 
 		case LAPTOP_MODE_CHAR_PROFILE:             HandleCharProfile();       break;
 
@@ -1440,6 +1458,7 @@ static void ExitLaptopMode(LaptopMode uiMode)
 		case LAPTOP_MODE_CHESS:                    ExitChess();             break;
 		case LAPTOP_MODE_CUPID:                    ExitCupid();             break;
 		case LAPTOP_MODE_FELINE:                   ExitFeline();            break;
+		case LAPTOP_MODE_CATZON:                   ExitCatzon();            break;
 
 		case LAPTOP_MODE_FINANCES:                 ExitFinances();          break;
 		case LAPTOP_MODE_PERSONNEL:                ExitPersonnel();         break;
@@ -3527,8 +3546,9 @@ void SaveLaptopInfoToSavedGame(HWFILE const f)
 		INJ_U8(  d, ch.ubBestStreak)
 		INJ_U8(  d, ch.ubHearts)
 		INJ_U8(  d, ch.ubFlags)
-		// the marker guards the tail: only this format's saves carry one
-		INJ_U8(  d, 0xC5)
+		// the marker guards the tail: only this format's saves carry one.
+		// 0xC6 means the chess ledger also rides at the very end.
+		INJ_U8(  d, 0xC6)
 		INJ_U8(  d, UINT8(strnlen(ch.szLine, sizeof(ch.szLine) - 1)))
 	}
 	{
@@ -3590,6 +3610,29 @@ void SaveLaptopInfoToSavedGame(HWFILE const f)
 		FelinePersist const fe = FelineGetPersist();
 		size_t const len = strnlen(fe.szName, sizeof(fe.szName) - 1);
 		if (len != 0) f->write(fe.szName, len);
+	}
+
+	{
+		// chach.com's rating and game ledger close the section, new with
+		// the 0xC6 marker above
+		ChessPersist const ch = ChessGetPersist();
+		BYTE ledger[9 + CHESS_HIST_MAX * 6];
+		DataWriter t{ledger};
+		INJ_U16( t, ch.usRating)
+		INJ_U16( t, ch.usWins)
+		INJ_U16( t, ch.usLosses)
+		INJ_U16( t, ch.usDraws)
+		INJ_U8(  t, ch.ubHistCount)
+		for (ChessGameRec const& r : ch.aHist)
+		{
+			INJ_U16( t, r.usDay)
+			INJ_U8(  t, r.ubSeat)
+			INJ_U8(  t, r.ubResult)
+			INJ_U8(  t, r.ubMoves)
+			INJ_U8(  t, r.ubControl)
+		}
+		Assert(t.getConsumed() == lengthof(ledger));
+		f->write(ledger, sizeof(ledger));
 	}
 }
 
@@ -3677,8 +3720,9 @@ void LoadLaptopInfoFromSavedGame(HWFILE const f)
 	}
 	// chach.com: old saves read harmless zeroes here. The signature text
 	// itself rides behind the fixed block; only its length lives in it.
-	ChessPersist ch;
+	ChessPersist ch = {};
 	UINT8 ubChessLineLen;
+	bool fChessLedger = false;
 	FelinePersist fe = {};
 	UINT8 ubFelineNameLen = 0;
 	{
@@ -3691,7 +3735,11 @@ void LoadLaptopInfoFromSavedGame(HWFILE const f)
 		UINT8 ubChessLineMarker;
 		EXTR_U8(  d, ubChessLineMarker)
 		EXTR_U8(  d, ubChessLineLen)
-		if (ubChessLineMarker != 0xC5) ubChessLineLen = 0;
+		if (ubChessLineMarker != 0xC5 && ubChessLineMarker != 0xC6)
+		{
+			ubChessLineLen = 0;
+		}
+		fChessLedger = ubChessLineMarker == 0xC6;
 	}
 	{
 		// Mercs & Kisses: old saves read zeroes here, and a zero nibble
@@ -3768,7 +3816,6 @@ void LoadLaptopInfoFromSavedGame(HWFILE const f)
 		if (ubChessLineLen > sizeof(ch.szLine) - 1) ubChessLineLen = UINT8(sizeof(ch.szLine) - 1);
 		f->read(ch.szLine, ubChessLineLen);
 	}
-	ChessSetPersist(ch);
 
 	if (ubFelineNameLen != 0)
 	{
@@ -3776,6 +3823,29 @@ void LoadLaptopInfoFromSavedGame(HWFILE const f)
 		f->read(fe.szName, ubFelineNameLen);
 	}
 	FelineSetPersist(fe);
+
+	if (fChessLedger)
+	{
+		// the ledger tail; 0xC5 saves simply load as unrated
+		BYTE ledger[9 + CHESS_HIST_MAX * 6];
+		f->read(ledger, sizeof(ledger));
+		DataReader t{ledger};
+		EXTR_U16( t, ch.usRating)
+		EXTR_U16( t, ch.usWins)
+		EXTR_U16( t, ch.usLosses)
+		EXTR_U16( t, ch.usDraws)
+		EXTR_U8(  t, ch.ubHistCount)
+		for (ChessGameRec& r : ch.aHist)
+		{
+			EXTR_U16( t, r.usDay)
+			EXTR_U8(  t, r.ubSeat)
+			EXTR_U8(  t, r.ubResult)
+			EXTR_U8(  t, r.ubMoves)
+			EXTR_U8(  t, r.ubControl)
+		}
+		Assert(t.getConsumed() == lengthof(ledger));
+	}
+	ChessSetPersist(ch);
 }
 
 // Used to determine delay if its raining
