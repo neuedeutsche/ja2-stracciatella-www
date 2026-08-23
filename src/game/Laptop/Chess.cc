@@ -438,6 +438,11 @@ namespace
 	int giChessProfSeat = -1;         // -1 you, 0..5 the ladder, -2 the daily man
 	SGPVSurface* gProfFace = nullptr; // baked portrait for the open member page
 	int giProfFaceFor = -3;
+	MOUSE_REGION gChessProfRowRegion[10]; // the feed rows link onward
+	int giProfRowTarget[10] = { -3, -3, -3, -3, -3, -3, -3, -3, -3, -3 };
+	MOUSE_REGION gChessChallengeRegion;
+	SGPVSurface* gSeatChip[7] = {};   // 14px row chips: the ladder + the daily man
+	SGPVSurface* ChessSeatChip(int seat);
 	MOUSE_REGION gChessBannerRegion;
 	MOUSE_REGION gChessAdRegion;
 	MOUSE_REGION gChessSignRegion;
@@ -2082,6 +2087,25 @@ namespace
 		ChessRedraw();
 	}
 
+	SGPVSurface* ChessSeatChip(int seat)
+	{
+		const int idx = seat == -2 ? 6 : seat;
+		if (idx < 0 || idx > 6) return nullptr;
+		if (!gSeatChip[idx])
+		{
+			const ChessSeat& who = seat == -2 ? CHESS_SEAT_ENRICO
+			                                  : CHESS_SEATS[seat];
+			try
+			{
+				SGPVObject* face = ChessLoadPortrait(GetProfile(who.pid));
+				gSeatChip[idx] = ChessBakeFace(face, 14);
+				DeleteVideoObject(face);
+			}
+			catch (...) {}
+		}
+		return gSeatChip[idx];
+	}
+
 	// one door to any member page: yours (-1), a ladder seat, or the
 	// daily man (-2). Seat portraits bake lazily and stick around.
 	void ChessOpenProfile(int seat)
@@ -2093,8 +2117,9 @@ namespace
 			                                  : CHESS_SEATS[seat];
 			try
 			{
-				gProfFace = ChessBakeFace(
-						ChessLoadPortrait(GetProfile(who.pid)), CH_GB_FACE);
+				SGPVObject* face = ChessLoadPortrait(GetProfile(who.pid));
+				gProfFace = ChessBakeFace(face, CH_GB_FACE);
+				DeleteVideoObject(face);
 			}
 			catch (...) { gProfFace = nullptr; }
 			giProfFaceFor = seat;
@@ -2123,6 +2148,30 @@ namespace
 	{
 		if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
 		ChessOpenProfile(-1);
+	}
+
+	void ChessProfRowCallback(MOUSE_REGION* region, UINT32 reason)
+	{
+		if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
+		if (giChessStub != 5) return;
+		const int t = giProfRowTarget[MSYS_GetRegionUserData(region, 0)];
+		if (t < -2) return;
+		ChessOpenProfile(t);
+	}
+
+	void ChessPlayNewGame();
+
+	void ChessChallengeCallback(MOUSE_REGION* region, UINT32 reason)
+	{
+		if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
+		if (giChessStub != 5) return;
+		if (giChessProfSeat < 0) return; // the daily man plays by post
+		ChessPlay(CH_SND_CLICK, LOWVOLUME);
+		giPlayRematchSeat = giChessProfSeat;
+		giChessStub = 0;
+		ChessPlayNewGame();
+		ChessSyncPageRegions();
+		ChessRedraw();
 	}
 
 	// the row portraits open whoever is sitting there
@@ -2376,6 +2425,18 @@ namespace
 		{
 			if (faces) r.Enable(); else r.Disable();
 		}
+		for (MOUSE_REGION& r : gChessProfRowRegion)
+		{
+			if (giChessStub == 5) r.Enable(); else r.Disable();
+		}
+		if (giChessStub == 5 && giChessProfSeat >= 0)
+		{
+			gChessChallengeRegion.Enable();
+		}
+		else
+		{
+			gChessChallengeRegion.Disable();
+		}
 	}
 
 	void ChessPlaceRegions()
@@ -2452,6 +2513,28 @@ namespace
 			gChessFaceRegion[i].SetFastHelpText("view profile");
 			gChessFaceRegion[i].Disable();
 		}
+
+		for (int i = 0; i < 10; ++i)
+		{
+			// the feed rows: parked at a dummy spot, the renderer moves
+			// them onto whatever it draws
+			MSYS_DefineRegion(&gChessProfRowRegion[i],
+			                  UINT16(CH_X(CH_BOARD_X)), UINT16(CH_Y(0)),
+			                  UINT16(CH_X(CH_BOARD_X + 1)), UINT16(CH_Y(1)),
+			                  MSYS_PRIORITY_HIGH, CURSOR_WWW, MSYS_NO_CALLBACK,
+			                  ChessProfRowCallback);
+			MSYS_SetRegionUserData(&gChessProfRowRegion[i], 0, i);
+			gChessProfRowRegion[i].SetFastHelpText("view profile");
+			gChessProfRowRegion[i].Disable();
+		}
+		MSYS_DefineRegion(&gChessChallengeRegion,
+		                  UINT16(CH_X(CH_BOARD_X + 12)),
+		                  UINT16(CH_Y(CH_BANNER_Y - 6 - 30)),
+		                  UINT16(CH_X(CH_BOARD_X + 12 + 110)),
+		                  UINT16(CH_Y(CH_BANNER_Y - 6 - 8)),
+		                  MSYS_PRIORITY_HIGH, CURSOR_WWW, MSYS_NO_CALLBACK,
+		                  ChessChallengeCallback);
+		gChessChallengeRegion.Disable();
 
 		MSYS_DefineRegion(&gChessModalCloseRegion,
 		                  UINT16(CH_X(CH_MODAL_X + CH_MODAL_W - 20)), UINT16(CH_Y(CH_MODAL_Y + 2)),
@@ -2619,6 +2702,8 @@ namespace
 		for (MOUSE_REGION& r : gChessNavRegion) MSYS_RemoveRegion(&r);
 		MSYS_RemoveRegion(&gChessMeRegion);
 		for (MOUSE_REGION& r : gChessFaceRegion) MSYS_RemoveRegion(&r);
+		for (MOUSE_REGION& r : gChessProfRowRegion) MSYS_RemoveRegion(&r);
+		MSYS_RemoveRegion(&gChessChallengeRegion);
 		MSYS_RemoveRegion(&gChessBannerRegion);
 		MSYS_RemoveRegion(&gChessAdRegion);
 		MSYS_RemoveRegion(&gChessGbPrevRegion);
@@ -4415,15 +4500,15 @@ namespace
 		ChessDrawFlag(hx, top + 13, seat.flag);
 		// the bios follow the ladder's order; the daily man closes the list
 		static const char* const bios[6] = {
-			"answers in moves. mostly winning ones.",
-			"shot for denmark in atlanta. ze clock flinches.",
-			"ex s.a.s. plays ze english, naturally.",
+			"answers only in moves.",
+			"shot for denmark in '96.",
+			"ex s.a.s. plays ze english.",
 			"moves fast, reasons later.",
-			"plays ze family opening. an uncle taught it.",
-			"hangs ze queen and calls it a web.",
+			"ze family opening, inherited.",
+			"hangs ze queen. calls it a web.",
 		};
 		PrintAt(FONT10ARIAL, FONT_GRAY4, px + 46, top + 25,
-		        giChessProfSeat == -2 ? "one move a day, for a free arulco."
+		        giChessProfSeat == -2 ? "one move a day, by post."
 		                              : bios[giChessProfSeat]);
 		{
 			const ST::string rate = ST::format("{}", seat.rating);
@@ -4501,6 +4586,7 @@ namespace
 			int control;       // minutes, 0 = daily
 			ST::string date;   // campaign days for your games, the site's
 			                   // own calendar for everything older
+			int seatIdx;       // -1 you, else the opponent's own page
 		};
 		ProfRow rows[10];
 		int n = 0;
@@ -4516,7 +4602,7 @@ namespace
 			rows[n++] = ProfRow{ you, nullptr, CH_FLAG_NONE,
 					yours == 2 ? 0 : yours == 0 ? 2 : 1,
 					(r.ubResult & 4) != 0, r.ubMoves, r.ubControl,
-					ST::format("day {}", r.usDay) };
+					ST::format("day {}", r.usDay), -1 };
 		}
 		{
 			UINT32 st = UINT32(seat.pid) * 2654435761u + GetWorldDay() * 97u;
@@ -4553,7 +4639,9 @@ namespace
 						res, false, 14 + roll(48),
 						opp == &CHESS_SEAT_ENRICO ? 0 : clocks[roll(3)],
 						ST::format("{02d}/{02d}/{02d}", ym % 12 + 1, dom,
-								(ym / 12) % 100) };
+								(ym / 12) % 100),
+						opp == &CHESS_SEAT_ENRICO
+							? -2 : int(opp - CHESS_SEATS) };
 			}
 		}
 		const INT32 cOpp = px + 12;
@@ -4565,36 +4653,74 @@ namespace
 		PrintAt(TINYFONT1, FONT_GRAY4, cMov, y, "MOV");
 		PrintAt(TINYFONT1, FONT_GRAY4,
 		        cDay - StringPixLength("DATE", TINYFONT1), y, "DATE");
-		y += 12;
+		y += 14;
 		for (int i = 0; i < n; ++i)
 		{
-			if (y > top + cardH - 20) break;
+			if (y > top + cardH - 56) break;
 			const ProfRow& r = rows[i];
 			if (i % 2 == 0)
 			{
-				FillRect(px + 8, y - 2, pw - 16, 15, CH_RGB_ROW_ALT);
+				FillRect(px + 8, y - 3, pw - 16, 19, CH_RGB_ROW_ALT);
 			}
-			INT32 tx = cOpp;
+			// the chat-line dress: a small face leads the row
+			SGPVSurface* chip = r.seatIdx == -1 ? nullptr
+			                                    : ChessSeatChip(r.seatIdx);
+			if (chip)
+			{
+				BltVideoSurface(FRAME_BUFFER, chip, CH_X(cOpp), CH_Y(y - 1),
+				                NULL);
+			}
+			else if (r.seatIdx == -1 && gGuestSelfFace)
+			{
+				SGPBox const src = { 0, 0, CH_GB_FACE, CH_GB_FACE };
+				SGPBox const dst = { UINT16(CH_X(cOpp)), UINT16(CH_Y(y - 1)),
+				                     14, 14 };
+				BltStretchVideoSurface(FRAME_BUFFER, gGuestSelfFace, &src,
+				                       &dst);
+			}
+			INT32 tx = cOpp + 18;
 			if (r.title)
 			{
 				const INT32 tw = StringPixLength(r.title, TINYFONT1) + 6;
-				FillRounded(tx, y + 1, tw, 10, FROMRGB(146, 44, 44), 2,
+				FillRounded(tx, y + 2, tw, 10, FROMRGB(146, 44, 44), 2,
 				            i % 2 == 0 ? CH_RGB_ROW_ALT : CH_RGB_PANEL);
-				PrintAt(TINYFONT1, FONT_MCOLOR_WHITE, tx + 3, y + 3, r.title);
+				PrintAt(TINYFONT1, FONT_MCOLOR_WHITE, tx + 3, y + 4, r.title);
 				tx += tw + 4;
 			}
-			PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, tx, y, r.opp);
+			PrintAt(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, tx, y + 2, r.opp);
 			tx += StringPixLength(r.opp, FONT10ARIALBOLD) + 5;
-			ChessDrawFlag(tx, y + 1, r.flag);
+			ChessDrawFlag(tx, y + 3, r.flag);
 			const UINT8 rc = r.res == 2 ? FONT_MCOLOR_LTGREEN
 			               : r.res == 0 ? FONT_MCOLOR_LTRED : FONT_GRAY2;
 			const char* rs = r.res == 2 ? "1-0" : r.res == 0 ? "0-1" : "1/2";
-			PrintAt(FONT10ARIALBOLD, rc, cRes, y, rs);
-			PrintAt(FONT10ARIAL, FONT_GRAY2, cMov, y,
+			PrintAt(FONT10ARIALBOLD, rc, cRes, y + 2, rs);
+			PrintAt(FONT10ARIAL, FONT_GRAY2, cMov, y + 2,
 			        ST::format("{}", r.moves));
 			PrintAt(FONT10ARIAL, FONT_GRAY2,
-			        cDay - StringPixLength(r.date, FONT10ARIAL), y, r.date);
-			y += 15;
+			        cDay - StringPixLength(r.date, FONT10ARIAL), y + 2, r.date);
+			MOUSE_REGION& rr = gChessProfRowRegion[i];
+			rr.RegionTopLeftX = INT16(CH_X(cOpp));
+			rr.RegionTopLeftY = INT16(CH_Y(y - 3));
+			rr.RegionBottomRightX = INT16(CH_X(cRes - 8));
+			rr.RegionBottomRightY = INT16(CH_Y(y + 16));
+			giProfRowTarget[i] = r.seatIdx;
+			y += 20;
+		}
+
+		// the gold ladder answers challenges; the daily man answers letters
+		if (giChessProfSeat >= 0)
+		{
+			const INT32 by = top + cardH - 30;
+			ChessDrawCTAButton(px + 12, by, 110, 22, CH_RGB_PANEL);
+			PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, px + 12 + 55,
+			             by + 6, "CHALLENGE");
+			PrintAt(FONT10ARIAL, FONT_GRAY4, px + 132, by + 6,
+			        ST::format("{} min, ze control from PLAY", giPlayMinutes));
+		}
+		else
+		{
+			PrintAt(FONT10ARIAL, FONT_GRAY4, px + 12, top + cardH - 24,
+			        "accepts challenges by post only. write ze mail.");
 		}
 	}
 
@@ -4603,6 +4729,7 @@ namespace
 	// games the server refuses to forget.
 	void ChessRenderProfile()
 	{
+		for (int& t : giProfRowTarget) t = -3;
 		if (giChessProfSeat != -1)
 		{
 			ChessRenderMemberProfile();
@@ -4640,7 +4767,7 @@ namespace
 		        px + 52 + StringPixLength(name, FONT10ARIALBOLD), top + 12,
 		        handle);
 		PrintAt(FONT10ARIAL, FONT_GRAY4, px + 46, top + 25,
-		        "member no. 2 - ze first is ze proprietor");
+		        "member no. 2");
 
 		const int games = gusProfWins + gusProfLosses + gusProfDraws;
 		{
@@ -5310,6 +5437,10 @@ void ExitChess()
 	if (guiChessCoachHalf) { DeleteVideoSurface(guiChessCoachHalf); guiChessCoachHalf = nullptr; }
 	if (gGuestSelfFace)    { DeleteVideoSurface(gGuestSelfFace);    gGuestSelfFace    = nullptr; }
 	if (gProfFace)         { DeleteVideoSurface(gProfFace);         gProfFace         = nullptr; }
+	for (SGPVSurface*& c : gSeatChip)
+	{
+		if (c) { DeleteVideoSurface(c); c = nullptr; }
+	}
 	giProfFaceFor = -3;
 	giChessProfSeat = -1;
 	for (SGPVSurface*& f : gGuestFace)
