@@ -2529,9 +2529,9 @@ namespace
 		}
 		MSYS_DefineRegion(&gChessChallengeRegion,
 		                  UINT16(CH_X(CH_BOARD_X + 12)),
-		                  UINT16(CH_Y(CH_BANNER_Y - 6 - 30)),
+		                  UINT16(CH_Y(CH_GB_TOP + 44)),
 		                  UINT16(CH_X(CH_BOARD_X + 12 + 110)),
-		                  UINT16(CH_Y(CH_BANNER_Y - 6 - 8)),
+		                  UINT16(CH_Y(CH_GB_TOP + 66)),
 		                  MSYS_PRIORITY_HIGH, CURSOR_WWW, MSYS_NO_CALLBACK,
 		                  ChessChallengeCallback);
 		gChessChallengeRegion.Disable();
@@ -4520,9 +4520,25 @@ namespace
 			        top + 26, "rating");
 		}
 
+		// the challenge sits right under the name - or the postal notice
+		if (giChessProfSeat >= 0)
+		{
+			ChessDrawCTAButton(px + 12, top + 44, 110, 22, CH_RGB_PANEL);
+			PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, px + 67,
+			             top + 50, "CHALLENGE");
+			PrintAt(FONT10ARIAL, FONT_GRAY4, px + 132, top + 50,
+			        ST::format("{} min, ze control from PLAY",
+			                   giPlayMinutes));
+		}
+		else
+		{
+			PrintAt(FONT10ARIAL, FONT_GRAY4, px + 12, top + 48,
+			        "accepts challenges by post only. write ze mail.");
+		}
+
 		// the stat band: their site totals (invented, but consistently),
 		// and the head-to-head that is entirely real
-		const INT32 bandY = top + 44;
+		const INT32 bandY = top + 74;
 		const INT32 boxW = (pw - 24 - 16) / 3;
 		const INT32 boxH = 40;
 		static const char* const caps[3] = { "RECORD", "VS YOU", "STREAK" };
@@ -4656,7 +4672,7 @@ namespace
 		y += 14;
 		for (int i = 0; i < n; ++i)
 		{
-			if (y > top + cardH - 56) break;
+			if (y > top + cardH - 20) break;
 			const ProfRow& r = rows[i];
 			if (i % 2 == 0)
 			{
@@ -4707,21 +4723,6 @@ namespace
 			y += 20;
 		}
 
-		// the gold ladder answers challenges; the daily man answers letters
-		if (giChessProfSeat >= 0)
-		{
-			const INT32 by = top + cardH - 30;
-			ChessDrawCTAButton(px + 12, by, 110, 22, CH_RGB_PANEL);
-			PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, px + 12 + 55,
-			             by + 6, "CHALLENGE");
-			PrintAt(FONT10ARIAL, FONT_GRAY4, px + 132, by + 6,
-			        ST::format("{} min, ze control from PLAY", giPlayMinutes));
-		}
-		else
-		{
-			PrintAt(FONT10ARIAL, FONT_GRAY4, px + 12, top + cardH - 24,
-			        "accepts challenges by post only. write ze mail.");
-		}
 	}
 
 	// Your member page, as every 1999 chess site kept one: the rating with
