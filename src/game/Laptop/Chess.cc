@@ -86,8 +86,8 @@
 #define CH_COACH_Y      78
 #define CH_COACH_TILE   36
 #define CH_FOOT_Y       (CH_PAGE_H - CH_INSET - 38)
-#define CH_HINT_Y       (CH_FOOT_Y + 5)
-#define CH_HINT_H       28
+#define CH_HINT_Y       (CH_FOOT_Y + 6)
+#define CH_HINT_H       26
 
 // The day stepper's arrows sit at fixed points on the panel edges while the
 // chip between them is centred and changes width with the day number. Glyphs
@@ -2498,8 +2498,8 @@ namespace
 		}
 
 		MSYS_DefineRegion(&gChessHintRegion,
-		                  UINT16(CH_X(CH_PANEL_X + 10)), UINT16(CH_Y(CH_HINT_Y)),
-		                  UINT16(CH_X(CH_PANEL_X + CH_PANEL_W - 10)), UINT16(CH_Y(CH_HINT_Y + CH_HINT_H)),
+		                  UINT16(CH_X(CH_PANEL_X + 14)), UINT16(CH_Y(CH_HINT_Y)),
+		                  UINT16(CH_X(CH_PANEL_X + CH_PANEL_W - 14)), UINT16(CH_Y(CH_HINT_Y + CH_HINT_H)),
 		                  MSYS_PRIORITY_HIGH, CURSOR_WWW, MSYS_NO_CALLBACK, ChessHintCallback);
 		gChessHintRegion.SetFastHelpText("Costs one attempt");
 
@@ -3339,7 +3339,7 @@ namespace
 		}
 		else if (giPlayState == 3)
 		{
-			ChessDrawGreyButton(CH_PANEL_X + 10, CH_HINT_Y, CH_PANEL_W - 20,
+			ChessDrawGreyButton(CH_PANEL_X + 14, CH_HINT_Y, CH_PANEL_W - 28,
 			                    CH_HINT_H, CH_RGB_PANEL_SUNK, false);
 			PrintCentred(FONT14ARIAL, FONT_GRAY6, cx,
 			             CH_HINT_Y + 8,
@@ -3347,7 +3347,7 @@ namespace
 		}
 		else
 		{
-			ChessDrawCTAButton(CH_PANEL_X + 10, CH_HINT_Y, CH_PANEL_W - 20, CH_HINT_H,
+			ChessDrawCTAButton(CH_PANEL_X + 14, CH_HINT_Y, CH_PANEL_W - 28, CH_HINT_H,
 			                   CH_RGB_PANEL_SUNK);
 			PrintCentred(FONT14ARIAL, FONT_MCOLOR_WHITE, cx,
 			             CH_HINT_Y + 8,
