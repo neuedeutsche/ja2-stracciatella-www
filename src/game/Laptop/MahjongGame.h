@@ -157,6 +157,11 @@ public:
 	// --- pure helpers (unit-test targets) ---------------------------------
 	// setsNeeded sets + a pair; seven pairs allowed only for a full closed hand
 	static bool IsWinningSets(const std::uint8_t counts[NUM_KINDS], int setsNeeded, bool allowSevenPairs);
+	// lays a recorded 14-tile winning hand out in its groups (sets first,
+	// the pair last; seven pairs as seven groups). Returns the group
+	// count, 0 if the shape defies decomposition.
+	static int DecomposeWin(const std::uint8_t counts[NUM_KINDS],
+			TileId groups[7][3], int groupLen[7]);
 	static bool IsWinning(const std::uint8_t counts[NUM_KINDS]); // 14 tiles, 4 sets
 	static int  Shanten(const std::uint8_t counts[NUM_KINDS], int exposedMelds = 0);
 	static int  SuitOf(TileId t) { return t / 9; }

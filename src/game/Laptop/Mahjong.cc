@@ -1536,10 +1536,9 @@ static INT32 MahjongModalHeight()
 	INT32 c = 36 + 4 * 38;
 	if (guiMJState == MJUI_HAND_END)
 	{
-		// each winner shows a line plus their hand laid open
-		if (gGame->wins().empty()) c += 13 + 4;
-		else c += static_cast<INT32>(gGame->wins().size())
-				* (13 + MJ_MINI_H + 4) + 4;
+		// winners' rows grow by their open hand; a draw keeps its one line
+		if (gGame->wins().empty()) c += gGame->aborted() ? 4 : 13 + 4;
+		else c += static_cast<INT32>(gGame->wins().size()) * (MJ_MINI_H + 6);
 	}
 	if (guiMJState == MJUI_MATCH_END && giMJLastNetGain != 0) c += 24;
 	return c + 64;
@@ -1549,6 +1548,12 @@ static INT32 MahjongModalHeight()
 static INT32 MahjongModalTop()
 {
 	return std::max(8, (398 - MahjongModalHeight()) / 2);
+}
+
+static INT32 MahjongModalWidth()
+{
+	return guiMJState == MJUI_HAND_END && gGame && !gGame->wins().empty()
+			? 264 : 232;
 }
 
 static void MahjongUpdateButtons()
@@ -1639,8 +1644,12 @@ static void MahjongUpdateButtons()
 			{
 				INT16 const top = static_cast<INT16>(
 						MJ_Y(MahjongModalTop() + MahjongModalHeight() - 58));
+				INT32 const mw = MahjongModalWidth();
+				INT32 const mx = (502 - mw) / 2;
 				gMJModalCTARegion.RegionTopLeftY = top;
 				gMJModalCTARegion.RegionBottomRightY = static_cast<INT16>(top + 30);
+				gMJModalCTARegion.RegionTopLeftX = static_cast<INT16>(MJ_X(mx + 14));
+				gMJModalCTARegion.RegionBottomRightX = static_cast<INT16>(MJ_X(mx + mw - 14));
 			}
 			gMJModalCTARegion.Enable();
 			break;
@@ -4896,19 +4905,6 @@ static void MahjongRenderVoidButtons()
 	}
 }
 
-static std::vector<MahjongGame::TileId> MahjongWinHandTiles(MahjongGame::WinEvent const& e)
-{
-	std::vector<MahjongGame::TileId> out;
-	for (int k = 0; k < MahjongGame::NUM_KINDS; ++k)
-	{
-		for (int c = 0; c < e.winningCounts[k]; ++c)
-		{
-			out.push_back(static_cast<MahjongGame::TileId>(k));
-		}
-	}
-	return out;
-}
-
 // a nine-pixel star for the winners on the verdict card
 static void MahjongDrawStar(INT32 sx, INT32 sy, UINT16 col)
 {
@@ -4942,7 +4938,8 @@ static void MahjongRenderOverlay()
 	FRAME_BUFFER->ShadowRect(MJ_X(2), MJ_Y(2), MJ_X(500), MJ_Y(398));
 
 	INT32 const h = MahjongModalHeight();
-	INT32 const x = MJ_X(135), y = MJ_Y(MahjongModalTop()), w = 232;
+	INT32 const w = MahjongModalWidth();
+	INT32 const x = MJ_X((502 - w) / 2), y = MJ_Y(MahjongModalTop());
 	MahjongFillRounded(x, y, w, h, 7, Get16BPPColor(FROMRGB(240, 220, 60)));
 	MahjongFillRounded(x + 2, y + 2, w - 4, h - 4, 6, Get16BPPColor(FROMRGB(30, 26, 20)));
 
@@ -4956,50 +4953,13 @@ static void MahjongRenderOverlay()
 	}
 
 	INT32 lineY = y + 36;
-	if (guiMJState == MJUI_HAND_END)
+	if (guiMJState == MJUI_HAND_END && gGame->wins().empty() &&
+		!gGame->aborted())
 	{
 		SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_WHITE, FONT_MCOLOR_BLACK, 0);
-		for (MahjongGame::WinEvent const& e : gGame->wins())
-		{
-			ST::string line = e.discarder < 0
-				? ST::format("{} won by self-draw", MahjongSeatName(e.winner))
-				: ST::format("{} claimed {} discard", MahjongSeatName(e.winner),
-						e.discarder == 0 ? "your" : ST::format("{}'s", MahjongSeatName(e.discarder)).c_str());
-			if (e.fan > 0) line += ST::format(" ({} fan)", e.fan);
-			INT32 const lw = StringPixLength(line, FONT10ARIAL);
-			INT32 const lx = x + w / 2 - (lw + 13) / 2;
-			MahjongDrawStar(lx, lineY, Get16BPPColor(FROMRGB(240, 214, 62)));
-			MPrint(lx + 13, lineY, line);
-			lineY += 13;
-			// the hand itself, laid open: overlapped minis, the tile that
-			// completed it ringed and drawn on top
-			{
-				std::vector<MahjongGame::TileId> const tiles = MahjongWinHandTiles(e);
-				INT32 const pitch = 15;
-				INT32 const handW = static_cast<INT32>(tiles.size() - 1) * pitch + MJ_MINI_W;
-				INT32 tx = x + w / 2 - handW / 2;
-				INT32 ringX = -1;
-				for (MahjongGame::TileId t : tiles)
-				{
-					MahjongDrawTile(tx, lineY, MJ_MINI_W, MJ_MINI_H, t, false);
-					if (ringX < 0 && t == e.winningTile) ringX = tx;
-					tx += pitch;
-				}
-				if (ringX >= 0)
-				{
-					MahjongDrawTile(ringX, lineY, MJ_MINI_W, MJ_MINI_H,
-							e.winningTile, true);
-				}
-				lineY += MJ_MINI_H + 4;
-			}
-		}
-		if (gGame->wins().empty())
-		{
-			MPrint(x + w / 2 - StringPixLength("Exhaustive draw - no winners.", FONT10ARIAL) / 2,
-					lineY, "Exhaustive draw - no winners.");
-			lineY += 13;
-		}
-		lineY += 4;
+		MPrint(x + w / 2 - StringPixLength("Exhaustive draw - no winners.", FONT10ARIAL) / 2,
+				lineY, "Exhaustive draw - no winners.");
+		lineY += 13;
 	}
 	lineY += 4;
 
@@ -5031,7 +4991,10 @@ static void MahjongRenderOverlay()
 		static const UINT32 metalNum[4] = {
 			FROMRGB(240, 204, 82), FROMRGB(200, 206, 214),
 			FROMRGB(198, 134, 86), FROMRGB(122, 118, 114) };
-		MahjongFillRounded(rowL, lineY - 4, rowR - rowL, 34, 4,
+		int const winOrder = guiMJState == MJUI_HAND_END
+				? MahjongWinOrderOf(i) : -1;
+		INT32 const rowH = 34 + (winOrder >= 0 ? MJ_MINI_H + 6 : 0);
+		MahjongFillRounded(rowL, lineY - 4, rowR - rowL, rowH, 4,
 					Get16BPPColor(metalRow[rank - 1]));
 		SetFontAttributes(FONT14ARIAL, FONT_MCOLOR_LTGREEN, FONT_MCOLOR_BLACK, 0);
 		SetFontForegroundRGB(metalNum[rank - 1]);
@@ -5069,7 +5032,50 @@ static void MahjongRenderOverlay()
 			MPrint(nameX + 16 + StringPixLength(score, FONT12ARIAL) + 8, lineY + 17,
 					ST::format("{}{}", up ? "+" : "", shown));
 		}
-		lineY += 38;
+		if (winOrder >= 0)
+		{
+			// the hand laid open in its sets, the winning tile ringed and
+			// popped on top - the row itself says who won and how
+			MahjongGame::WinEvent const& e =
+					gGame->wins()[static_cast<size_t>(winOrder)];
+			MahjongGame::TileId groups[7][3];
+			int glen[7];
+			int const ng = MahjongGame::DecomposeWin(e.winningCounts, groups, glen);
+			INT32 const hy = lineY + 30;
+			INT32 const avail = rowR - textX - 4;
+			int tiles = 0;
+			for (int g = 0; g < ng; ++g) tiles += glen[g];
+			if (ng > 1 && tiles > ng)
+			{
+				INT32 const gap = 4;
+				INT32 pitch = (avail - ng * MJ_MINI_W - (ng - 1) * gap)
+						/ (tiles - ng);
+				pitch = std::max<INT32>(8, std::min<INT32>(22, pitch));
+				INT32 hx = textX;
+				INT32 ringX = -1;
+				bool ringed = false;
+				for (int g = 0; g < ng; ++g)
+				{
+					for (int k = 0; k < glen[g]; ++k)
+					{
+						MahjongDrawTile(hx, hy, MJ_MINI_W, MJ_MINI_H,
+								groups[g][k], false);
+						if (!ringed && groups[g][k] == e.winningTile)
+						{
+							ringX = hx;
+							ringed = true;
+						}
+						hx += k + 1 < glen[g] ? pitch : MJ_MINI_W + gap;
+					}
+				}
+				if (ringX >= 0)
+				{
+					MahjongDrawTile(ringX, hy, MJ_MINI_W, MJ_MINI_H,
+							e.winningTile, true);
+				}
+			}
+		}
+		lineY += 38 + (winOrder >= 0 ? MJ_MINI_H + 6 : 0);
 	}
 
 	// final standings: the cash side of the evening, writ large

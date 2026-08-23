@@ -30,6 +30,49 @@ namespace
 		return false;
 	}
 
+	// DecomposeMelds, but keeping the receipts: records each set it commits
+	// to so a winning hand can be laid out group by group
+	bool DecomposeCollect(std::uint8_t* c, int i, int setsLeft,
+			MahjongGame::TileId (*groups)[3], int* glen, int& n)
+	{
+		while (i < MahjongGame::NUM_KINDS && c[i] == 0) ++i;
+		if (i == MahjongGame::NUM_KINDS) return setsLeft == 0;
+		if (setsLeft == 0) return false;
+
+		if (c[i] >= 3)
+		{
+			c[i] -= 3;
+			groups[n][0] = groups[n][1] = groups[n][2] =
+					static_cast<MahjongGame::TileId>(i);
+			glen[n] = 3;
+			++n;
+			if (DecomposeCollect(c, i, setsLeft - 1, groups, glen, n))
+			{
+				c[i] += 3;
+				return true;
+			}
+			--n;
+			c[i] += 3;
+		}
+		if (RunFits(i) && c[i + 1] > 0 && c[i + 2] > 0)
+		{
+			--c[i]; --c[i + 1]; --c[i + 2];
+			groups[n][0] = static_cast<MahjongGame::TileId>(i);
+			groups[n][1] = static_cast<MahjongGame::TileId>(i + 1);
+			groups[n][2] = static_cast<MahjongGame::TileId>(i + 2);
+			glen[n] = 3;
+			++n;
+			if (DecomposeCollect(c, i, setsLeft - 1, groups, glen, n))
+			{
+				++c[i]; ++c[i + 1]; ++c[i + 2];
+				return true;
+			}
+			--n;
+			++c[i]; ++c[i + 1]; ++c[i + 2];
+		}
+		return false;
+	}
+
 	// Backtracking search maximising 2*melds + partials + hasPair over a
 	// concealed hand; melds + partials capped at the sets still needed.
 	void ShantenSearch(std::uint8_t* c, int i, int melds, int partials, bool hasPair, int& best)
@@ -94,6 +137,45 @@ namespace
 	}
 }
 
+
+int MahjongGame::DecomposeWin(const std::uint8_t counts[NUM_KINDS],
+		TileId groups[7][3], int groupLen[7])
+{
+	int pairs = 0, total = 0;
+	for (int i = 0; i < NUM_KINDS; ++i)
+	{
+		total += counts[i];
+		if (counts[i] == 2) ++pairs;
+	}
+	if (total != 14) return 0;
+	if (pairs == 7)
+	{
+		int n = 0;
+		for (int i = 0; i < NUM_KINDS; ++i)
+		{
+			if (counts[i] != 2) continue;
+			groups[n][0] = groups[n][1] = static_cast<TileId>(i);
+			groupLen[n] = 2;
+			++n;
+		}
+		return n;
+	}
+	std::uint8_t c[NUM_KINDS];
+	for (int p = 0; p < NUM_KINDS; ++p)
+	{
+		if (counts[p] < 2) continue;
+		std::memcpy(c, counts, sizeof(c));
+		c[p] -= 2;
+		int n = 0;
+		if (DecomposeCollect(c, 0, 4, groups, groupLen, n))
+		{
+			groups[n][0] = groups[n][1] = static_cast<TileId>(p);
+			groupLen[n] = 2;
+			return n + 1;
+		}
+	}
+	return 0;
+}
 
 bool MahjongGame::IsWinningSets(const std::uint8_t counts[NUM_KINDS], int setsNeeded, bool allowSevenPairs)
 {
