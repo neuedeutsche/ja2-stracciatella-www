@@ -4809,8 +4809,23 @@ static void MahjongRenderVoidButtons()
 			iw = e.usWidth;
 			ih = e.usHeight;
 		}
-		INT32 const cx = bx + (98 - (iw + 5 + tw)) / 2;
+		// how many of your tiles the sentence would take, dimmer than the
+		// verdict itself, parked left of the glyph
+		int held = 0;
+		if (gGame)
+		{
+			for (MahjongGame::TileId const t : MahjongGame::SortedHand(gGame->player(0)))
+			{
+				if (MahjongGame::SuitOf(t) == s) ++held;
+			}
+		}
+		ST::string const count = ST::format("{}", held);
+		INT32 const nw = StringPixLength(count, FONT10ARIAL);
+		INT32 const cx = bx + (98 - (nw + 4 + iw + 5 + tw)) / 2 + nw + 4;
 		INT32 const cy = by + (22 - ih) / 2;
+		SetFontAttributes(FONT10ARIAL, hot ? FONT_MCOLOR_LTRED : FONT_MCOLOR_DKGRAY,
+				FONT_MCOLOR_BLACK, 0);
+		MPrint(cx - 4 - nw, by + 8, count);
 		if (guiMJVoidIcon)
 		{
 			if (hot) MahjongStampVoidIcon(static_cast<UINT16>(s), cx, cy,
