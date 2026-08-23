@@ -4965,12 +4965,29 @@ static void MahjongRenderOverlay()
 		MPrint(x + w / 2 - StringPixLength(cta, FONT14ARIAL) / 2, by + 8, cta);
 	}
 
-	// the closing line, a footnote under the button: read once, then ignored
+	// the closing line, a footnote under the button: the smallest type the
+	// site owns, one sentence per line
 	if (!gMJMessage.empty())
 	{
-		DisplayWrappedString(x + 16, y + h - 24, w - 32, 2, FONT10ARIAL,
-				FONT_MCOLOR_DKGRAY, gMJMessage, FONT_MCOLOR_BLACK,
-				CENTER_JUSTIFIED);
+		std::vector<ST::string> lines;
+		ST::string cur;
+		for (auto const& word : gMJMessage.split(' '))
+		{
+			cur = cur.empty() ? word : cur + " " + word;
+			if (!word.empty() && word.c_str()[word.size() - 1] == '.')
+			{
+				lines.push_back(cur);
+				cur = ST::string();
+			}
+		}
+		if (!cur.empty()) lines.push_back(cur);
+		SetFontAttributes(TINYFONT1, FONT_MCOLOR_DKGRAY, FONT_MCOLOR_BLACK, 0);
+		INT32 fy = y + h - 8 - static_cast<INT32>(lines.size()) * 9;
+		for (ST::string const& ln : lines)
+		{
+			MPrint(x + w / 2 - StringPixLength(ln, TINYFONT1) / 2, fy, ln);
+			fy += 9;
+		}
 	}
 }
 
