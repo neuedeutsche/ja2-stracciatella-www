@@ -441,6 +441,8 @@ namespace
 	MOUSE_REGION gChessProfRowRegion[10]; // the feed rows link onward
 	int giProfRowTarget[10] = { -3, -3, -3, -3, -3, -3, -3, -3, -3, -3 };
 	MOUSE_REGION gChessChallengeRegion;
+	bool gfChalModal = false;         // the clock picker over a member page
+	MOUSE_REGION gChessChalRegion[6]; // 4 controls, START GAME, nevermind
 	SGPVSurface* gSeatChip[7] = {};   // 14px row chips: the ladder + the daily man
 	SGPVSurface* ChessSeatChip(int seat);
 	MOUSE_REGION gChessBannerRegion;
@@ -2110,6 +2112,7 @@ namespace
 	// daily man (-2). Seat portraits bake lazily and stick around.
 	void ChessOpenProfile(int seat)
 	{
+		gfChalModal = false;
 		if (seat != -1 && giProfFaceFor != seat)
 		{
 			if (gProfFace) { DeleteVideoSurface(gProfFace); gProfFace = nullptr; }
@@ -2153,7 +2156,7 @@ namespace
 	void ChessProfRowCallback(MOUSE_REGION* region, UINT32 reason)
 	{
 		if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
-		if (giChessStub != 5) return;
+		if (giChessStub != 5 || gfChalModal) return;
 		const int t = giProfRowTarget[MSYS_GetRegionUserData(region, 0)];
 		if (t < -2) return;
 		ChessOpenProfile(t);
@@ -2164,9 +2167,36 @@ namespace
 	void ChessChallengeCallback(MOUSE_REGION* region, UINT32 reason)
 	{
 		if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
-		if (giChessStub != 5) return;
+		if (giChessStub != 5 || gfChalModal) return;
 		if (giChessProfSeat < 0) return; // the daily man plays by post
 		ChessPlay(CH_SND_CLICK, LOWVOLUME);
+		gfChalModal = true;
+		ChessSyncPageRegions();
+		ChessRedraw();
+	}
+
+	void ChessChalOptCallback(MOUSE_REGION* region, UINT32 reason)
+	{
+		if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
+		if (!gfChalModal || giChessStub != 5) return;
+		const int i = int(MSYS_GetRegionUserData(region, 0));
+		if (i < 4)
+		{
+			// picking a control mirrors the lobby: select, stay open
+			ChessPlay(CH_SND_CLICK2, LOWVOLUME);
+			giPlayMinutes = CH_PLAY_TIMES[i].mins;
+			ChessRedraw();
+			return;
+		}
+		gfChalModal = false;
+		ChessPlay(CH_SND_CLICK, LOWVOLUME);
+		if (i == 5)
+		{
+			// nevermind: the page comes back up
+			ChessSyncPageRegions();
+			ChessRedraw();
+			return;
+		}
 		giPlayRematchSeat = giChessProfSeat;
 		giChessStub = 0;
 		ChessPlayNewGame();
@@ -2429,13 +2459,18 @@ namespace
 		{
 			if (giChessStub == 5) r.Enable(); else r.Disable();
 		}
-		if (giChessStub == 5 && giChessProfSeat >= 0)
+		if (giChessStub != 5) gfChalModal = false;
+		if (giChessStub == 5 && giChessProfSeat >= 0 && !gfChalModal)
 		{
 			gChessChallengeRegion.Enable();
 		}
 		else
 		{
 			gChessChallengeRegion.Disable();
+		}
+		for (MOUSE_REGION& r : gChessChalRegion)
+		{
+			if (giChessStub == 5 && gfChalModal) r.Enable(); else r.Disable();
 		}
 	}
 
@@ -2535,6 +2570,24 @@ namespace
 		                  MSYS_PRIORITY_HIGH, CURSOR_WWW, MSYS_NO_CALLBACK,
 		                  ChessChallengeCallback);
 		gChessChallengeRegion.Disable();
+		{
+			// the picker: four control rows, the start button, the way out
+			const INT32 mx = CH_BOARD_X + (CH_BOARD_SIZE - 160) / 2;
+			for (int i = 0; i < 6; ++i)
+			{
+				const INT32 oy = i < 4 ? 122 + i * 30
+				               : i == 4 ? 250 : 280;
+				const INT32 oh = i < 4 ? 24 : i == 4 ? 22 : 14;
+				MSYS_DefineRegion(&gChessChalRegion[i],
+				                  UINT16(CH_X(mx + 16)), UINT16(CH_Y(oy)),
+				                  UINT16(CH_X(mx + 144)),
+				                  UINT16(CH_Y(oy + oh)),
+				                  MSYS_PRIORITY_HIGH + 2, CURSOR_WWW,
+				                  MSYS_NO_CALLBACK, ChessChalOptCallback);
+				MSYS_SetRegionUserData(&gChessChalRegion[i], 0, i);
+				gChessChalRegion[i].Disable();
+			}
+		}
 
 		MSYS_DefineRegion(&gChessModalCloseRegion,
 		                  UINT16(CH_X(CH_MODAL_X + CH_MODAL_W - 20)), UINT16(CH_Y(CH_MODAL_Y + 2)),
@@ -2704,6 +2757,7 @@ namespace
 		for (MOUSE_REGION& r : gChessFaceRegion) MSYS_RemoveRegion(&r);
 		for (MOUSE_REGION& r : gChessProfRowRegion) MSYS_RemoveRegion(&r);
 		MSYS_RemoveRegion(&gChessChallengeRegion);
+		for (MOUSE_REGION& r : gChessChalRegion) MSYS_RemoveRegion(&r);
 		MSYS_RemoveRegion(&gChessBannerRegion);
 		MSYS_RemoveRegion(&gChessAdRegion);
 		MSYS_RemoveRegion(&gChessGbPrevRegion);
@@ -3105,6 +3159,54 @@ namespace
 	INT32 ChessDrawTitleBadge(INT32 x, INT32 y, const char* title, UINT32 bg);
 	void ChessDrawGreyButton(INT32 x, INT32 y, INT32 w, INT32 h, UINT32 bg, bool live);
 
+	// one TIME CONTROL row, badge and all - the lobby and the challenge
+	// picker draw the same furniture
+	void ChessDrawControlRow(int i, INT32 bx2, INT32 by2, INT32 bw2, UINT32 bg)
+	{
+		const PlayControl& pc = CH_PLAY_TIMES[i];
+		const bool on = giPlayMinutes == pc.mins;
+		if (on) FillRounded(bx2 - 1, by2 - 1, bw2 + 2, 26, CH_RGB_CTA, 4, bg);
+		ChessDrawGreyButton(bx2, by2, bw2, 24, bg, on);
+		// the badge: bullet streak, blitz bolt, rapid watch, daily sun
+		const INT32 ix = bx2 + 8, iy = by2 + 7;
+		switch (i)
+		{
+			case 0:
+				FillRect(ix + 5, iy, 4, 3, FROMRGB(214, 140, 60));
+				FillRect(ix + 2, iy + 3, 4, 3, FROMRGB(214, 140, 60));
+				FillRect(ix, iy + 6, 3, 3, FROMRGB(170, 108, 44));
+				break;
+			case 1:
+				// a proper bolt: head high right, wide jag, tail point
+				FillRect(ix + 5, iy - 1, 4, 3, FROMRGB(240, 210, 70));
+				FillRect(ix + 3, iy + 2, 4, 2, FROMRGB(240, 210, 70));
+				FillRect(ix, iy + 4, 7, 2, FROMRGB(240, 210, 70));
+				FillRect(ix + 2, iy + 6, 3, 2, FROMRGB(214, 180, 52));
+				FillRect(ix, iy + 8, 2, 2, FROMRGB(214, 180, 52));
+				break;
+			case 2:
+				FillRounded(ix, iy + 1, 9, 9, FROMRGB(129, 182, 76), 4,
+				            FROMRGB(66, 61, 56));
+				FillRect(ix + 3, iy - 1, 3, 2, FROMRGB(129, 182, 76));
+				FillRect(ix + 3, iy + 4, 3, 3, FROMRGB(36, 33, 30));
+				break;
+			default:
+				FillRect(ix + 2, iy + 2, 5, 5, FROMRGB(226, 186, 60));
+				FillRect(ix + 4, iy, 1, 2, FROMRGB(226, 186, 60));
+				FillRect(ix + 4, iy + 7, 1, 2, FROMRGB(226, 186, 60));
+				FillRect(ix, iy + 4, 2, 1, FROMRGB(226, 186, 60));
+				FillRect(ix + 7, iy + 4, 2, 1, FROMRGB(226, 186, 60));
+				break;
+		}
+		// the duration is the decision, chess.com fashion: it leads; the
+		// format name trails as the detail
+		PrintAt(FONT10ARIALBOLD, on ? FONT_MCOLOR_WHITE : FONT_GRAY4,
+		        bx2 + 24, by2 + 7, pc.time);
+		const ST::string t = pc.name;
+		PrintAt(FONT10ARIAL, on ? FONT_MCOLOR_WHITE : FONT_GRAY6,
+		        bx2 + bw2 - 8 - StringPixLength(t, FONT10ARIAL), by2 + 7, t);
+	}
+
 	// The right panel while a live game runs: the opponent, the state of
 	// play, and the one button.
 	// chess.com's board controls: |< < > >| in the pager buttons' dress.
@@ -3150,52 +3252,8 @@ namespace
 			PrintCentred(FONT10ARIAL, FONT_GRAY4, cx, 46, "TIME CONTROL");
 			for (int i = 0; i < 4; ++i)
 			{
-				const PlayControl& pc = CH_PLAY_TIMES[i];
-				const INT32 bx2 = CH_PANEL_X + 8;
-				const INT32 by2 = 60 + i * 30;
-				const INT32 bw2 = CH_PANEL_W - 16;
-				const bool on = giPlayMinutes == pc.mins;
-				if (on) FillRounded(bx2 - 1, by2 - 1, bw2 + 2, 26, CH_RGB_CTA, 4,
-				                    CH_RGB_PANEL);
-				ChessDrawGreyButton(bx2, by2, bw2, 24, CH_RGB_PANEL, on);
-				// the badge: bullet streak, blitz bolt, rapid watch, daily sun
-				const INT32 ix = bx2 + 8, iy = by2 + 7;
-				switch (i)
-				{
-					case 0:
-						FillRect(ix + 5, iy, 4, 3, FROMRGB(214, 140, 60));
-						FillRect(ix + 2, iy + 3, 4, 3, FROMRGB(214, 140, 60));
-						FillRect(ix, iy + 6, 3, 3, FROMRGB(170, 108, 44));
-						break;
-					case 1:
-						// a proper bolt: head high right, wide jag, tail point
-						FillRect(ix + 5, iy - 1, 4, 3, FROMRGB(240, 210, 70));
-						FillRect(ix + 3, iy + 2, 4, 2, FROMRGB(240, 210, 70));
-						FillRect(ix, iy + 4, 7, 2, FROMRGB(240, 210, 70));
-						FillRect(ix + 2, iy + 6, 3, 2, FROMRGB(214, 180, 52));
-						FillRect(ix, iy + 8, 2, 2, FROMRGB(214, 180, 52));
-						break;
-					case 2:
-						FillRounded(ix, iy + 1, 9, 9, FROMRGB(129, 182, 76), 4,
-						            FROMRGB(66, 61, 56));
-						FillRect(ix + 3, iy - 1, 3, 2, FROMRGB(129, 182, 76));
-						FillRect(ix + 3, iy + 4, 3, 3, FROMRGB(36, 33, 30));
-						break;
-					default:
-						FillRect(ix + 2, iy + 2, 5, 5, FROMRGB(226, 186, 60));
-						FillRect(ix + 4, iy, 1, 2, FROMRGB(226, 186, 60));
-						FillRect(ix + 4, iy + 7, 1, 2, FROMRGB(226, 186, 60));
-						FillRect(ix, iy + 4, 2, 1, FROMRGB(226, 186, 60));
-						FillRect(ix + 7, iy + 4, 2, 1, FROMRGB(226, 186, 60));
-						break;
-				}
-				// the duration is the decision, chess.com fashion: it
-				// leads; the format name trails as the detail
-				PrintAt(FONT10ARIALBOLD, on ? FONT_MCOLOR_WHITE : FONT_GRAY4,
-				        bx2 + 24, by2 + 7, pc.time);
-				const ST::string t = pc.name;
-				PrintAt(FONT10ARIAL, on ? FONT_MCOLOR_WHITE : FONT_GRAY6,
-				        bx2 + bw2 - 8 - StringPixLength(t, FONT10ARIAL), by2 + 7, t);
+				ChessDrawControlRow(i, CH_PANEL_X + 8, 60 + i * 30,
+				                    CH_PANEL_W - 16, CH_RGB_PANEL);
 			}
 		}
 		else if (giPlayState == 3)
@@ -4528,9 +4586,6 @@ namespace
 			ChessDrawCTAButton(px + 12, top + 44, 110, 22, CH_RGB_PANEL);
 			PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, px + 67,
 			             top + 50, "CHALLENGE");
-			PrintAt(FONT10ARIAL, FONT_GRAY4, px + 132, top + 50,
-			        ST::format("{} min, ze control from PLAY",
-			                   giPlayMinutes));
 		}
 		else
 		{
@@ -4728,6 +4783,30 @@ namespace
 			y += 20;
 		}
 
+		// the clock picker: the lobby's TIME CONTROL sidebar, verbatim,
+		// floated over the dimmed page with a start button beneath
+		if (gfChalModal)
+		{
+			FRAME_BUFFER->ShadowRect(CH_X(0), CH_Y(0),
+			                         CH_X(LAPTOP_SCREEN_WIDTH) - 1,
+			                         CH_Y(CH_PAGE_H) - 1);
+			const INT32 mx = px + (pw - 160) / 2;
+			const INT32 my = 92;
+			FillRounded(mx - 2, my - 2, 164, 212, CH_RGB_CHROME, 6,
+			            CH_RGB_PANEL);
+			FillRounded(mx, my, 160, 208, CH_RGB_PANEL, 5, CH_RGB_CHROME);
+			PrintCentred(FONT10ARIAL, FONT_GRAY4, mx + 80, my + 10,
+			             "TIME CONTROL");
+			for (int i = 0; i < 4; ++i)
+			{
+				ChessDrawControlRow(i, mx + 16, 122 + i * 30, 128,
+				                    CH_RGB_PANEL);
+			}
+			ChessDrawCTAButton(mx + 16, 250, 128, 22, CH_RGB_PANEL);
+			PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, mx + 80, 256,
+			             ST::format("PLAY {}", seat.handle));
+			PrintCentred(FONT10ARIAL, FONT_GRAY4, mx + 80, 282, "nevermind");
+		}
 	}
 
 	// Your member page, as every 1999 chess site kept one: the rating with
