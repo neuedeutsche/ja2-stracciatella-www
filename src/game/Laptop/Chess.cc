@@ -3176,12 +3176,12 @@ namespace
 			FillRoundedOnly(bx2, by2, bw2, 24, body, 5);
 			FillRect(bx2 + 3, by2 + 2, bw2 - 6, 7, bnd);
 			FillRect(bx2 + 5, by2 + 1, bw2 - 10, 1, FROMRGB(102, 95, 87));
-			for (INT32 row = 0; row < 3; ++row)
+			static const INT32 dsteps[5] = { 2, 2, 3, 4, 6 };
+			for (INT32 row = 0; row < 5; ++row)
 			{
 				const INT32 dy = by2 + 9 + row;
-				const INT32 step = row == 2 ? 4 : 2;
 				for (INT32 dx = bx2 + 3 + ((row + 1) & 1); dx < bx2 + bw2 - 3;
-				     dx += step)
+				     dx += dsteps[row])
 				{
 					FillRect(dx, dy, 1, 1, bnd);
 				}
@@ -3916,13 +3916,14 @@ namespace
 		FillRoundedOnly(x, y, w, h - 2, CH_RGB_CTA, 5);
 		FillRect(x + 3, y + 2, w - 6, band, FROMRGB(150, 199, 88));
 		FillRect(x + 5, y + 1, w - 10, 1, FROMRGB(184, 221, 130));
-		// the gradient steps down through three loud dither rows: full
-		// checker, offset checker, then a sparse tail into the body
-		for (INT32 row = 0; row < 3; ++row)
+		// the gradient steps down through five dither rows, checker into a
+		// long sparse tail into the body
+		static const INT32 dsteps[5] = { 2, 2, 3, 4, 6 };
+		for (INT32 row = 0; row < 5; ++row)
 		{
 			const INT32 dy = y + 2 + band + row;
-			const INT32 step = row == 2 ? 4 : 2;
-			for (INT32 dx = x + 2 + ((row + 1) & 1); dx < x + w - 2; dx += step)
+			for (INT32 dx = x + 2 + ((row + 1) & 1); dx < x + w - 2;
+			     dx += dsteps[row])
 			{
 				FillRect(dx, dy, 1, 1, FROMRGB(150, 199, 88));
 			}
@@ -4820,9 +4821,8 @@ namespace
 			                         CH_Y(CH_PAGE_H) - 1);
 			const INT32 mx = px + (pw - 160) / 2;
 			const INT32 my = 92;
-			FillRounded(mx - 2, my - 2, 164, 212, CH_RGB_CHROME, 6,
-			            CH_RGB_PANEL);
-			FillRounded(mx, my, 160, 208, CH_RGB_PANEL, 5, CH_RGB_CHROME);
+			FillRoundedOnly(mx - 2, my - 2, 164, 212, CH_RGB_CHROME, 6);
+			FillRoundedOnly(mx, my, 160, 208, CH_RGB_PANEL, 5);
 			PrintCentred(FONT10ARIAL, FONT_GRAY4, mx + 80, my + 10,
 			             "TIME CONTROL");
 			for (int i = 0; i < 4; ++i)
