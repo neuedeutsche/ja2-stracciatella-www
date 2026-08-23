@@ -2651,10 +2651,10 @@ namespace
 		                  MSYS_PRIORITY_HIGH, CURSOR_WWW, MSYS_NO_CALLBACK,
 		                  ChessGbPageCallback);
 		MSYS_SetRegionUserData(&gChessGbNextRegion, 0, 1);
-		// the resign flag, left of the scrubber in the footer band
+		// resign's text row, full width above the scrubber
 		MSYS_DefineRegion(&gChessResignRegion,
-		                  UINT16(CH_X(CH_PANEL_X + 8)), UINT16(CH_Y(CH_FOOT_Y + 9)),
-		                  UINT16(CH_X(CH_PANEL_X + 28)), UINT16(CH_Y(CH_FOOT_Y + 29)),
+		                  UINT16(CH_X(CH_PANEL_X + 14)), UINT16(CH_Y(CH_FOOT_Y + 2)),
+		                  UINT16(CH_X(CH_PANEL_X + CH_PANEL_W - 14)), UINT16(CH_Y(CH_FOOT_Y + 16)),
 		                  MSYS_PRIORITY_HIGH, CURSOR_WWW, MSYS_NO_CALLBACK,
 		                  ChessResignCallback);
 		// the finished-game card's three actions and its X
@@ -2711,10 +2711,10 @@ namespace
 		}
 		for (int i = 0; i < 4; ++i)
 		{
-			const INT32 hx = CH_PANEL_X + CH_PANEL_W / 2 - 41 + i * 28;
+			const INT32 hx = CH_PANEL_X + 14 + i * 29;
 			MSYS_DefineRegion(&gChessHistRegion[i],
-			                  UINT16(CH_X(hx)), UINT16(CH_Y(CH_FOOT_Y + 9)),
-			                  UINT16(CH_X(hx + 22)), UINT16(CH_Y(CH_FOOT_Y + 29)),
+			                  UINT16(CH_X(hx)), UINT16(CH_Y(CH_FOOT_Y + 18)),
+			                  UINT16(CH_X(hx + 26)), UINT16(CH_Y(CH_FOOT_Y + 36)),
 			                  MSYS_PRIORITY_HIGH, CURSOR_WWW, MSYS_NO_CALLBACK,
 			                  ChessHistCallback);
 			MSYS_SetRegionUserData(&gChessHistRegion[i], 0, i);
@@ -3237,27 +3237,28 @@ namespace
 	// Arrows grey out at the live end and at the start of the game.
 	void ChessRenderScrubber(const std::vector<ChessGame>& hist, int view)
 	{
-		const INT32 cx = CH_PANEL_X + CH_PANEL_W / 2;
-		const INT32 y = CH_FOOT_Y + 10;
+		// four buttons spanning the strip, resign's text row above them
+		const INT32 y = CH_FOOT_Y + 18;
 		const int last = int(hist.size()) - 1;
 		const int cur = (view < 0 || view > last) ? last : view;
 		for (int i = 0; i < 4; ++i)
 		{
-			const INT32 bx = cx - 41 + i * 28;
+			const INT32 bx = CH_PANEL_X + 14 + i * 29;
 			const bool en = (i < 2) ? cur > 0 : cur < last;
-			ChessDrawGreyButton(bx, y - 1, 22, 20, CH_RGB_PANEL_SUNK, en);
+			ChessDrawGreyButton(bx, y, 26, 18, CH_RGB_PANEL_SUNK, en);
 			const UINT32 col = en ? FROMRGB(190, 185, 178) : FROMRGB(96, 90, 83);
+			const INT32 cy = y + 8;
 			switch (i)
 			{
 				case 0:
-					FillRect(bx + 5, y + 4, 2, 9, col);
-					ChessDrawChevron(bx + 14, y + 8, true, col);
+					FillRect(bx + 7, y + 4, 2, 9, col);
+					ChessDrawChevron(bx + 16, cy, true, col);
 					break;
-				case 1: ChessDrawChevron(bx + 11, y + 8, true, col); break;
-				case 2: ChessDrawChevron(bx + 11, y + 8, false, col); break;
+				case 1: ChessDrawChevron(bx + 14, cy, true, col); break;
+				case 2: ChessDrawChevron(bx + 13, cy, false, col); break;
 				default:
-					ChessDrawChevron(bx + 8, y + 8, false, col);
-					FillRect(bx + 15, y + 4, 2, 9, col);
+					ChessDrawChevron(bx + 10, cy, false, col);
+					FillRect(bx + 17, y + 4, 2, 9, col);
 					break;
 			}
 		}
@@ -3320,22 +3321,13 @@ namespace
 		if (giPlayState == 0 || giPlayState == 1 || giPlayState == 5)
 		{
 			ChessRenderScrubber(gPlayHist, giPlayView);
-			// the little flag; armed, it turns red and asks you to mean it
-			const INT32 rx = CH_PANEL_X + 8, ry = CH_FOOT_Y + 9;
+			// resign, as a quiet text row; armed, it turns red and asks
+			// you to mean it
 			const bool armed = ChessNow() < guiResignArmUntil;
-			if (armed)
-			{
-				FillRounded(rx, ry, 20, 20, FROMRGB(167, 45, 45), 3, CH_RGB_PANEL_SUNK);
-				PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, rx + 10, ry + 5, "!");
-			}
-			else
-			{
-				ChessDrawGreyButton(rx, ry, 20, 20, CH_RGB_PANEL_SUNK, true);
-				const UINT32 fc = FROMRGB(190, 185, 178);
-				FillRect(rx + 6, ry + 4, 2, 12, fc);
-				FillRect(rx + 8, ry + 4, 7, 3, fc);
-				FillRect(rx + 8, ry + 7, 5, 2, fc);
-			}
+			PrintCentred(FONT10ARIAL,
+			             armed ? FONT_MCOLOR_LTRED : FONT_GRAY4,
+			             CH_PANEL_X + CH_PANEL_W / 2, CH_FOOT_Y + 5,
+			             armed ? "click again to resign" : "resign");
 		}
 		else if (giPlayState == 3)
 		{
