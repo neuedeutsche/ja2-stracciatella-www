@@ -3165,7 +3165,7 @@ namespace
 	{
 		const PlayControl& pc = CH_PLAY_TIMES[i];
 		const bool on = giPlayMinutes == pc.mins;
-		if (on) FillRounded(bx2 - 2, by2 - 2, bw2 + 4, 28, CH_RGB_CTA, 6, bg);
+		if (on) FillRounded(bx2 - 2, by2 - 2, bw2 + 4, 28, CH_RGB_CTA, 7, bg);
 		ChessDrawGreyButton(bx2, by2, bw2, 24, bg, on);
 		// the badge: bullet streak, blitz bolt, rapid watch, daily sun
 		const INT32 ix = bx2 + 8, iy = by2 + 7;
