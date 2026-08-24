@@ -37,9 +37,9 @@ ecosystem.
 
 | Site | Status | |
 |---|---|---|
-| **San Mona Mahjong Parlour** — a gambling establishment, and its regulars | live | [details ›](docs/sites/mahjong.md) |
-| **Chach.com** — one merc's chess site: daily puzzle, lessons, a ladder, your own member page | live | [details ›](docs/sites/chach.md) |
-| **C.U.P.I.D.** — Mercs & Kisses, the Certified Union of Professionals In Dating | live | |
+| **San Mona Mahjong Parlour** — Sichuan bloody-battle at Kingpin's table: stakes, regulars, and a house bell for every win | live | [details ›](docs/sites/mahjong.md) |
+| **Chach.com** — one merc's chess site: daily puzzle, lessons, live games against an honest ladder, member pages for everyone | live | [details ›](docs/sites/chach.md) |
+| **C.U.P.I.D.** — Mercs & Kisses, Speck's Certified Union of Professionals In Dating | live | |
 | **The Arulco Feline Society** — a cat club with a guestbook and a webring | live | [details ›](docs/sites/feline.md) |
 | *…and the webring goes somewhere* | hidden | |
 
