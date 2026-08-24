@@ -4109,7 +4109,7 @@ static void MahjongPrintPlayerLines(int player, INT32 x, INT32 y, INT32 w, INT32
 		if (e.winningTile != MahjongGame::NO_TILE && guiMJVoidIcon)
 		{
 			ST::string const won =
-					ST::format("WON #{} - {}", order + 1, e.winningTile % 9 + 1);
+					ST::format("#{} - {}", order + 1, e.winningTile % 9 + 1);
 			MPrint(x, y + 39, won);
 			// the glyph in the label's own gold - red would read as void
 			MahjongStampVoidIcon(
@@ -4120,7 +4120,7 @@ static void MahjongPrintPlayerLines(int player, INT32 x, INT32 y, INT32 w, INT32
 		}
 		else
 		{
-			MPrint(x, y + 39, ST::format("WON #{}", order + 1));
+			MPrint(x, y + 39, ST::format("#{}", order + 1));
 		}
 	}
 	(void)opponent;
@@ -4387,7 +4387,7 @@ static void MahjongRenderInfoBlock()
 		if (e.winningTile != MahjongGame::NO_TILE && guiMJVoidIcon)
 		{
 			ST::string const won =
-					ST::format("WON #{} - {}", order + 1, e.winningTile % 9 + 1);
+					ST::format("#{} - {}", order + 1, e.winningTile % 9 + 1);
 			MPrint(x, y + 41, won);
 			MahjongStampVoidIcon(
 					static_cast<UINT16>(MahjongGame::SuitOf(e.winningTile)),
@@ -4397,7 +4397,7 @@ static void MahjongRenderInfoBlock()
 		}
 		else
 		{
-			MPrint(x, y + 41, ST::format("WON #{}", order + 1));
+			MPrint(x, y + 41, ST::format("#{}", order + 1));
 		}
 	}
 	// table facts live in the footer bar: hand left, wall right
