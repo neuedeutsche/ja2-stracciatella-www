@@ -92,6 +92,7 @@
 
 // hand + buttons + chat bar
 #define MJ_HAND_Y		218
+#define MJ_MELD_GAP		10  // rack: concealed tiles | gap | exposed sets
 #define MJ_HAND_RAISE		6
 #define MJ_HAND_X		22
 #define MJ_DRAWN_X		450
@@ -1610,6 +1611,7 @@ static void MahjongVisitorArrives()
 
 // log + chat reactions to a win; Deidranna's line is canon
 static UINT32 guiMJWinFlash[4] = {};
+static int giMJMatchHandsWon[4] = {}; // hands each seat took this match
 
 static bool MahjongSeatFlashing(int seat)
 {
@@ -1716,6 +1718,7 @@ static void MahjongChatOnWin(int winner, int discarder)
 	if (winner >= 0 && winner < 4)
 	{
 		guiMJWinFlash[winner] = MahjongNow() + 620;
+		++giMJMatchHandsWon[winner];
 	}
 	if (winner == 0)
 	{
@@ -1962,6 +1965,20 @@ static void MahjongUpdateButtons()
 		place(guiMJMahjongBtn, canClaim, 120);
 		place(guiMJPongBtn, canPong, 88);
 		place(guiMJKongBtn, canKong, 88);
+		// outside the timed window the labels carry no clock
+		if (guiMJState != MJUI_CLAIM_WINDOW)
+		{
+			if (guiMJPongBtn)
+			{
+				guiMJPongBtn->SpecifyGeneralTextAttributes("Pong!", FONT12ARIAL,
+						FONT_MCOLOR_LTGREEN, FONT_MCOLOR_BLACK);
+			}
+			if (guiMJKongBtn)
+			{
+				guiMJKongBtn->SpecifyGeneralTextAttributes("Kong!", FONT12ARIAL,
+						FONT_MCOLOR_LTGREEN, FONT_MCOLOR_BLACK);
+			}
+		}
 	}
 
 	switch (guiMJState)
@@ -2881,6 +2898,7 @@ static INT32 giMJRatingBefore = 0; // ladder rating when the match began
 static void MahjongStartMatch()
 {
 	giMJRatingBefore = MahjongPlayerRating();
+	for (int& w : giMJMatchHandsWon) w = 0;
 	MahjongSyncSeat3(MahjongPersonaForToday());
 	MahjongSyncSeat2(MahjongSeat2ForToday());
 	gfMJExhibition = FALSE;
@@ -5054,17 +5072,31 @@ struct MahjongPondCell
 	INT8 fedRel; // meld provenance: 0 self, 1 fed from the right, 2 across, 3 left
 };
 
-static std::vector<MahjongPondCell> MahjongPondCells(int player)
+// The pond holds what a seat has thrown away, plus - for the AI seats
+// only - a summary cell per exposed meld. Your own melds live on your
+// rack, where a real table keeps them.
+//
+// cap: the pond can only draw so many cells. Melds are budgeted first and
+// the REMAINING room goes to the newest discards, because the tile that
+// matters is the one just thrown - dropping the tail used to hide the
+// very discard you could claim, red ron outline and all.
+static std::vector<MahjongPondCell> MahjongPondCells(int player, size_t cap)
 {
 	std::vector<MahjongPondCell> cells;
 	MahjongGame::Player const& p = gGame->player(player);
-	for (MahjongGame::Meld const& m : p.melds)
+	if (player != 0)
 	{
-		INT8 const rel = m.from >= 0
-			? static_cast<INT8>((m.from - player + 4) % 4) : INT8(0);
-		cells.push_back(MahjongPondCell{ m.tile, true, m.count, false, rel });
+		for (MahjongGame::Meld const& m : p.melds)
+		{
+			if (cells.size() >= cap) break;
+			INT8 const rel = m.from >= 0
+				? static_cast<INT8>((m.from - player + 4) % 4) : INT8(0);
+			cells.push_back(MahjongPondCell{ m.tile, true, m.count, false, rel });
+		}
 	}
-	for (size_t i = 0; i < p.discards.size(); ++i)
+	size_t const room = cap > cells.size() ? cap - cells.size() : 0;
+	size_t const first = p.discards.size() > room ? p.discards.size() - room : 0;
+	for (size_t i = first; i < p.discards.size(); ++i)
 	{
 		cells.push_back(MahjongPondCell{ p.discards[i], false, 1,
 				MahjongIsRonTile(player, i), 0 });
@@ -5074,10 +5106,19 @@ static std::vector<MahjongPondCell> MahjongPondCells(int player)
 
 static void MahjongDrawPondCell(MahjongPondCell const& cell, INT32 x, INT32 y)
 {
+	if (cell.meld)
+	{
+		// a claimed set is not a thrown tile: it sits on its own sunk
+		// ground so the group reads apart from the discards beside it
+		ColorFillVideoSurfaceArea(FRAME_BUFFER, x - 2, y - 2,
+					x + MJ_MINI_W + 2, y + MJ_MINI_H + 4,
+					Get16BPPColor(FROMRGB(8, 44, 26)));
+	}
 	MahjongDrawTile(x, y, MJ_MINI_W, MJ_MINI_H, cell.tile, cell.ronOutline);
 	if (cell.meld)
 	{
-		// gold bar marks an exposed set; kongs carry a red 4
+		// gold bar marks an exposed set; the count says how many tiles it
+		// stands for, so one cell still reads as three
 		ColorFillVideoSurfaceArea(FRAME_BUFFER, x, y + MJ_MINI_H, x + MJ_MINI_W, y + MJ_MINI_H + 2,
 					Get16BPPColor(FROMRGB(240, 220, 60)));
 		if (cell.fedRel > 0)
@@ -5091,12 +5132,10 @@ static void MahjongDrawPondCell(MahjongPondCell const& cell, INT32 x, INT32 y)
 						nx + 4, y + MJ_MINI_H + 2,
 						Get16BPPColor(FROMRGB(204, 56, 46)));
 		}
-		if (cell.count == 4)
-		{
-			SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_RED, NO_SHADOW, 0);
-			MPrint(x + MJ_MINI_W - 6, y + MJ_MINI_H - 10, "4");
-			SetFontShadow(DEFAULT_SHADOW);
-		}
+		SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_RED, NO_SHADOW, 0);
+		MPrint(x + MJ_MINI_W - 6, y + MJ_MINI_H - 10,
+				cell.count == 4 ? "4" : "3");
+		SetFontShadow(DEFAULT_SHADOW);
 	}
 }
 
@@ -5107,12 +5146,15 @@ static void MahjongRenderPonds()
 	// bottom (you) and top (across): rows of 8, growing toward the centre
 	for (int player : { 0, 2 })
 	{
-		std::vector<MahjongPondCell> const cells = MahjongPondCells(player);
-		for (size_t i = 0; i < cells.size() && i < 2 * MJ_POND_COLS; ++i)
+		std::vector<MahjongPondCell> const cells =
+				MahjongPondCells(player, 2 * MJ_POND_COLS);
+		for (size_t i = 0; i < cells.size(); ++i)
 		{
 			INT32 const col = static_cast<INT32>(i % MJ_POND_COLS);
 			INT32 const row = static_cast<INT32>(i / MJ_POND_COLS);
-			INT32 const px = MJ_X(MJ_POND_TOP_X + col * MJ_MINI_PITCH);
+			// the discards start a nudge clear of the meld group
+			INT32 const gap = (!cells[i].meld && cells[0].meld) ? 4 : 0;
+			INT32 const px = MJ_X(MJ_POND_TOP_X + col * MJ_MINI_PITCH + gap);
 			INT32 const py = player == 2
 				? MJ_Y(MJ_POND_TOP_Y + row * MJ_POND_ROW_PITCH)
 				: MJ_Y(MJ_POND_BOTTOM_Y - row * MJ_POND_ROW_PITCH);
@@ -5123,8 +5165,9 @@ static void MahjongRenderPonds()
 	// left (Elliot, 3) and right (Enrico, 1): columns of 5, growing toward the centre
 	for (int player : { 1, 3 })
 	{
-		std::vector<MahjongPondCell> const cells = MahjongPondCells(player);
-		for (size_t i = 0; i < cells.size() && i < 3 * MJ_POND_SIDE_ROWS; ++i)
+		std::vector<MahjongPondCell> const cells =
+				MahjongPondCells(player, 3 * MJ_POND_SIDE_ROWS);
+		for (size_t i = 0; i < cells.size(); ++i)
 		{
 			INT32 const row = static_cast<INT32>(i % MJ_POND_SIDE_ROWS);
 			INT32 const col = static_cast<INT32>(i / MJ_POND_SIDE_ROWS);
@@ -5188,10 +5231,55 @@ static void MahjongRenderHand()
 					(guiMJState == MJUI_EXCHANGE && gfMJExchangeSel[i]) ||
 					(voidPreview && isVoided(hand[i]));
 		bool const hovered = guiMJState == MJUI_PLAYER_TURN && !raised &&
+					i < MJ_DRAWN_SLOT &&
 					(gMJHandRegion[i].uiFlags & MSYS_MOUSE_IN_AREA);
 		MahjongDrawTile(MJ_X(MJ_HAND_X + i * MJ_TILE_PITCH),
 				MJ_Y(MJ_HAND_Y - (raised ? MJ_HAND_RAISE : hovered ? 1 : 0)),
 				MJ_TILE_W, MJ_TILE_H, hand[i], false, isVoided(hand[i]));
+	}
+
+	// Your exposed sets sit on the rack beside the concealed tiles, where a
+	// real table keeps them - they are still your hand, merely face up. The
+	// arithmetic pays for itself: every meld takes three tiles out of the
+	// concealed run and needs exactly those three widths back. A kong draws
+	// as three tiles carrying a red 4, so it costs the same.
+	{
+		INT32 mx = MJ_HAND_X + static_cast<INT32>(hand.size()) * MJ_TILE_PITCH
+				+ MJ_MELD_GAP;
+		for (MahjongGame::Meld const& m : gGame->player(0).melds)
+		{
+			INT32 const setX = mx;
+			for (int t = 0; t < 3; ++t)
+			{
+				MahjongDrawTile(MJ_X(mx), MJ_Y(MJ_HAND_Y), MJ_TILE_W, MJ_TILE_H,
+						m.tile, false, isVoided(m.tile));
+				mx += MJ_TILE_PITCH;
+			}
+			INT32 const setW = 3 * MJ_TILE_PITCH - (MJ_TILE_PITCH - MJ_TILE_W);
+			// the gold bar under the set, and the red notch on the side the
+			// claimed tile was fed from
+			ColorFillVideoSurfaceArea(FRAME_BUFFER, MJ_X(setX),
+						MJ_Y(MJ_HAND_Y + MJ_TILE_H),
+						MJ_X(setX + setW), MJ_Y(MJ_HAND_Y + MJ_TILE_H + 3),
+						Get16BPPColor(FROMRGB(240, 220, 60)));
+			if (m.from >= 0)
+			{
+				int const rel = (m.from - 0 + 4) % 4;
+				INT32 const nx = setX + (rel == 3 ? 0
+						: rel == 2 ? setW / 2 - 5 : setW - 10);
+				ColorFillVideoSurfaceArea(FRAME_BUFFER, MJ_X(nx),
+							MJ_Y(MJ_HAND_Y + MJ_TILE_H),
+							MJ_X(nx + 10), MJ_Y(MJ_HAND_Y + MJ_TILE_H + 3),
+							Get16BPPColor(FROMRGB(204, 56, 46)));
+			}
+			if (m.count == 4)
+			{
+				SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_RED, NO_SHADOW, 0);
+				MPrint(MJ_X(setX + setW - 8), MJ_Y(MJ_HAND_Y + MJ_TILE_H - 12), "4");
+				SetFontShadow(DEFAULT_SHADOW);
+			}
+			mx += MJ_MELD_GAP;
+		}
 	}
 
 	if (gGame->drawnTile() != MahjongGame::NO_TILE && gGame->currentPlayer() == 0)
@@ -5577,6 +5665,18 @@ static void MahjongRenderOverlay()
 			SetFontAttributes(FONT10ARIAL, up ? FONT_MCOLOR_LTGREEN : FONT_MCOLOR_LTRED, FONT_MCOLOR_BLACK, 0);
 			MPrint(nameX + 16 + StringPixLength(score, FONT12ARIAL) + 8, lineY + 17,
 					ST::format("{}{}", up ? "+" : "", shown));
+		}
+		if (guiMJState == MJUI_MATCH_END)
+		{
+			// the night's tally, in the row's own metal
+			int const took = giMJMatchHandsWon[i];
+			SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_LTGREEN, FONT_MCOLOR_BLACK, 0);
+			SetFontForegroundRGB(metalNum[rank - 1]);
+			ST::string const tally = took == 0 ? ST::string("no hands")
+					: took == 1 ? ST::string("1 hand")
+					            : ST::format("{} hands", took);
+			MPrint(rowR - 8 - StringPixLength(tally, FONT10ARIAL), lineY + 17,
+					tally);
 		}
 		if (winOrder >= 0)
 		{
@@ -6631,6 +6731,32 @@ void HandleMahjong()
 			{
 				gGame->PassRon();
 				MahjongContinueAfterEvent();
+			}
+			else
+			{
+				// the window closes on its own: the buttons count it down
+				// rather than simply vanishing mid-decision
+				UINT32 const secs = (guiMJNextEventTime - MahjongNow()) / 1000 + 1;
+				static UINT32 uiLastClaimSecs = 99;
+				if (secs != uiLastClaimSecs)
+				{
+					uiLastClaimSecs = secs;
+					if (guiMJPongBtn)
+					{
+						guiMJPongBtn->SpecifyGeneralTextAttributes(
+								ST::format("Pong! {}", secs), FONT12ARIAL,
+								FONT_MCOLOR_LTGREEN, FONT_MCOLOR_BLACK);
+						MarkAButtonDirty(guiMJPongBtn);
+					}
+					if (guiMJKongBtn && gfMJClaimKongPossible)
+					{
+						guiMJKongBtn->SpecifyGeneralTextAttributes(
+								ST::format("Kong! {}", secs), FONT12ARIAL,
+								FONT_MCOLOR_LTGREEN, FONT_MCOLOR_BLACK);
+						MarkAButtonDirty(guiMJKongBtn);
+					}
+					MahjongRedraw();
+				}
 			}
 			break;
 
