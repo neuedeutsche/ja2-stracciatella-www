@@ -5110,16 +5110,31 @@ static std::vector<MahjongPondCell> MahjongPondCells(int player, size_t cap)
 // edge 192,192,184 / shadow + highlight)
 static void MahjongDrawBlankTile(INT32 x, INT32 y, INT32 w, INT32 h)
 {
-	ColorFillVideoSurfaceArea(FRAME_BUFFER, x, y, x + w, y + h,
-				Get16BPPColor(FROMRGB(192, 192, 184)));
-	ColorFillVideoSurfaceArea(FRAME_BUFFER, x + 1, y + 1, x + w - 1, y + h - 1,
-				Get16BPPColor(FROMRGB(250, 250, 246)));
-	// the bevel: highlight top-left, shadow bottom-right
-	ColorFillVideoSurfaceArea(FRAME_BUFFER, x + 1, y + 1, x + w - 1, y + 2,
+	// the generator rounds its tiles by 2 at mini size, 3 at full - the
+	// corners are stepped the same way here so a blank sits in a row of
+	// real tiles without one square edge giving it away
+	INT32 const r = w >= MJ_TILE_W ? 3 : 2;
+	UINT16 const edge = Get16BPPColor(FROMRGB(192, 192, 184));
+	UINT16 const face = Get16BPPColor(FROMRGB(250, 250, 246));
+	for (INT32 row = 0; row < h; ++row)
+	{
+		INT32 const fromTop = row < r ? r - row - 1 : 0;
+		INT32 const fromBot = row >= h - r ? r - (h - row) : 0;
+		INT32 const inset = std::max(fromTop, fromBot);
+		ColorFillVideoSurfaceArea(FRAME_BUFFER, x + inset, y + row,
+					x + w - inset, y + row + 1, edge);
+		if (row > 0 && row < h - 1 && inset + 1 <= w - inset - 1)
+		{
+			ColorFillVideoSurfaceArea(FRAME_BUFFER, x + inset + 1, y + row,
+						x + w - inset - 1, y + row + 1, face);
+		}
+	}
+	// the bevel: highlight along the top, shadow down the right and foot
+	ColorFillVideoSurfaceArea(FRAME_BUFFER, x + r, y + 1, x + w - r, y + 2,
 				Get16BPPColor(FROMRGB(255, 255, 255)));
-	ColorFillVideoSurfaceArea(FRAME_BUFFER, x + 1, y + h - 2, x + w - 1, y + h - 1,
+	ColorFillVideoSurfaceArea(FRAME_BUFFER, x + r, y + h - 2, x + w - r, y + h - 1,
 				Get16BPPColor(FROMRGB(168, 168, 160)));
-	ColorFillVideoSurfaceArea(FRAME_BUFFER, x + w - 2, y + 1, x + w - 1, y + h - 1,
+	ColorFillVideoSurfaceArea(FRAME_BUFFER, x + w - 2, y + r, x + w - 1, y + h - r,
 				Get16BPPColor(FROMRGB(168, 168, 160)));
 }
 
