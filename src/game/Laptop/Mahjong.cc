@@ -1437,17 +1437,21 @@ static UINT32 guiMJWinFlash[4] = {};
 
 static bool MahjongSeatFlashing(int seat)
 {
-	return seat >= 0 && seat < 4 && MahjongNow() < guiMJWinFlash[seat];
+	if (seat < 0 || seat >= 4) return false;
+	UINT32 const now = MahjongNow();
+	if (now >= guiMJWinFlash[seat]) return false;
+	// a strobe, not a stay: white strikes in quick ~90ms pulses
+	return ((guiMJWinFlash[seat] - now) / 90) % 2 == 0;
 }
 
 static void MahjongChatOnWin(int winner, int discarder)
 {
 	// ze house rings its bell for every win; yours rings a little louder
 	MahjongPlay(MJ_SND_BELL, winner == 0 ? MIDVOLUME : LOWVOLUME);
-	// and the winner's card goes lightning-white for a beat
+	// and the winner's card strobes lightning-white, blitz-quick
 	if (winner >= 0 && winner < 4)
 	{
-		guiMJWinFlash[winner] = MahjongNow() + 1100;
+		guiMJWinFlash[winner] = MahjongNow() + 620;
 	}
 	if (winner == 0)
 	{
