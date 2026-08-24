@@ -580,6 +580,7 @@ void MahjongGame::ResolveTsumo()
 	int const winner = current_;
 	TileId const winning = drawn_;
 	drawn_ = NO_TILE;
+	++players_[winner].counts[winning];
 	retireWinner(winner, -1, winning, fan, flags, roots, payEach);
 	if (phase_ == Phase::HandEnd) return;
 	advanceToNextUnfinished(winner);
@@ -646,6 +647,10 @@ void MahjongGame::ResolveRon(int who)
 	players_[lastDiscarder_].score -= pay;
 	handDelta_[lastDiscarder_] -= pay;
 
+	// the claimed tile is yours now: off the discarder's pond and into
+	// the hand, so the hand on the table is the hand that won
+	players_[lastDiscarder_].discards.pop_back();
+	++players_[who].counts[lastDiscard_];
 	retireWinner(who, lastDiscarder_, lastDiscard_, fan, flags, roots, pay);
 	if (phase_ == Phase::HandEnd) return;
 	advanceToNextUnfinished(lastDiscarder_);
@@ -866,6 +871,8 @@ void MahjongGame::ResolveRobKong(int who, TileId t)
 	handDelta_[current_] -= pay;
 
 	int const declarer = current_;
+	// the stolen tile completes the robber's hand
+	++players_[who].counts[t];
 	retireWinner(who, declarer, t, fan, flags, roots, pay);
 	if (phase_ == Phase::HandEnd) return;
 	advanceToNextUnfinished(declarer);
@@ -949,8 +956,8 @@ bool MahjongGame::AiWantsKong(int player) const
 void MahjongGame::recordWinningHand(WinEvent& e, int player, TileId winningTile) const
 {
 	Player const& p = players_[player];
+	// counts already holds the winning tile - the win paths fold it in
 	std::memcpy(e.winningCounts, p.counts, sizeof(e.winningCounts));
-	if (winningTile != NO_TILE) ++e.winningCounts[winningTile];
 	for (Meld const& m : p.melds)
 	{
 		e.winningCounts[m.tile] = static_cast<std::uint8_t>(

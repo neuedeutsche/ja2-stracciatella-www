@@ -446,8 +446,14 @@ TEST(MahjongGameTest, meldInvariantHoldsAtHandEnd)
 			int concealed = 0;
 			for (int k = 0; k < MahjongGame::NUM_KINDS; ++k) concealed += game.player(p).counts[k];
 			int const rest = concealed + 3 * static_cast<int>(game.player(p).melds.size());
+			// a winner keeps the tile that won: four sets and a pair is 14.
+			// everyone still playing holds 13
+			if (game.player(p).finished)
+			{
+				EXPECT_EQ(rest, 14) << "seed " << seed << " winner " << p;
+			}
 			// a kong claimed off an empty wall can leave one player a tile short
-			if (game.endedByWallExhaustion()) EXPECT_GE(rest, 12);
+			else if (game.endedByWallExhaustion()) EXPECT_GE(rest, 12);
 			else                              EXPECT_EQ(rest, 13) << "seed " << seed << " player " << p;
 		}
 	}
