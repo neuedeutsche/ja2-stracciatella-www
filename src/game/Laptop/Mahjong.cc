@@ -5358,13 +5358,26 @@ static void MahjongRenderHand()
 		{
 			int const shanten = gGame->ShantenFor(0);
 			SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_WHITE, FONT_MCOLOR_BLACK, 0);
+			// two short lines, kept inside the hand's own column: run as
+			// one line and the text reaches into the discard pond at 163
 			// a waiting shape with no legal waits means the void suit is
 			// standing in the door
-			MPrint(MJ_X(MJ_HAND_X), MJ_Y(198), shanten <= 0
-					? ST::string("your wait is blocked by ze void suit")
-					: shanten == 1
-					? ST::string("1 tile from a waiting hand")
-					: ST::format("{} tiles from a waiting hand", shanten));
+			const char* l1;
+			ST::string l2;
+			if (shanten <= 0)
+			{
+				l1 = "your wait is blocked";
+				l2 = "by ze void suit";
+			}
+			else
+			{
+				l1 = shanten == 1 ? "1 tile from a" : nullptr;
+				l2 = "waiting hand";
+			}
+			ST::string const first = l1 ? ST::string(l1)
+					: ST::format("{} tiles from a", shanten);
+			MPrint(MJ_X(MJ_HAND_X), MJ_Y(186), first);
+			MPrint(MJ_X(MJ_HAND_X), MJ_Y(198), l2);
 		}
 	}
 }
