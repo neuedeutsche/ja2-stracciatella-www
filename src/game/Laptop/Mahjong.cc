@@ -1090,6 +1090,8 @@ static UINT32 MahjongSeatPan(int player)
 #define MJ_SND_DEAL     SOUNDSDIR "/very small switch 02 out.wav"
 #define MJ_SND_ALERT    SOUNDSDIR "/computer beep 01 in.wav"
 #define MJ_SND_WIN      SOUNDSDIR "/computer switch 01 in.wav"
+// the house bell: San Mona's own ring bell, from the fights downstairs
+#define MJ_SND_BELL     SOUNDSDIR "/fight bell.wav"
 #define MJ_SND_HANDEND  SOUNDSDIR "/computer switch 01 out.wav"
 #define MJ_SND_MELD     SOUNDSDIR "/big switch 03 in.wav"
 
@@ -1433,6 +1435,8 @@ static void MahjongVisitorArrives()
 // log + chat reactions to a win; Deidranna's line is canon
 static void MahjongChatOnWin(int winner, int discarder)
 {
+	// ze house rings its bell for every win; yours rings a little louder
+	MahjongPlay(MJ_SND_BELL, winner == 0 ? MIDVOLUME : LOWVOLUME);
 	if (winner == 0)
 	{
 		++giMJStatHandsWon;
