@@ -267,8 +267,11 @@ def red_tinted(img):
     return out
 
 
-def make_tiles(w, h, radius):
-    # sub-images: 0..26 faces, 27 back, 28..54 red-tinted "voided" faces
+def make_tiles(w, h, radius, rotated=False):
+    # sub-images: 0..26 faces, 27 back, 28..54 red-tinted "voided" faces,
+    # and when rotated is asked for, 55..81 the same faces turned a quarter
+    # turn - the claimed tile in an exposed set lies sideways, which is how
+    # every mahjong table on earth records who fed it
     tiles = []
     for kind in range(27):
         suit, rank = kind // 9, kind % 9 + 1
@@ -279,6 +282,9 @@ def make_tiles(w, h, radius):
     draw_back(d, w, h)
     tiles.append(back)
     tiles.extend(red_tinted(t) for t in tiles[:27])
+    if rotated:
+        # rotate the upright faces; expand keeps the full h x w footprint
+        tiles.extend(t.rotate(90, expand=True) for t in tiles[:27])
     return tiles
 
 
@@ -699,7 +705,7 @@ def make_table_rail(w=502, h=7):
 
 
 def main():
-    write_sti(OUT_DIR / "mahjongtiles.sti", make_tiles(30, 40, 3))
+    write_sti(OUT_DIR / "mahjongtiles.sti", make_tiles(30, 40, 3, rotated=True))
     write_sti(OUT_DIR / "mahjongtilessmall.sti", make_tiles(20, 27, 2))
     write_sti(OUT_DIR / "mahjongfelt.sti", [make_felt(502, 381)])
     write_sti(OUT_DIR / "mahjonglogo.sti", [make_logo()])

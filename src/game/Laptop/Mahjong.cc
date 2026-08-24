@@ -1185,6 +1185,7 @@ static UINT8 MahjongSuitColor(int suit)
 // tile with a text glyph if the sheets are missing. `voided` picks the
 // red-tinted twin (sheet indices 28..54) for tiles of the player's void suit.
 #define MJ_SHEET_VOID_OFFSET 28
+#define MJ_SHEET_ROT_OFFSET  55  // faces turned a quarter turn (30x40 sheet)
 
 static void MahjongDrawTile(INT32 x, INT32 y, INT32 w, INT32 h, MahjongGame::TileId t, bool outlined, bool voided = false)
 {
@@ -5330,10 +5331,15 @@ static void MahjongRenderHand()
 		// kongs full width when the strip still clears the drawn tile,
 		// and overlap them into a pong's footprint when it does not.
 		// Overlapping loses nothing - a kong's four tiles are identical.
+		// a claimed tile lies sideways, so it spends MJ_TILE_H of width
+		// where an upright one spends MJ_TILE_W
 		INT32 wide = 0;
 		for (MahjongGame::Meld const& m : melds)
 		{
-			wide += (m.count == 4 ? 4 : 3) * MJ_TILE_W + MJ_MELD_GAP;
+			int const n = m.count == 4 ? 4 : 3;
+			bool const claimed = m.from >= 0;
+			wide += (n - (claimed ? 1 : 0)) * MJ_TILE_W
+					+ (claimed ? MJ_TILE_H : 0) + MJ_MELD_GAP;
 		}
 		bool const roomy = stripX + wide - MJ_MELD_GAP <= MJ_DRAWN_X - 4;
 		INT32 mx = stripX;
@@ -5346,24 +5352,39 @@ static void MahjongRenderHand()
 			// kong turns its outer two face down, as a table does.
 			INT32 const setX = mx;
 			int const tiles = m.count == 4 ? 4 : 3;
-			INT32 const step = (m.count == 4 && !roomy)
-					? (3 * MJ_TILE_W - MJ_TILE_W) / 3 : MJ_TILE_W;
+			// where in the set the claimed tile lies: left if the seat to
+			// your left fed it, middle from across, right from your right -
+			// the table convention, read straight off the meld
+			int const rel = m.from >= 0 ? (m.from - 0 + 4) % 4 : 0;
+			int const claimedAt = m.from < 0 ? -1
+					: rel == 3 ? 0 : rel == 2 ? tiles / 2 : tiles - 1;
+			// out of room: overlap the set's own tiles. They repeat inside
+			// a set, so the overlap hides nothing that matters
+			bool const squeeze = !roomy;
 			for (int t = 0; t < tiles; ++t)
 			{
 				bool const facedown = m.concealed && (t == 0 || t == tiles - 1);
+				bool const sideways = t == claimedAt;
 				if (facedown && guiMJTiles)
 				{
 					BltVideoObject(FRAME_BUFFER, guiMJTiles, 27, MJ_X(mx),
 							MJ_Y(MJ_HAND_Y));
+				}
+				else if (sideways && guiMJTiles)
+				{
+					// laid flat, so its foot rests on the rack line
+					BltVideoObject(FRAME_BUFFER, guiMJTiles,
+							static_cast<UINT16>(m.tile + MJ_SHEET_ROT_OFFSET),
+							MJ_X(mx), MJ_Y(MJ_HAND_Y + MJ_TILE_H - MJ_TILE_W));
 				}
 				else
 				{
 					MahjongDrawTile(MJ_X(mx), MJ_Y(MJ_HAND_Y), MJ_TILE_W, MJ_TILE_H,
 							m.tile, false, isVoided(m.tile));
 				}
-				mx += step;
+				INT32 const own = sideways ? MJ_TILE_H : MJ_TILE_W;
+				mx += (squeeze && t + 1 < tiles) ? own * 5 / 8 : own;
 			}
-			mx += MJ_TILE_W - step; // the last tile's own width
 			INT32 const setW = mx - setX;
 			// the gold bar under the set, and the red notch on the side the
 			// claimed tile was fed from
@@ -5371,16 +5392,6 @@ static void MahjongRenderHand()
 						MJ_Y(MJ_HAND_Y + MJ_TILE_H),
 						MJ_X(setX + setW), MJ_Y(MJ_HAND_Y + MJ_TILE_H + 3),
 						Get16BPPColor(FROMRGB(240, 220, 60)));
-			if (m.from >= 0)
-			{
-				int const rel = (m.from - 0 + 4) % 4;
-				INT32 const nx = setX + (rel == 3 ? 0
-						: rel == 2 ? setW / 2 - 5 : setW - 10);
-				ColorFillVideoSurfaceArea(FRAME_BUFFER, MJ_X(nx),
-							MJ_Y(MJ_HAND_Y + MJ_TILE_H),
-							MJ_X(nx + 10), MJ_Y(MJ_HAND_Y + MJ_TILE_H + 3),
-							Get16BPPColor(FROMRGB(204, 56, 46)));
-			}
 
 			mx += MJ_MELD_GAP;
 		}
