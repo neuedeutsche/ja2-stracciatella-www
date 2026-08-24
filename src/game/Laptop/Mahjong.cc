@@ -1433,10 +1433,22 @@ static void MahjongVisitorArrives()
 }
 
 // log + chat reactions to a win; Deidranna's line is canon
+static UINT32 guiMJWinFlash[4] = {};
+
+static bool MahjongSeatFlashing(int seat)
+{
+	return seat >= 0 && seat < 4 && MahjongNow() < guiMJWinFlash[seat];
+}
+
 static void MahjongChatOnWin(int winner, int discarder)
 {
 	// ze house rings its bell for every win; yours rings a little louder
 	MahjongPlay(MJ_SND_BELL, winner == 0 ? MIDVOLUME : LOWVOLUME);
+	// and the winner's card goes lightning-white for a beat
+	if (winner >= 0 && winner < 4)
+	{
+		guiMJWinFlash[winner] = MahjongNow() + 1100;
+	}
 	if (winner == 0)
 	{
 		++giMJStatHandsWon;
@@ -3952,10 +3964,11 @@ static const char* MahjongSeatWind(int player)
 	return wind[(player - gGame->dealer() + 4) % 4];
 }
 
-static void MahjongDrawPanelFrame(INT32 x, INT32 y, INT32 w, INT32 h)
+static void MahjongDrawPanelFrame(INT32 x, INT32 y, INT32 w, INT32 h, bool flash = false)
 {
 	ColorFillVideoSurfaceArea(FRAME_BUFFER, x, y, x + w, y + h, Get16BPPColor(FROMRGB(30, 60, 40)));
-	ColorFillVideoSurfaceArea(FRAME_BUFFER, x + 2, y + 2, x + w - 2, y + h - 2, Get16BPPColor(FROMRGB(10, 60, 32)));
+	ColorFillVideoSurfaceArea(FRAME_BUFFER, x + 2, y + 2, x + w - 2, y + h - 2,
+				Get16BPPColor(flash ? FROMRGB(240, 242, 238) : FROMRGB(10, 60, 32)));
 }
 
 // active-turn marker: a tight ring around the portrait itself. the feed
@@ -4028,23 +4041,26 @@ static void MahjongDrawWindBadge(int seat, INT32 fx, INT32 fy)
 static void MahjongPrintPlayerLines(int player, INT32 x, INT32 y, INT32 w, INT32 scoreY)
 {
 	int const opponent = player - 1;
-	SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_WHITE, FONT_MCOLOR_BLACK, 0);
+	// during the win flash every colour collapses to black on the white
+	bool const flash = MahjongSeatFlashing(player);
+	UINT8 const shadow = flash ? NO_SHADOW : FONT_MCOLOR_BLACK;
+	SetFontAttributes(FONT10ARIAL, flash ? FONT_MCOLOR_BLACK : FONT_MCOLOR_WHITE, shadow, 0);
 	MPrint(x, y, MahjongSeatName(player));
 	if (MahjongGameLive())
 	{
 		// the ladder rating rides the name line, right-aligned
 		ST::string const rating = ST::format("{}", MahjongSeatRating(player));
-		SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_DKGRAY, FONT_MCOLOR_BLACK, 0);
+		SetFontAttributes(FONT10ARIAL, flash ? FONT_MCOLOR_BLACK : FONT_MCOLOR_DKGRAY, shadow, 0);
 		MPrint(x + w - StringPixLength(rating, FONT10ARIAL), y, rating);
 	}
-	SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_DKGRAY, FONT_MCOLOR_BLACK, 0);
+	SetFontAttributes(FONT10ARIAL, flash ? FONT_MCOLOR_BLACK : FONT_MCOLOR_DKGRAY, shadow, 0);
 	MPrint(x, y + 11, MahjongSeatHandle(player));
 
 	if (!MahjongGameLive()) return;
 	MahjongGame::Player const& p = gGame->player(player);
 
-	SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_LTGREEN, FONT_MCOLOR_BLACK, 0);
-	SetFontForegroundRGB(MJ_TOKEN_RGB);
+	SetFontAttributes(FONT10ARIAL, flash ? FONT_MCOLOR_BLACK : FONT_MCOLOR_LTGREEN, shadow, 0);
+	if (!flash) SetFontForegroundRGB(MJ_TOKEN_RGB);
 	if (guiMJChips) BltVideoObject(FRAME_BUFFER, guiMJChips, 1, x, scoreY - 3);
 	MPrint(x + (guiMJChips ? 20 : 0), scoreY, ST::format("{}", p.score));
 
@@ -4052,7 +4068,7 @@ static void MahjongPrintPlayerLines(int player, INT32 x, INT32 y, INT32 w, INT32
 	if (order >= 0)
 	{
 		MahjongGame::WinEvent const& e = gGame->wins()[static_cast<size_t>(order)];
-		SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_LTYELLOW, FONT_MCOLOR_BLACK, 0);
+		SetFontAttributes(FONT10ARIAL, flash ? FONT_MCOLOR_BLACK : FONT_MCOLOR_LTYELLOW, shadow, 0);
 		if (e.winningTile != MahjongGame::NO_TILE && guiMJVoidIcon)
 		{
 			ST::string const won =
@@ -4062,7 +4078,8 @@ static void MahjongPrintPlayerLines(int player, INT32 x, INT32 y, INT32 w, INT32
 			MahjongStampVoidIcon(
 					static_cast<UINT16>(MahjongGame::SuitOf(e.winningTile)),
 					x + StringPixLength(won, FONT10ARIAL) + 3, y + 36,
-					Get16BPPColor(FROMRGB(240, 214, 62)));
+					Get16BPPColor(flash ? FROMRGB(16, 16, 16)
+					                    : FROMRGB(240, 214, 62)));
 		}
 		else
 		{
@@ -4189,7 +4206,7 @@ static void MahjongRenderTopPanels()
 	// Deidranna: horizontal card, top centre
 	{
 		INT32 const x = MJ_X(MJ_PANEL_X1), y = MJ_Y(MJ_TOP_Y);
-		MahjongDrawPanelFrame(x, y, MJ_PANEL_W, MJ_TOP_H);
+		MahjongDrawPanelFrame(x, y, MJ_PANEL_W, MJ_TOP_H, MahjongSeatFlashing(2));
 		if (MahjongIsPlayersTurn(2)) MahjongDrawTurnRing(x + 3, y + 3);
 		MahjongDrawFeed(1, x + 3, y + 3, true);
 		MahjongDrawWindBadge(2, x + 3, y + 3);
@@ -4203,7 +4220,7 @@ static void MahjongRenderTopPanels()
 	{
 		INT32 const x = MJ_X(seat == 3 ? MJ_LEFT_X : MJ_RIGHT_X);
 		INT32 const y = MJ_Y(MJ_SIDE_Y);
-		MahjongDrawPanelFrame(x, y, MJ_SIDE_W, MJ_SIDE_H);
+		MahjongDrawPanelFrame(x, y, MJ_SIDE_W, MJ_SIDE_H, MahjongSeatFlashing(seat));
 		INT32 const fx = x + (MJ_SIDE_W - MJ_FACE65_W) / 2;
 		if (MahjongIsPlayersTurn(seat)) MahjongDrawTurnRing(fx, y + 3);
 		MahjongDrawFeed(seat - 1, fx, y + 3, true);
@@ -4291,6 +4308,16 @@ static void MahjongRenderInfoBlock()
 	// one layout whether you or the shill holds the seat: identity grouped
 	// on top (nick + rating), the game stats spaced apart below it
 	MahjongGame::Player const& you = gGame->player(0);
+	// your own win whites the identity split, same lightning as the panels
+	bool const selfFlash = MahjongSeatFlashing(0) && !gfMJExhibition;
+	UINT8 const selfShadow = selfFlash ? NO_SHADOW : FONT_MCOLOR_BLACK;
+	if (selfFlash)
+	{
+		ColorFillVideoSurfaceArea(FRAME_BUFFER, x - 4, y - 2, MJ_X(494),
+					y + 74, Get16BPPColor(FROMRGB(240, 242, 238)));
+	}
+	SetFontAttributes(FONT10ARIAL,
+			selfFlash ? FONT_MCOLOR_BLACK : FONT_MCOLOR_WHITE, selfShadow, 0);
 	// same pattern as the opponent panels: clear name + rating, handle below
 	ST::string const nick = gfMJExhibition ? gMJShillNick : gMJSelfNick;
 	ST::string const clearName = nick.empty() ? ST::string(gfMJExhibition ? "House" : "You") : nick;
@@ -4301,20 +4328,25 @@ static void MahjongRenderInfoBlock()
 		INT32 const shillRating = 1250 + (static_cast<INT32>(gMJShillNick.size()) * 73) % 450;
 		ST::string const rating = gfMJExhibition ? ST::format("{}", shillRating)
 				: ST::format("{}{}", MahjongPlayerRating(), MahjongRatingProvisional() ? "*" : "");
-		SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_DKGRAY, FONT_MCOLOR_BLACK, 0);
+		SetFontAttributes(FONT10ARIAL,
+				selfFlash ? FONT_MCOLOR_BLACK : FONT_MCOLOR_DKGRAY,
+				selfShadow, 0);
 		MPrint(std::max(x + wCol - StringPixLength(rating, FONT10ARIAL),
 				x + StringPixLength(clearName, FONT10ARIAL) + 6), y + 2, rating);
 		MPrint(x, y + 13, handle);
 	}
-	SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_LTGREEN, FONT_MCOLOR_BLACK, 0);
-	SetFontForegroundRGB(MJ_TOKEN_RGB);
+	SetFontAttributes(FONT10ARIAL,
+			selfFlash ? FONT_MCOLOR_BLACK : FONT_MCOLOR_LTGREEN, selfShadow, 0);
+	if (!selfFlash) SetFontForegroundRGB(MJ_TOKEN_RGB);
 	if (guiMJChips) BltVideoObject(FRAME_BUFFER, guiMJChips, 1, x, y + 55);
 	MPrint(x + (guiMJChips ? 20 : 0), y + 58, ST::format("{}", you.score));
 	int const order = MahjongWinOrderOf(0);
 	if (order >= 0)
 	{
 		MahjongGame::WinEvent const& e = gGame->wins()[static_cast<size_t>(order)];
-		SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_LTYELLOW, FONT_MCOLOR_BLACK, 0);
+		SetFontAttributes(FONT10ARIAL,
+				selfFlash ? FONT_MCOLOR_BLACK : FONT_MCOLOR_LTYELLOW,
+				selfShadow, 0);
 		if (e.winningTile != MahjongGame::NO_TILE && guiMJVoidIcon)
 		{
 			ST::string const won =
@@ -4323,7 +4355,8 @@ static void MahjongRenderInfoBlock()
 			MahjongStampVoidIcon(
 					static_cast<UINT16>(MahjongGame::SuitOf(e.winningTile)),
 					x + StringPixLength(won, FONT10ARIAL) + 3, y + 38,
-					Get16BPPColor(FROMRGB(240, 214, 62)));
+					Get16BPPColor(selfFlash ? FROMRGB(16, 16, 16)
+					                        : FROMRGB(240, 214, 62)));
 		}
 		else
 		{
@@ -5934,6 +5967,14 @@ static void MahjongExhibitionStep()
 void HandleMahjong()
 {
 	MahjongHandleFaceLife();
+	for (UINT32 const f : guiMJWinFlash)
+	{
+		if (MahjongNow() < f)
+		{
+			MahjongRedraw();
+			break;
+		}
+	}
 	// somebody is at their keyboard: build their performance, then play it
 	if (MahjongTypingRowActive())
 	{
