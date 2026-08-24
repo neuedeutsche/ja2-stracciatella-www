@@ -240,6 +240,12 @@ static ST::string gMJPendingSound;
 static UINT32 guiMJPendingSoundTime = 0;
 static UINT32 guiMJVoiceBusyUntil = 0; // nobody talks over anybody else
 static BOOLEAN gfMJSettled = TRUE; // stakes paid out for the current match?
+// The stake this match was actually bought into. Recomputing it at the
+// settlement was a silent robbery: the multiplier moves when the campaign
+// clock crosses into an invitational day mid-match, or when /table opens the
+// back room, so the chips handed back stopped matching the chips paid for.
+static INT32 giMJBuyIn = 250;
+static int   giMJStakeMult = 1;
 static BOOLEAN gfMJLoan = FALSE;   // Kingpin fronted the buy-in this match
 static UINT32 guiMJDeltaAnimStart = 0; // score count-up on the hand-over panel
 static INT32 giMJLastNetGain = 0;      // dollars, shown on final standings
@@ -2261,8 +2267,8 @@ static void MahjongEnterState(MahjongUiState state)
 							gGame->player(0).score - MahjongGame::START_SCORE, place });
 					if (gMJHistory.size() > 6) gMJHistory.erase(gMJHistory.begin());
 				}
-				int const mult = MahjongStakeMultiplier();
-				INT32 const buyIn = 250 * mult;
+				int const mult = giMJStakeMult;
+				INT32 const buyIn = giMJBuyIn;
 				INT32 const net = gGame->player(0).score - MahjongGame::START_SCORE;
 				INT32 const dollars = net * mult / 20;
 				INT32 const raked = dollars > 0 ? dollars * 9 / 10 : dollars;
@@ -2294,9 +2300,16 @@ static void MahjongEnterState(MahjongUiState state)
 				if (payout > 0)
 				{
 					AddTransactionToPlayersBook(ANONYMOUS_DEPOSIT, 0, GetWorldTotalMin(), payout);
+					// name both halves: the cage hands back the chips you
+					// bought in with AND the night's winnings, so the balance
+					// moves further than the card's net figure
 					MahjongSystemSay(gfMJLoan
 						? ST::format("Cash-out ${} after Kingpin's loan and vig", payout)
-						: ST::format("Cash-out: ${} in chips converted - house kept its 10% rake", payout));
+						: raked > 0
+							? ST::format("Cash-out ${}: your ${} in chips back, plus ${} won - house kept its 10% rake",
+									payout, buyIn, raked)
+							: ST::format("Cash-out ${}: your ${} in chips back, less ${} lost at the table",
+									payout, buyIn, -raked));
 				}
 				else if (payout < 0)
 				{
@@ -2622,7 +2635,9 @@ static void MahjongStartMatch()
 	}
 	// the ritual: chips first; Kingpin fronts you if the account is dry
 	{
-		INT32 const buyIn = 250 * MahjongStakeMultiplier();
+		giMJStakeMult = MahjongStakeMultiplier();
+		giMJBuyIn = 250 * giMJStakeMult;
+		INT32 const buyIn = giMJBuyIn;
 		if (MahjongInvitationalToday())
 		{
 			MahjongSystemSay("BLOODY INVITATIONAL tonight - triple stakes, no mercy");
