@@ -5358,26 +5358,41 @@ static void MahjongRenderHand()
 		{
 			int const shanten = gGame->ShantenFor(0);
 			SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_WHITE, FONT_MCOLOR_BLACK, 0);
-			// two short lines, kept inside the hand's own column: run as
-			// one line and the text reaches into the discard pond at 163
 			// a waiting shape with no legal waits means the void suit is
-			// standing in the door
-			const char* l1;
-			ST::string l2;
+			// standing in the door - that one stays words, in two short
+			// lines so the text never reaches the pond at x163
 			if (shanten <= 0)
 			{
-				l1 = "your wait is blocked";
-				l2 = "by ze void suit";
+				MPrint(MJ_X(MJ_HAND_X), MJ_Y(186), "your wait is blocked");
+				MPrint(MJ_X(MJ_HAND_X), MJ_Y(198), "by ze void suit");
 			}
 			else
 			{
-				l1 = shanten == 1 ? "1 tile from a" : nullptr;
-				l2 = "waiting hand";
+				// how far off you are, counted in tiles you do not have
+				// yet: face-down blanks, each wearing a question mark,
+				// laid where the winning tiles would sit
+				MPrint(MJ_X(MJ_HAND_X), MJ_Y(166), "still needed:");
+				INT32 tx = MJ_X(MJ_HAND_X);
+				int const show = std::min(shanten, 6);
+				for (int i = 0; i < show; ++i)
+				{
+					if (guiMJTilesSmall)
+					{
+						BltVideoObject(FRAME_BUFFER, guiMJTilesSmall, 27, tx,
+								MJ_Y(MJ_POND_BOTTOM_Y));
+					}
+					SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_DKGRAY, NO_SHADOW, 0);
+					MPrint(tx + MJ_MINI_W / 2 - 2,
+							MJ_Y(MJ_POND_BOTTOM_Y) + MJ_MINI_H / 2 - 6, "?");
+					tx += MJ_MINI_PITCH;
+				}
+				SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_WHITE, FONT_MCOLOR_BLACK, 0);
+				if (shanten > show)
+				{
+					MPrint(tx, MJ_Y(MJ_POND_BOTTOM_Y) + MJ_MINI_H / 2 - 6,
+							ST::format("+{}", shanten - show));
+				}
 			}
-			ST::string const first = l1 ? ST::string(l1)
-					: ST::format("{} tiles from a", shanten);
-			MPrint(MJ_X(MJ_HAND_X), MJ_Y(186), first);
-			MPrint(MJ_X(MJ_HAND_X), MJ_Y(198), l2);
 		}
 	}
 }
