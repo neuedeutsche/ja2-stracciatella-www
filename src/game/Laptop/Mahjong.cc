@@ -398,7 +398,7 @@ static const char* const gMJChatGreet[3][12] =
 	  "I read a strategy article!! it was mostly about breathing!!",
 	  "good evening everyone!! (I have to say it that way now, orders)" },
 };
-static const char* const gMJChatIdle[3][30] =
+static const char* const gMJChatIdle[3][60] =
 {
 	{ "hmm. a delicate position.", "in my day we played for estates.", "patience is a weapon too.",
 	  "this table is the only place she and I still speak.", "somewhere out there my mercenaries are working. I hope.",
@@ -425,7 +425,37 @@ static const char* const gMJChatIdle[3][30] =
 	  "they say the palace kitchens still make my mother's bread. probably a lie.",
 	  "I keep a map of Arulco above the bed. it is not restful.",
 	  "a gentleman does not sulk. a gentleman plays another hand.",
-	  "the wall is like politics. you draw what is left." },
+	  "the wall is like politics. you draw what is left.",
+	  "I read the casualty lists at breakfast. it is not a good habit.",
+	  "every hand I hold, someone in Drassen holds a rifle instead.",
+	  "the mercenaries invoice me weekly. I pay weekly. it is our romance.",
+	  "a man in exile learns two things: patience, and the price of coffee.",
+	  "there was a bakery on Calle Verde. I wonder if it stands.",
+	  "she calls it a rebellion. the ledger calls it a payroll.",
+	  "when the shooting stops, someone must run the water works. nobody plans for that.",
+	  "I have signed cheques with hands that used to sign laws.",
+	  "the miners were always the honest ones. even when they stole.",
+	  "my mother's portrait hung in the east wing. I hope it burned quickly.",
+	  "one does not liberate a country. one pays men to, and hopes.",
+	  "the tiles at least fall where they are put.",
+	  "I dictate letters nobody answers. it keeps the hand in.",
+	  "Kingpin lets me sit here because I always pay. that is our friendship.",
+	  "I sold a watch to fund a helicopter. the watch was better company.",
+	  "they say the roads to Cambria are mined now. by whom, they do not say.",
+	  "in the palace I had a man whose only job was the clocks.",
+	  "I could buy a house in Estoni. I would rather buy a sector.",
+	  "there is no exile so complete as a man watching his own war on paper.",
+	  "the rebels have a girl who does the radio. she is very good.",
+	  "I keep the last unbounced cheque framed. a small joke.",
+	  "somewhere a soldier is being paid with my father's mining money.",
+	  "when I am restored I shall abolish something. I have not decided what.",
+	  "she took the country. I took the recipe collection. we both won something.",
+	  "the tiles do not ask you for a strategic assessment.",
+	  "if Meduna falls on a Tuesday I shall never trust Wednesdays again.",
+	  "a hand like this and I still cannot buy back a single mine.",
+	  "the newspapers print my name in the past tense. I read on regardless.",
+	  "one learns to play long. the country is a long game too.",
+	  "I have not held a rifle since '82. I hold tiles now. it is quieter." },
 	{ "hurry UP, peasants.", "read the rules, cretins.", "I could have you all shot, you know.",
 	  "faster. wars do not run themselves.", "I miss the days when losing to me was fatal.",
 	  "somewhere a village is being renamed after me. it soothes.", "Elliot. POSTURE.",
@@ -451,7 +481,37 @@ static const char* const gMJChatIdle[3][30] =
 	  "there is a rumour I inherited nothing. correct. I took it.",
 	  "power is simply the shortest distance between wanting and having.",
 	  "I have outlived two prophecies and one husband.",
-	  "Deidranna Reitman. say it properly or do not say it." },
+	  "Deidranna Reitman. say it properly or do not say it.",
+	  "someone is funding this nonsense. I know his tailor.",
+	  "my quartermaster says we are short of boots. so be it. shorter marches.",
+	  "the rebels take a town and call it dawn. I call it Tuesday.",
+	  "I have a general who apologises. I am replacing him with one who does not.",
+	  "the mines produce. the mines will continue to produce. that is all a mine is for.",
+	  "every deserter costs me a bullet. it is a poor exchange rate.",
+	  "let them have the villages. villages do not have airstrips.",
+	  "I do not need to be loved. I need the shipments to arrive.",
+	  "Elliot filed my war reports alphabetically. by DISASTER.",
+	  "a rebellion is a fire. one does not negotiate with a fire.",
+	  "the peasants have a song about me now. it does not scan.",
+	  "I burned the correspondence. the useful half. twice.",
+	  "my army is not loyal. my army is EMPLOYED. it is more reliable.",
+	  "the price on that rebel girl goes up every time she broadcasts.",
+	  "I signed forty warrants this morning. my wrist aches. worth it.",
+	  "there is one road to Meduna. I have counted the ways to close it.",
+	  "the palace is a fortress with curtains. I removed the curtains.",
+	  "somebody's mercenaries are very well equipped. somebody has a chequebook.",
+	  "I have never lost anything I intended to keep.",
+	  "the militia they train are farmers with opinions. opinions do not stop rounds.",
+	  "I sleep four hours. I have the other twenty to be thorough in.",
+	  "my SAM sites cost more than this bar. they will be rebuilt.",
+	  "when it is over I shall name a month after myself. a warm one.",
+	  "the tile does not know it is losing. neither do they.",
+	  "I take no pleasure in executions. I take pleasure in punctuality.",
+	  "a queen who explains herself is negotiating. I do not negotiate.",
+	  "they think the war is about Arulco. the war is about ME.",
+	  "the treasury is fine. the treasury is ALWAYS fine. next question.",
+	  "I have outlasted better men than the one across this table.",
+	  "let them come to Meduna. I have prepared a welcome and a hole." },
 	{ "sorry sorry, still sorting!", "is it my turn? oh no.", "please nobody need my tiles...",
 	  "the Queen is staring at me through the screen. I can FEEL it.", "I should be filing reports right now...",
 	  "brb someone is yelling for me!!", "I get one nice evening a week and this is it!!",
@@ -477,7 +537,37 @@ static const char* const gMJChatIdle[3][30] =
 	  "I've been practicing my chess. it's like this but sadder!!",
 	  "one day I'll retire somewhere flat and quiet with no queens in it",
 	  "the good news is nobody shoots at the person holding the clipboard!!",
-	  "I'm not nervous!! this is just how my hands are!!" },
+	  "I'm not nervous!! this is just how my hands are!!",
+	  "we lost a sector today and I had to say the word 'setback' out loud!!",
+	  "the war room has a new map. the new map has fewer red bits!!",
+	  "somebody asked me for a strategic opinion!! I said 'mm'!! they wrote it down!!",
+	  "I've started keeping snacks in my desk. for sieges. or Tuesdays.",
+	  "a general cried today. an actual general. I got him a tissue.",
+	  "there's a rumour the rebels have real mercenaries now!! professional ones!!",
+	  "I know what an airstrip is worth now and I hate that I know!!",
+	  "the payroll came late again!! I told everyone it was the modem!!",
+	  "somebody defaced the Queen's portrait in the west hall. I saw NOTHING.",
+	  "the militia are training farmers apparently!! farmers!! with GUNS!!",
+	  "I have a go-bag now! it's just crackers and my birth certificate!",
+	  "everyone keeps asking me what SHE'll do. I file paperwork!! I don't know!!",
+	  "we had a blackout and I sat under the desk for an hour. productive hour!!",
+	  "the Queen shouted at a map today. the map did not respond. she shouted louder.",
+	  "I found a job listing in Estoni. accounting. just LOOKING.",
+	  "morale meeting today!! it was one slide!! the slide said 'MORALE'!!",
+	  "they moved my desk again. I am now technically in a corridor.",
+	  "I heard a helicopter. we do not have a helicopter anymore!!",
+	  "somebody in Cambria is printing pamphlets and I read one and it was FAIR!!",
+	  "everyone's very calm about the mines and that's how I know it's bad!!",
+	  "I got told to 'stay flexible'. I don't like what that implies!!",
+	  "the palace guard rota is now just Joe and hope!!",
+	  "I updated the emergency plan. the plan is 'run'. I made it a document.",
+	  "the war has been going a while and my hair is doing something new!!",
+	  "you know what's nice about tiles?? nobody dies!! nobody dies at all!!",
+	  "if the rebels win do I get severance?? does anyone know how that works??",
+	  "I've been practising a face for when bad news arrives!! this is the face!!",
+	  "she asked me if I was loyal. I said yes. very fast. maybe too fast!!",
+	  "there's a queue outside the treasury office and I am NOT in it!!",
+	  "sometimes I just say numbers confidently and everyone nods!! it's fine!!" },
 };
 static const char* const gMJChatOnHumanWin[3][12] =
 {
@@ -608,35 +698,71 @@ static const char* const gMJChatVoidDraw[3][10] =
 // (0 = early war, 1 = mid, 2 = late)
 // two lines per war tier: [tier*2] and [tier*2 + 1]
 // four lines per war tier: [tier*4 .. tier*4+3]
-static const char* const gMJChatWar[3][12] =
+static const char* const gMJChatWar[3][24] =
 {
 	{ "my investment shows promise. keep it up.", "Drassen, Omerta... names from my youth. take them back.",
 	  "the first towns are the hardest. so I am told, from here.",
 	  "I sent money and hope. mostly money.",
+	  "a landing is not a war yet. but it is not nothing.",
+	  "the first invoices have arrived. I paid them smiling.",
+	  "somebody shot back this week. that is new.",
+	  "one sector. one. I have framed the telegram.",
 	  "Arulco stirs, friend. I feel it even from here.", "half a country reclaimed. my father would have wept.",
 	  "the mines are changing hands. she will feel that in her ledgers.",
 	  "the newspapers have started printing my name again. cautiously.",
+	  "the militia hold what they take now. that is the turning point, not the taking.",
+	  "her supply convoys go the long way round. I checked a map to be sure.",
+	  "two towns fly the old flag. badly sewn, I am told. still.",
+	  "I have started sleeping through the night. occasionally.",
 	  "we are close now. so close I can smell the palace dust.", "when Meduna falls, drinks at this table are on me.",
 	  "I have begun writing a speech. I have rewritten it nine times.",
-	  "one more push. I have a suit pressed and nowhere to wear it yet." },
+	  "one more push. I have a suit pressed and nowhere to wear it yet.",
+	  "my tailor has stopped calling me Highness ironically.",
+	  "the exiles in Estoni are booking flights. presumptuous. hopeful.",
+	  "she is running out of country to lose. I know the feeling intimately.",
+	  "when this ends I shall have to govern. that thought is worse than losing." },
 	{ "your little uprising amuses me. for now.", "a few dusty villages. keep them. they smell.",
 	  "I did not notice. I was told to notice, so I noticed.",
 	  "a rebellion is just an unpaid invoice with guns.",
+	  "some men landed on a beach. men land on beaches. it is what beaches are for.",
+	  "my intelligence service has a file. it is thin. it will fatten.",
+	  "one town. how charming. keep it as a souvenir.",
+	  "I have not adjusted a single plan. not one.",
 	  "you are becoming an IRRITATION.", "take my mines and I raise my ARMY. see how that ends.",
 	  "my generals now knock before entering. that is your doing.",
 	  "I have started reading the casualty lists myself. how quaint.",
+	  "the mines are down this quarter. someone will explain that to me. at length.",
+	  "I have doubled the garrisons. I resent having to say that out loud.",
+	  "your mercenaries are expensive. I have costed them. I know your burn rate.",
+	  "there are pamphlets now. PAMPHLETS. in my own towns.",
 	  "enjoy the table. it is the LAST thing you will take from me.", "come to Meduna, then. I will be waiting. with everything.",
 	  "the palace windows are bricked. for the draft. only the draft.",
-	  "you will find I am considerably worse when cornered." },
+	  "you will find I am considerably worse when cornered.",
+	  "half my generals have written letters. to their families. how sentimental.",
+	  "I have stopped counting sectors. I count days now.",
+	  "when you reach Meduna you will find every door locked and every room mined.",
+	  "I built this from nothing. burning it is also building something." },
 	{ "things are pretty calm at the palace! mostly!", "some rebels landed somewhere! probably nothing!!",
 	  "I filed a report about it! she filed it back at me!",
 	  "everything is FINE. that's the official position!!",
+	  "there was a memo about 'incidents'. one memo!! that's manageable!!",
+	  "somebody asked where Omerta was. nobody knew!! we found a map!!",
+	  "I've been told not to use the word 'invasion' in writing!!",
+	  "the mood here is normal!! aggressively normal!!",
 	  "the Queen has been... tense lately. very tense.", "we lost ANOTHER town today. I had to read the report out loud.",
 	  "I've started keeping my coat by the door!! no reason!!",
 	  "morale is high!! mine isn't but morale is!!",
+	  "there are three new words banned in memos this week!! I have the list!!",
+	  "the generals have started CC-ing each other. that's how you know!!",
+	  "somebody stole a truck. with the truck's paperwork. respect honestly!!",
+	  "I got asked if I could drive a jeep. I said no!! WHY WAS I ASKED!!",
 	  "please win quickly, the palace is NOT a fun place right now.", "the palace staff are all updating their resumes. all of them.",
 	  "I've memorized every exit. as a hobby!!",
-	  "if anyone needs a diligent clerk after all this, I'm just saying" },
+	  "if anyone needs a diligent clerk after all this, I'm just saying",
+	  "we're rationing PAPER now!! do you know what that means for a clerk!!",
+	  "two ministers didn't come in today. nobody's saying the word.",
+	  "I've been practising saying 'I was just following filing procedure'!!",
+	  "if you get to Meduna I'll be the one holding a clipboard and not resisting!!" },
 };
 
 // guest personality packs: category lines for the rotating left seat.
@@ -766,7 +892,7 @@ static const char* const gMJSpouseQueenRonsEnrico[6] =
 };
 // idle bicker exchanges: opener + comeback, delivered via the reply queue
 struct MahjongBicker { const char* open; int replyWho; const char* reply; };
-static const MahjongBicker gMJBicker[30] =
+static const MahjongBicker gMJBicker[72] =
 {
 	{ "you never played like this when we were married.", 2, "when we were married you never NOTICED how I played." },
 	{ "does the palace still leak when it rains, my dear?", 2, "does exile still suit you, my dear?" },
@@ -798,6 +924,49 @@ static const MahjongBicker gMJBicker[30] =
 	{ "Elliot, has she read my letters?", 3, "she reads them aloud!! in a voice!! sorry!!" },
 	{ "one of us will be remembered kindly.", 2, "yes. and history is written in Meduna." },
 	{ "we could have been something, you and I.", 2, "we were. briefly. it is called a transaction." },
+	// --- the table answers the table: play, war and each other ---------
+	{ "you discard like a man with a plan, friend.", 2, "he discards like a man with a MEMORY. it is worse." },
+	{ "our guest plays quickly tonight.", 3, "quick is good!! quick means they haven't thought about it!!" },
+	{ "Elliot, whose side are you on exactly?", 3, "the TABLE's side!! the table has no politics!!" },
+	{ "another mine changed hands this week, I hear.", 2, "I hear it too. from accountants. weeping ones." },
+	{ "how are the roads north these days, my dear?", 2, "cratered. your friends are thorough." },
+	{ "Elliot, has anyone resigned this week?", 3, "define week!! define resigned!!" },
+	{ "your soldiers are very young, Deidranna.", 2, "they age quickly. it is a growth industry." },
+	{ "I keep a list of who returns my calls.", 2, "so do I. mine is shorter and ends in arrests." },
+	{ "the wall runs low. like my patience.", 2, "like your treasury, you mean." },
+	{ "Elliot, do you actually enjoy mahjong?", 3, "I enjoy the two hours nobody is shouting at me!!" },
+	{ "a fine hand. wasted on this company.", 2, "the company is what makes it fine, darling." },
+	{ "the mercenaries in the field are earning their pay.", 2, "they are earning MY money. there is a difference." },
+	{ "I remember when this table sat in the palace.", 2, "it is in a bar in San Mona. so are you." },
+	{ "Elliot, is she cheating?", 3, "I'm not qualified to answer!! legally!!" },
+	{ "you take that tile like you took the country.", 2, "efficiently, and with paperwork." },
+	{ "there is news from the north. good news.", 2, "there is news from the north. it is being SUPPRESSED." },
+	{ "our guest has a soldier's patience.", 2, "our guest has a soldier's PAYROLL. that is patience." },
+	{ "Elliot, you flinched.", 3, "that's my normal face!! that's just my face!!" },
+	{ "the miners are organising again, I am told.", 2, "the miners are always organising. it is a hobby." },
+	{ "one good hand and the evening turns, my dear.", 2, "one good hand and you will still be in exile, my love." },
+	{ "you play the wall like you played the election.", 2, "and I WON the election. eventually. after edits." },
+	{ "Elliot, how many towns is it now?", 3, "I stopped counting!! counting was making me sad!!" },
+	{ "my hand is a diplomatic incident.", 2, "your hand is a HUMANITARIAN one." },
+	{ "do you ever tire of winning, Deidranna?", 2, "do you ever tire of asking?" },
+	{ "the tiles do not care who owns Meduna.", 2, "no. but I do. and I am here too." },
+	{ "Elliot, fetch me an opinion.", 3, "sir I'm at the TABLE, I can't fetch from the table!!" },
+	{ "the airstrip changed hands, they say.", 2, "the airstrip changes hands like a cigarette." },
+	{ "I would trade this hand for a country.", 2, "you already did, dear. that is the joke." },
+	{ "your discards tell me you are tired.", 2, "your questions tell me you are lonely." },
+	{ "Elliot, does she pay you for this?", 3, "she pays me in NOT being fired!! it's a package!!" },
+	{ "there was a time we played this as partners.", 2, "there was a time you had a partner's share." },
+	{ "the war goes badly for someone tonight.", 2, "the war goes badly for everyone. that is its function." },
+	{ "our guest holds tiles like a man holding a sector.", 2, "then he will learn what holding costs." },
+	{ "Elliot, tell her the roads are bad.", 3, "the roads are... sir she's RIGHT THERE." },
+	{ "I hear the rebels have a radio now.", 2, "I hear it. every night. it plays terrible music." },
+	{ "you were kinder before the palace.", 2, "you were richer before the palace. we both changed." },
+	{ "a pong, and the table shifts.", 2, "a pong, and the table remembers who fed it." },
+	{ "Elliot, has the Queen slept?", 3, "the Queen does not sleep!! that's not a joke, she really doesn't!!" },
+	{ "the mines will be worked by free men again.", 2, "the mines will be worked. men are a detail." },
+	{ "one hand, one country. both slipping.", 2, "only one of us is losing both, Enrico." },
+	{ "our guest could take this table entirely.", 2, "let them. the table is not the prize." },
+	{ "Elliot, you have a tell.", 3, "I have SEVERAL, sir, please don't publish them!!" },
 };
 
 // every profile needs a bio. this is 1999 and everyone is a brand
@@ -1451,6 +1620,94 @@ static bool MahjongSeatFlashing(int seat)
 	return ((guiMJWinFlash[seat] - now) / 90) % 2 == 0;
 }
 
+// The room reads the war and the table it is sitting at. Unlike the pools,
+// these are assembled from live state - progress, payroll, the wall, the
+// score - and handed to a second speaker to answer, so the talk is about
+// this match on this campaign day rather than about mahjong in general.
+struct MahjongExchange { ST::string open; int openWho; int replyWho; ST::string reply; };
+static bool MahjongGameLive();
+
+static bool MahjongLiveExchange(MahjongExchange& out)
+{
+	if (!MahjongGameLive()) return false;
+	UINT8 const progress = CurrentPlayerProgressPercentage();
+	INT32 const balance = GetCurrentBalance();
+	int const day = static_cast<int>(GetWorldDay());
+	int const wall = gGame->wallRemaining();
+	INT32 const yours = gGame->player(0).score;
+	INT32 const best = std::max({ gGame->player(1).score, gGame->player(2).score,
+			gGame->player(3).score });
+	bool const queen = giMJSeat2Persona == MJP2_QUEEN && GetProfile(QUEEN).bLife > 0;
+	bool const elliot = giMJSeat3Persona == MJP_ELLIOT;
+
+	// candidates, then one is drawn - each is only offered when its
+	// condition actually holds tonight
+	MahjongExchange pool[10];
+	int n = 0;
+
+	if (progress >= 55 && queen)
+	{
+		pool[n++] = { ST::format("more than half of it flies the old flag now, my dear."),
+				1, 2, "half. HALF. you say it like a man reading a will." };
+	}
+	if (progress >= 25 && progress < 55 && queen)
+	{
+		pool[n++] = { ST::format("a quarter of Arulco, and it was not bought. it was taken."),
+				1, 2, "taken on credit. I have seen the invoices." };
+	}
+	if (progress < 20 && queen)
+	{
+		pool[n++] = { "the north is noisy lately, my dear.",
+				1, 2, "the north is always noisy. it is full of goats and opinions." };
+	}
+	if (balance < 5000)
+	{
+		pool[n++] = { ST::format("our guest is playing on ${} and nerve.", balance),
+				1, queen ? 2 : 3, queen ? ST::string("nerve is cheaper. it also runs out.")
+				                        : ST::string("that's still more than I make!! by a LOT!!") };
+	}
+	if (balance > 60000)
+	{
+		pool[n++] = { "somebody is very liquid tonight.",
+				1, queen ? 2 : 3, queen ? ST::string("liquid money makes noise. I can hear it from Meduna.")
+				                        : ST::string("please don't say numbers like that near me!!") };
+	}
+	if (day >= 20)
+	{
+		pool[n++] = { ST::format("day {} of this war and we still meet on Tuesdays.", day),
+				1, queen ? 2 : 3, queen ? ST::string("wars are long. tables are longer.")
+				                        : ST::string("day {}?? nobody TOLD me it had been day {}!!") };
+		if (!queen) pool[n - 1].reply = ST::format("day {}?? nobody TOLD me it had been that long!!", day);
+	}
+	if (wall <= 12)
+	{
+		pool[n++] = { "the wall is nearly out. like everyone's patience.",
+				1, elliot ? 3 : 2, elliot ? ST::string("I like the end of the wall!! it means it's nearly over!!")
+				                          : ST::string("endings are the only part worth playing for.") };
+	}
+	if (yours > best + 6000)
+	{
+		pool[n++] = { "our guest is ahead by a comfortable margin.",
+				1, queen ? 2 : 3, queen ? ST::string("comfort is a temporary condition. ask my husband.")
+				                        : ST::string("don't jinx it!! don't say it out loud!!") };
+	}
+	if (best > yours + 6000)
+	{
+		pool[n++] = { "the table is being unkind to our guest tonight.",
+				1, queen ? 2 : 3, queen ? ST::string("the table is being HONEST. it is not the same thing.")
+				                        : ST::string("it happens to me every single week!! you get used to it!!") };
+	}
+	if (gGame->finishedCount() > 0)
+	{
+		pool[n++] = { "one chair is already out of the fight.",
+				1, queen ? 2 : 3, queen ? ST::string("and it will not stop talking about it. typical.")
+				                        : ST::string("that's the DREAM though!! out early, still paid!!") };
+	}
+	if (n == 0) return false;
+	out = pool[MahjongChatRoll() % static_cast<UINT32>(n)];
+	return true;
+}
+
 static void MahjongChatOnWin(int winner, int discarder)
 {
 	// ze house rings its bell for every win; yours rings a little louder
@@ -2078,8 +2335,8 @@ static void MahjongEnterState(MahjongUiState state)
 					else
 					{
 						MahjongSay(who, MahjongChatRoll() % 2 == 0
-							? gMJChatWar[who - 1][MahjongWarTier() * 4 + MahjongChatRoll() % 4]
-							: gMJChatIdle[who - 1][MahjongChatRoll() % 30]);
+							? gMJChatWar[who - 1][MahjongWarTier() * 8 + MahjongChatRoll() % 8]
+							: gMJChatIdle[who - 1][MahjongChatRoll() % 60]);
 					}
 				}
 			}
@@ -2107,10 +2364,20 @@ static void MahjongEnterState(MahjongUiState state)
 			{
 				MahjongSystemSay(gMJService[MahjongChatRoll() % MJ_SERVICE_COUNT]);
 			}
+			// the room talks about tonight: the war, the money, the wall
+			if (guiMJQuipCounter % 23 == 9 && giMJBotWho < 0 && !gfMJExhibition)
+			{
+				MahjongExchange ex;
+				if (MahjongLiveExchange(ex))
+				{
+					MahjongSay(ex.openWho, ex.open);
+					MahjongBotQueueReply(ex.replyWho, ex.reply.c_str(), MahjongChatRoll());
+				}
+			}
 			// the exes bicker (opener from Enrico, comeback from the Queen)
 			if (guiMJQuipCounter % 37 == 11 && giMJBotWho < 0 && GetProfile(QUEEN).bLife > 0 && giMJSeat2Persona == MJP2_QUEEN)
 			{
-				MahjongBicker const& b = gMJBicker[MahjongChatRoll() % 30];
+				MahjongBicker const& b = gMJBicker[MahjongChatRoll() % 72];
 				MahjongSay(1, b.open);
 				MahjongBotQueueReply(b.replyWho, b.reply, MahjongChatRoll());
 			}
@@ -6004,8 +6271,8 @@ static void MahjongExhibitionStep()
 		else
 		{
 			MahjongSay(who, MahjongChatRoll() % 2 == 0
-					? gMJChatWar[who - 1][MahjongWarTier() * 4 + MahjongChatRoll() % 4]
-					: gMJChatIdle[who - 1][MahjongChatRoll() % 30]);
+					? gMJChatWar[who - 1][MahjongWarTier() * 8 + MahjongChatRoll() % 8]
+					: gMJChatIdle[who - 1][MahjongChatRoll() % 60]);
 		}
 	}
 	else if (guiMJQuipCounter % 67 == 31)
@@ -6014,7 +6281,7 @@ static void MahjongExhibitionStep()
 	}
 	else if (guiMJQuipCounter % 53 == 19 && giMJBotWho < 0 && GetProfile(QUEEN).bLife > 0 && giMJSeat2Persona == MJP2_QUEEN)
 	{
-		MahjongBicker const& b = gMJBicker[MahjongChatRoll() % 30];
+		MahjongBicker const& b = gMJBicker[MahjongChatRoll() % 72];
 		MahjongSay(1, b.open);
 		MahjongBotQueueReply(b.replyWho, b.reply, MahjongChatRoll());
 	}
