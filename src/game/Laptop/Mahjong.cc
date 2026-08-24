@@ -84,6 +84,7 @@
 #define MJ_POND_TOP_X		163
 #define MJ_POND_TOP_Y		77
 #define MJ_POND_BOTTOM_Y	181
+#define MJ_POND_SIDE_COLS	4  // 4x5 = 20 cells; a seat clears 15 a third of the time
 #define MJ_POND_SIDE_ROWS	5
 #define MJ_SIDE_Y		5  // side seats sit flush with the top edge
 #define MJ_POND_SIDE_Y		5  // side ponds align with the panel tops
@@ -5104,6 +5105,17 @@ static std::vector<MahjongPondCell> MahjongPondCells(int player, size_t cap)
 	return cells;
 }
 
+// how many of a seat's oldest discards the pond had no room to draw
+static int MahjongPondHidden(int player, size_t cap)
+{
+	MahjongGame::Player const& p = gGame->player(player);
+	size_t used = player == 0 ? 0 : p.melds.size();
+	if (used > cap) used = cap;
+	size_t const room = cap - used;
+	return p.discards.size() > room
+			? static_cast<int>(p.discards.size() - room) : 0;
+}
+
 static void MahjongDrawPondCell(MahjongPondCell const& cell, INT32 x, INT32 y)
 {
 	if (cell.meld)
@@ -5160,13 +5172,22 @@ static void MahjongRenderPonds()
 				: MJ_Y(MJ_POND_BOTTOM_Y - row * MJ_POND_ROW_PITCH);
 			MahjongDrawPondCell(cells[i], px, py);
 		}
+		if (int const hid = MahjongPondHidden(player, 2 * MJ_POND_COLS))
+		{
+			// the pond ran out of room: say how many older tiles it holds
+			SetFontAttributes(TINYFONT1, FONT_MCOLOR_DKGRAY, FONT_MCOLOR_BLACK, 0);
+			MPrint(MJ_X(MJ_POND_TOP_X - 18),
+					player == 2 ? MJ_Y(MJ_POND_TOP_Y + 2)
+					            : MJ_Y(MJ_POND_BOTTOM_Y + 16),
+					ST::format("+{}", hid));
+		}
 	}
 
 	// left (Elliot, 3) and right (Enrico, 1): columns of 5, growing toward the centre
 	for (int player : { 1, 3 })
 	{
 		std::vector<MahjongPondCell> const cells =
-				MahjongPondCells(player, 3 * MJ_POND_SIDE_ROWS);
+				MahjongPondCells(player, MJ_POND_SIDE_COLS * MJ_POND_SIDE_ROWS);
 		for (size_t i = 0; i < cells.size(); ++i)
 		{
 			INT32 const row = static_cast<INT32>(i % MJ_POND_SIDE_ROWS);
@@ -5176,6 +5197,15 @@ static void MahjongRenderPonds()
 				: MJ_X(MJ_POND_RIGHT_X - col * MJ_MINI_PITCH);
 			INT32 const py = MJ_Y(MJ_POND_SIDE_Y + row * MJ_POND_ROW_PITCH);
 			MahjongDrawPondCell(cells[i], px, py);
+		}
+		if (int const hid = MahjongPondHidden(player,
+				MJ_POND_SIDE_COLS * MJ_POND_SIDE_ROWS))
+		{
+			SetFontAttributes(TINYFONT1, FONT_MCOLOR_DKGRAY, FONT_MCOLOR_BLACK, 0);
+			MPrint(player == 3 ? MJ_X(MJ_POND_LEFT_X)
+			                   : MJ_X(MJ_POND_RIGHT_X + MJ_MINI_W - 14),
+					MJ_Y(MJ_POND_SIDE_Y + MJ_POND_SIDE_ROWS * MJ_POND_ROW_PITCH),
+					ST::format("+{}", hid));
 		}
 	}
 }
