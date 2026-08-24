@@ -5309,11 +5309,11 @@ static void MahjongRenderOverlay()
 					Get16BPPColor(lh ? FROMRGB(74, 66, 54) : FROMRGB(56, 50, 42)));
 			SetFontAttributes(FONT12ARIAL, FONT_MCOLOR_WHITE, FONT_MCOLOR_BLACK, 0);
 			MPrint(x + 14 + half / 2
-					- StringPixLength("Leave Table", FONT12ARIAL) / 2,
-					by + 8, "Leave Table");
+					- StringPixLength("Leave", FONT12ARIAL) / 2,
+					by + 8, "Leave");
 			gold(x + 14 + half + 6, bw - half - 6,
 					(gMJModalCTARegion.uiFlags & MSYS_MOUSE_IN_AREA) != 0,
-					"New Match");
+					"New");
 		}
 		else
 		{
