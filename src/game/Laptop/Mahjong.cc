@@ -4003,6 +4003,8 @@ static void MahjongDrawWonOutline(int seat, INT32 fx, INT32 fy)
 	}
 }
 
+static void MahjongStampVoidIcon(UINT16 frame, INT32 sx, INT32 sy, UINT16 col);
+
 // seat wind badge: bottom-right corner of the portrait, system green
 static void MahjongDrawWindBadge(int seat, INT32 fx, INT32 fy)
 {
@@ -4052,9 +4054,11 @@ static void MahjongPrintPlayerLines(int player, INT32 x, INT32 y, INT32 w, INT32
 			ST::string const won =
 					ST::format("WON #{} - {}", order + 1, e.winningTile % 9 + 1);
 			MPrint(x, y + 39, won);
-			BltVideoObject(FRAME_BUFFER, guiMJVoidIcon,
+			// the glyph in the label's own gold - red would read as void
+			MahjongStampVoidIcon(
 					static_cast<UINT16>(MahjongGame::SuitOf(e.winningTile)),
-					x + StringPixLength(won, FONT10ARIAL) + 3, y + 36);
+					x + StringPixLength(won, FONT10ARIAL) + 3, y + 36,
+					Get16BPPColor(FROMRGB(240, 214, 62)));
 		}
 		else
 		{
@@ -4312,9 +4316,10 @@ static void MahjongRenderInfoBlock()
 			ST::string const won =
 					ST::format("WON #{} - {}", order + 1, e.winningTile % 9 + 1);
 			MPrint(x, y + 41, won);
-			BltVideoObject(FRAME_BUFFER, guiMJVoidIcon,
+			MahjongStampVoidIcon(
 					static_cast<UINT16>(MahjongGame::SuitOf(e.winningTile)),
-					x + StringPixLength(won, FONT10ARIAL) + 3, y + 38);
+					x + StringPixLength(won, FONT10ARIAL) + 3, y + 38,
+					Get16BPPColor(FROMRGB(240, 214, 62)));
 		}
 		else
 		{
