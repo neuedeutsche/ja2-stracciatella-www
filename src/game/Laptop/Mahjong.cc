@@ -4495,6 +4495,7 @@ static void MahjongDrawFaceChip(INT8 who, INT32 cx, INT32 cy, UINT16 cw = 15, UI
 static void MahjongDrawTypingWave(INT32 dx, INT32 dy);
 static const char* MahjongRoleBadge(int who);
 static void MahjongDrawRoleBadge(INT32 bx, INT32 by, const char* label);
+static void MahjongDrawWonBadge(INT32 bx, INT32 by);
 
 static void MahjongRenderChatBar()
 {
@@ -4633,6 +4634,14 @@ static void MahjongRenderChatBar()
 				{
 					if (rowVisible) MahjongDrawRoleBadge(x + 48 + nameW, lineY, badge);
 					nameW += StringPixLength(badge, FONT10ARIAL) + 12;
+				}
+				// a seat that already won wears it next to the handle,
+				// mod-badge style but in the house gold
+				if (MahjongGameLive() && l.who >= 0 && l.who <= 3 &&
+					gGame->player(l.who).finished)
+				{
+					if (rowVisible) MahjongDrawWonBadge(x + 48 + nameW, lineY);
+					nameW += StringPixLength("won", FONT10ARIAL) + 12;
 				}
 			}
 			SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_LTGRAY, FONT_MCOLOR_BLACK, 0);
@@ -4981,6 +4990,17 @@ static void MahjongDrawRoleBadge(INT32 bx, INT32 by, const char* label)
 	SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_LTGREEN, FONT_MCOLOR_BLACK, 0);
 	SetFontForegroundRGB(MJ_TOKEN_RGB);
 	MPrint(bx + 4, by - 1, label);
+}
+
+// the winner's chat badge: same pill, the parlour's gold
+static void MahjongDrawWonBadge(INT32 bx, INT32 by)
+{
+	INT32 const bw = StringPixLength("won", FONT10ARIAL) + 8;
+	ColorFillVideoSurfaceArea(FRAME_BUFFER, bx, by - 1, bx + bw, by + 9,
+				Get16BPPColor(FROMRGB(64, 52, 20)));
+	SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_LTYELLOW, FONT_MCOLOR_BLACK, 0);
+	SetFontForegroundRGB(FROMRGB(240, 214, 62));
+	MPrint(bx + 4, by - 1, "won");
 }
 
 // a braille-style wave of dots: the parlour's "still typing" spinner
