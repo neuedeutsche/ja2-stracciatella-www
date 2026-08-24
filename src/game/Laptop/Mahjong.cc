@@ -208,7 +208,8 @@ static int giMJOverlayKind = 0; // 1 = house rules, 2 = guestbook
 static MOUSE_REGION gMJChatUpRegion;
 static MOUSE_REGION gMJChatDownRegion;
 static MOUSE_REGION gMJSponsorRegion;
-static MOUSE_REGION gMJModalCTARegion; // the drawn gold button on the verdict card
+static MOUSE_REGION gMJModalCTARegion;   // the drawn gold button on the verdict card
+static MOUSE_REGION gMJModalLeaveRegion; // match end: the quieter door beside it
 static BOOLEAN gfMJSaidWallLow = FALSE;
 // per-hand cooldowns for contextual table talk
 static BOOLEAN gfMJSaidTenpai[4];
@@ -1530,17 +1531,43 @@ static bool MahjongExchangeSelectionValid()
 }
 
 
+static INT32 MahjongModalWidth();
+
+// the footnote broken into lines: one sentence per line, and any line
+// wider than the card wraps at a word - nothing overflows the border
+static std::vector<ST::string> MahjongModalNotes()
+{
+	std::vector<ST::string> lines;
+	if (gMJMessage.empty()) return lines;
+	INT32 const maxW = MahjongModalWidth() - 24;
+	ST::string cur;
+	auto const flush = [&]()
+	{
+		if (!cur.empty())
+		{
+			lines.push_back(cur);
+			cur = ST::string();
+		}
+	};
+	for (auto const& word : gMJMessage.split(' '))
+	{
+		if (word.empty()) continue;
+		if (!cur.empty() &&
+			StringPixLength(cur + " " + word, TINYFONT1) > maxW)
+		{
+			flush();
+		}
+		cur = cur.empty() ? word : cur + " " + word;
+		char const tail = word.c_str()[word.size() - 1];
+		if (tail == '.' || tail == '!' || tail == '?') flush();
+	}
+	flush();
+	return lines;
+}
+
 static int MahjongModalNoteLines()
 {
-	if (gMJMessage.empty()) return 0;
-	int n = 0;
-	bool part = false;
-	for (const char* q = gMJMessage.c_str(); *q; ++q)
-	{
-		part = true;
-		if (*q == '.') { ++n; part = false; }
-	}
-	return n + (part ? 1 : 0);
+	return static_cast<int>(MahjongModalNotes().size());
 }
 
 static INT32 MahjongModalHeight()
@@ -1701,11 +1728,7 @@ static void MahjongUpdateButtons()
 		if (guiMJState == MJUI_CHOOSE_VOID) gMJVoidRegion[s].Enable();
 		else                                gMJVoidRegion[s].Disable();
 	}
-	if (guiMJLeaveBtn)
-	{
-		if (guiMJState == MJUI_MATCH_END) ShowButton(guiMJLeaveBtn);
-		else                              HideButton(guiMJLeaveBtn);
-	}
+	if (guiMJLeaveBtn) HideButton(guiMJLeaveBtn); // the card draws its own
 	for (MOUSE_REGION& r : gMJIconRegion) r.Enable();
 	if (guiMJReportBtn) HideButton(guiMJReportBtn);
 
@@ -2526,14 +2549,26 @@ static void MahjongStartMatch()
 }
 
 
+static void MahjongLeaveTableAction()
+{
+	MahjongSystemSay("You leave the table. The House takes your seat before it cools.");
+	MahjongStartExhibition();
+	MahjongEnterState(MJUI_IDLE);
+}
+
 static void BtnMahjongLeaveCallback(GUI_BUTTON* btn, UINT32 reason)
 {
 	if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
 	if (guiMJState != MJUI_MATCH_END) return;
+	MahjongLeaveTableAction();
+}
 
-	MahjongSystemSay("You leave the table. The House takes your seat before it cools.");
-	MahjongStartExhibition();
-	MahjongEnterState(MJUI_IDLE);
+static void MahjongModalLeaveCallback(MOUSE_REGION* region, UINT32 reason)
+{
+	if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
+	if (guiMJState != MJUI_MATCH_END) return;
+	MahjongPlay(MJ_SND_SELECT, BTNVOLUME);
+	MahjongLeaveTableAction();
 }
 
 
