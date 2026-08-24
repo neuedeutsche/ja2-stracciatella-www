@@ -360,6 +360,7 @@ struct MahjongChatLine
 {
 	INT8 who; // 1..3 = opponent, 0 = you (unused for now)
 	ST::string text;
+	UINT8 aux = 0xFF; // kibitz lines (-2): the merc actually speaking
 };
 static std::vector<MahjongChatLine> gMJChat;
 
@@ -1103,7 +1104,7 @@ static void MahjongReconcileScroll();
 #define MJ_TYPE_MS	64
 
 // a line somebody is currently typing; the room sees the indicator first
-struct MahjongPendingLine { INT8 who; ST::string text; UINT32 dueTime; bool ghost; };
+struct MahjongPendingLine { INT8 who; ST::string text; UINT32 dueTime; bool ghost; UINT8 aux = 0xFF; };
 static std::vector<MahjongPendingLine> gMJPending;
 static UINT32 guiMJQueueTail = 0; // when the last queued line will land
 static UINT32 guiMJAwayUntil[5] = {}; // stepped away from the keyboard
@@ -1130,7 +1131,7 @@ static UINT32 guiMJTypingFloor = 0; // earliest moment the next typist starts
 static UINT32 guiMJSysTypeStart = 0;
 static std::size_t guiMJSysTypeLen = 0;
 
-static void MahjongPushWrapped(int who, const ST::string& say)
+static void MahjongPushWrapped(int who, const ST::string& say, UINT8 aux = 0xFF)
 {
 	// long messages wrap into continuation lines instead of truncating
 	INT32 budget = MJ_CHAT_W - 74;
@@ -1143,7 +1144,7 @@ static void MahjongPushWrapped(int who, const ST::string& say)
 		ST::string const cand = cur.empty() ? word : cur + " " + word;
 		if (!cur.empty() && StringPixLength(cand, FONT10ARIAL) > budget)
 		{
-			gMJChat.push_back(MahjongChatLine{ pushWho, cur });
+			gMJChat.push_back(MahjongChatLine{ pushWho, cur, aux });
 			cur = word;
 			budget = MJ_CHAT_W - 74; // continuation lines get the full width
 			// system and event continuations keep their own colour
@@ -1152,7 +1153,7 @@ static void MahjongPushWrapped(int who, const ST::string& say)
 		}
 		else cur = cand;
 	}
-	gMJChat.push_back(MahjongChatLine{ pushWho, cur });
+	gMJChat.push_back(MahjongChatLine{ pushWho, cur, aux });
 	while (gMJChat.size() > MJ_CHAT_HISTORY)
 	{
 		// remember what left the top so the view can stay anchored
@@ -1175,12 +1176,12 @@ static void MahjongFlushPending()
 	MahjongPendingLine const line = gMJPending.front();
 	gMJPending.erase(gMJPending.begin());
 	if (line.ghost) MahjongRedraw();          // typed, deleted, never sent
-	else            MahjongPushWrapped(line.who, line.text);
+	else            MahjongPushWrapped(line.who, line.text, line.aux);
 	// a beat of quiet before the next person starts typing
 	guiMJTypingFloor = MahjongNow() + 700 + MahjongChatRoll() % 1100;
 }
 
-static void MahjongSay(int who, const ST::string& text)
+static void MahjongSay(int who, const ST::string& text, UINT8 aux = 0xFF)
 {
 	// a speaker repeating themselves reads terribly. checked against whole
 	// lines they have said recently, not against the fragments in the log
@@ -1292,7 +1293,7 @@ static void MahjongSay(int who, const ST::string& text)
 		for (ST::string const& burst : bursts)
 		{
 			due += 220;
-			gMJPending.push_back(MahjongPendingLine{ static_cast<INT8>(who), burst, due, false });
+			gMJPending.push_back(MahjongPendingLine{ static_cast<INT8>(who), burst, due, false, aux });
 		}
 	}
 	guiMJQueueTail = due;
@@ -2054,7 +2055,8 @@ static void MahjongEnterState(MahjongUiState state)
 				for (Kibitz const& k : kib)
 				{
 					if (!IsMercOnTeam(k.pid)) continue;
-					MahjongSay(-2, ST::format("{}: {}", k.nick, k.line[MahjongChatRoll() % 2]));
+					MahjongSay(-2, ST::format("{}: {}", k.nick,
+							k.line[MahjongChatRoll() % 2]), k.pid);
 					break;
 				}
 			}
@@ -2525,6 +2527,37 @@ static void MahjongStartExhibition()
 	{
 		// no face for that one: the empty-seat silhouette covers it
 	}
+}
+
+// the squad kibitzers' portraits, baked on first use like the shill's
+static SGPVSurface* gMJKibitzSurf[4] = {};
+static UINT8 gMJKibitzSurfPid[4] = { 0xFF, 0xFF, 0xFF, 0xFF };
+
+static SGPVSurface* MahjongKibitzSurf(UINT8 pid)
+{
+	for (int i = 0; i < 4; ++i)
+	{
+		if (gMJKibitzSurfPid[i] == pid) return gMJKibitzSurf[i];
+	}
+	for (int i = 0; i < 4; ++i)
+	{
+		if (gMJKibitzSurfPid[i] != 0xFF) continue;
+		try
+		{
+			SGPVObject* const big =
+					LoadBigPortrait(GetProfile(static_cast<ProfileID>(pid)));
+			gMJKibitzSurf[i] = AddVideoSurface(106, 122, PIXEL_DEPTH);
+			BltVideoObject(gMJKibitzSurf[i], big, 0, 0, 0);
+			DeleteVideoObject(big);
+		}
+		catch (...)
+		{
+			gMJKibitzSurf[i] = nullptr;
+		}
+		gMJKibitzSurfPid[i] = pid;
+		return gMJKibitzSurf[i];
+	}
+	return nullptr;
 }
 
 static INT32 giMJRatingBefore = 0; // ladder rating when the match began
@@ -3853,6 +3886,11 @@ void ExitMahjong()
 	if (guiMJSelfFace)   { DeleteVideoObject(guiMJSelfFace);   guiMJSelfFace = nullptr; }
 	if (guiMJSelfFaceSurf) { DeleteVideoSurface(guiMJSelfFaceSurf); guiMJSelfFaceSurf = nullptr; }
 	if (guiMJShillSurf) { DeleteVideoSurface(guiMJShillSurf); guiMJShillSurf = nullptr; }
+	for (int i = 0; i < 4; ++i)
+	{
+		if (gMJKibitzSurf[i]) { DeleteVideoSurface(gMJKibitzSurf[i]); gMJKibitzSurf[i] = nullptr; }
+		gMJKibitzSurfPid[i] = 0xFF;
+	}
 	if (guiMJVisitorSurf) { DeleteVideoSurface(guiMJVisitorSurf); guiMJVisitorSurf = nullptr; }
 	gMJVisitorHandle.clear();
 	gfMJVisitorHere = FALSE;
@@ -4436,8 +4474,20 @@ static void MahjongRenderChatBar()
 		bool const cont = i > 0 && gMJChat[i - 1].who == l.who;
 		if (l.who == -2)
 		{
-			// squad kibitz from your side of the modem
-			if (!cont && rowVisible) drawChip(0, lineY);
+			// squad kibitz from your side of the modem, in their own face
+			SGPVSurface* const kf =
+					l.aux != 0xFF ? MahjongKibitzSurf(l.aux) : nullptr;
+			if (!cont && rowVisible && kf)
+			{
+				ColorFillVideoSurfaceArea(FRAME_BUFFER, x + 26, lineY - 4,
+							x + 43, lineY + 12,
+							Get16BPPColor(FROMRGB(150, 138, 100)));
+				SGPBox const src = { 24, 20, 58, 58 };
+				SGPBox const dst = { static_cast<UINT16>(x + 27),
+						static_cast<UINT16>(lineY - 3), 15, 14 };
+				BltStretchVideoSurface(FRAME_BUFFER, kf, &src, &dst);
+			}
+			else if (!cont && rowVisible) drawChip(0, lineY);
 			SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_LTGRAY, FONT_MCOLOR_BLACK, 0);
 			SetFontForegroundRGB(MJ_SELF_TEXT_RGB);
 			MPrint(x + 48, lineY, ReduceStringLength(l.text, w - 66, FONT10ARIAL));
