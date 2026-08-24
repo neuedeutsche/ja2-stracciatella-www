@@ -174,6 +174,7 @@ static SGPVObject* guiMJRail;         // wooden lip between felt and client
 static SGPVObject* guiMJKingpinFace;  // the proprietor, for the rules page signature
 static SGPVObject* guiMJSign;         // his handwritten scrawl
 static SGPVObject* guiMJVoidIcon;     // red suit glyphs for the void marker
+static SGPVObject* guiMJSkull;        // smfaces.sti - the auto-resolve death skull
 static SGPVSurface* guiMJChipSurf[3];  // 16bpp bakes of the 29x33 faces for chat mini-avatars
 // webcam life: blink schedules and talk windows per opponent feed
 static UINT32 guiMJBlinkAt[3];
@@ -3725,6 +3726,7 @@ void EnterMahjong()
 	try { guiMJKingpinFace = MahjongLoadFace(KINGPIN, "65face"); } catch (...) {}
 	try { guiMJSign = AddVideoObjectFromFile("sti/laptop/mahjongsign.sti"); } catch (...) {}
 	try { guiMJVoidIcon = AddVideoObjectFromFile("sti/laptop/mahjongvoid.sti"); } catch (...) {}
+	try { guiMJSkull = AddVideoObjectFromFile(INTERFACEDIR "/smfaces.sti"); } catch (...) {}
 	giMJGlitchWho = -1;
 	guiMJNextGlitch = MahjongNow() + 6000;
 	try
@@ -3922,6 +3924,7 @@ void ExitMahjong()
 	if (guiMJKingpinFace) { DeleteVideoObject(guiMJKingpinFace); guiMJKingpinFace = nullptr; }
 	if (guiMJSign) { DeleteVideoObject(guiMJSign); guiMJSign = nullptr; }
 	if (guiMJVoidIcon) { DeleteVideoObject(guiMJVoidIcon); guiMJVoidIcon = nullptr; }
+	if (guiMJSkull)    { DeleteVideoObject(guiMJSkull);    guiMJSkull = nullptr; }
 	for (int i = 0; i < 3; ++i)
 	{
 		if (guiMJFace65[i]) { DeleteVideoObject(guiMJFace65[i]); guiMJFace65[i] = nullptr; }
@@ -5114,6 +5117,32 @@ static void MahjongRenderVoidButtons()
 	}
 }
 
+// last place on the final card wears the house's opinion of them
+static void MahjongDrawSkull(INT32 sx, INT32 sy, UINT16 col)
+{
+	static const char* const rows[10] = {
+		"..XXXXXX..",
+		".XXXXXXXX.",
+		"XXXXXXXXXX",
+		"XX..XX..XX",
+		"XX..XX..XX",
+		"XXXXXXXXXX",
+		".XXX..XXX.",
+		".XXXXXXXX.",
+		"..X.XX.X..",
+		"..X.XX.X..",
+	};
+	for (INT32 ry = 0; ry < 10; ++ry)
+	{
+		for (INT32 rx = 0; rx < 10; ++rx)
+		{
+			if (rows[ry][rx] != 'X') continue;
+			ColorFillVideoSurfaceArea(FRAME_BUFFER, sx + rx * 2, sy + ry * 2,
+						sx + rx * 2 + 2, sy + ry * 2 + 2, col);
+		}
+	}
+}
+
 // a nine-pixel star for the winners on the verdict card
 static void MahjongDrawStar(INT32 sx, INT32 sy, UINT16 col)
 {
@@ -5215,6 +5244,25 @@ static void MahjongRenderOverlay()
 		SetFontForegroundRGB(metalNum[rank - 1]);
 		MPrint(textX + 2, lineY + 7, ST::format("{}", rank));
 		MahjongDrawFaceChip(static_cast<INT8>(i), textX + 14, lineY + 1, 26, 26, true);
+		if (guiMJState == MJUI_MATCH_END && rank == MahjongGame::NUM_PLAYERS &&
+			guiMJSkull)
+		{
+			// the table ate this one: the tactical death skull, dimmed face
+			FRAME_BUFFER->ShadowRect(textX + 14, lineY + 1,
+					textX + 39, lineY + 26);
+			ETRLEObject const& sk = guiMJSkull->SubregionProperties(10);
+			BltVideoObject(FRAME_BUFFER, guiMJSkull, 10,
+					textX + 14 + (26 - sk.usWidth) / 2,
+					lineY + 1 + (26 - sk.usHeight) / 2);
+		}
+		if (guiMJState == MJUI_MATCH_END && rank == MahjongGame::NUM_PLAYERS)
+		{
+			// the table ate this one: dimmed face, bone-white skull
+			FRAME_BUFFER->ShadowRect(textX + 14, lineY + 1,
+					textX + 39, lineY + 26);
+			MahjongDrawSkull(textX + 17, lineY + 4,
+					Get16BPPColor(FROMRGB(226, 222, 210)));
+		}
 		// line one: who they are - name, handle, rating, in one breath
 		SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_WHITE, FONT_MCOLOR_BLACK, 0);
 		MPrint(nameX, lineY + 2, MahjongSeatName(i));
