@@ -3730,7 +3730,7 @@ void EnterMahjong()
 		MSYS_DefineRegion(&gMJHandRegion[i], x, y,
 					static_cast<UINT16>(x + MJ_TILE_W),
 					static_cast<UINT16>(y + MJ_TILE_H + MJ_HAND_RAISE),
-					MSYS_PRIORITY_HIGH, CURSOR_WWW, MSYS_NO_CALLBACK,
+					MSYS_PRIORITY_HIGH, CURSOR_WWW, MahjongHoverRedrawCallback,
 					MahjongHandRegionCallback);
 		MSYS_SetRegionUserData(&gMJHandRegion[i], 0, i);
 	}
@@ -4762,13 +4762,19 @@ static void MahjongRenderHand()
 		bool const raised = gbMJSelectedSlot == static_cast<INT8>(i) ||
 					(guiMJState == MJUI_EXCHANGE && gfMJExchangeSel[i]) ||
 					(voidPreview && isVoided(hand[i]));
-		MahjongDrawTile(MJ_X(MJ_HAND_X + i * MJ_TILE_PITCH), MJ_Y(MJ_HAND_Y - (raised ? MJ_HAND_RAISE : 0)),
+		bool const hovered = guiMJState == MJUI_PLAYER_TURN && !raised &&
+					(gMJHandRegion[i].uiFlags & MSYS_MOUSE_IN_AREA);
+		MahjongDrawTile(MJ_X(MJ_HAND_X + i * MJ_TILE_PITCH),
+				MJ_Y(MJ_HAND_Y - (raised ? MJ_HAND_RAISE : hovered ? 1 : 0)),
 				MJ_TILE_W, MJ_TILE_H, hand[i], false, isVoided(hand[i]));
 	}
 
 	if (gGame->drawnTile() != MahjongGame::NO_TILE && gGame->currentPlayer() == 0)
 	{
-		INT32 const raise = gbMJSelectedSlot == MJ_DRAWN_SLOT ? MJ_HAND_RAISE : 0;
+		INT32 const raise = gbMJSelectedSlot == MJ_DRAWN_SLOT ? MJ_HAND_RAISE
+				: guiMJState == MJUI_PLAYER_TURN &&
+				  (gMJHandRegion[MJ_DRAWN_SLOT].uiFlags & MSYS_MOUSE_IN_AREA)
+						? 1 : 0;
 		MahjongDrawTile(MJ_X(MJ_DRAWN_X), MJ_Y(MJ_HAND_Y - raise), MJ_TILE_W, MJ_TILE_H,
 				gGame->drawnTile(), false, isVoided(gGame->drawnTile()));
 		if (!suggestionMarked && suggested == gGame->drawnTile())
