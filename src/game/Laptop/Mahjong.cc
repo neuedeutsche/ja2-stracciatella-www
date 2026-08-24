@@ -5167,32 +5167,6 @@ static void MahjongRenderVoidButtons()
 	}
 }
 
-// last place on the final card wears the house's opinion of them
-static void MahjongDrawSkull(INT32 sx, INT32 sy, UINT16 col)
-{
-	static const char* const rows[10] = {
-		"..XXXXXX..",
-		".XXXXXXXX.",
-		"XXXXXXXXXX",
-		"XX..XX..XX",
-		"XX..XX..XX",
-		"XXXXXXXXXX",
-		".XXX..XXX.",
-		".XXXXXXXX.",
-		"..X.XX.X..",
-		"..X.XX.X..",
-	};
-	for (INT32 ry = 0; ry < 10; ++ry)
-	{
-		for (INT32 rx = 0; rx < 10; ++rx)
-		{
-			if (rows[ry][rx] != 'X') continue;
-			ColorFillVideoSurfaceArea(FRAME_BUFFER, sx + rx * 2, sy + ry * 2,
-						sx + rx * 2 + 2, sy + ry * 2 + 2, col);
-		}
-	}
-}
-
 // a nine-pixel star for the winners on the verdict card
 static void MahjongDrawStar(INT32 sx, INT32 sy, UINT16 col)
 {
@@ -5304,14 +5278,6 @@ static void MahjongRenderOverlay()
 			BltVideoObject(FRAME_BUFFER, guiMJSkull, 10,
 					textX + 14 + (26 - sk.usWidth) / 2,
 					lineY + 1 + (26 - sk.usHeight) / 2);
-		}
-		if (guiMJState == MJUI_MATCH_END && rank == MahjongGame::NUM_PLAYERS)
-		{
-			// the table ate this one: dimmed face, bone-white skull
-			FRAME_BUFFER->ShadowRect(textX + 14, lineY + 1,
-					textX + 39, lineY + 26);
-			MahjongDrawSkull(textX + 17, lineY + 4,
-					Get16BPPColor(FROMRGB(226, 222, 210)));
 		}
 		// line one: who they are - name, handle, rating, in one breath
 		SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_WHITE, FONT_MCOLOR_BLACK, 0);
