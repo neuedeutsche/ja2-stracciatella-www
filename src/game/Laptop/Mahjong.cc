@@ -3634,7 +3634,7 @@ static void MahjongRulesDismissCallback(MOUSE_REGION* pRegion, UINT32 iReason)
 			}
 			if (gusMouseXPos >= x + w - 60 && gusMouseXPos <= x + w - 6)
 			{
-				if (gbMJRulesPage < 3)
+				if (gbMJRulesPage < 4)
 				{
 					++gbMJRulesPage;
 					MahjongPlay(MJ_SND_SELECT, BTNVOLUME);
@@ -6008,16 +6008,19 @@ static void MahjongRenderRules()
 		"Void suit: every player then declares one suit. You cannot win while holding ANY tile of it. Void tiles show red in your hand - dump them.",
 		"Winning: 4 sets (runs or triplets) plus a pair, or seven pairs. Win by self-draw or claim a discard with the Mahjong! button.",
 		"Bloody battle: winners retire and play continues until three players have won or the wall is empty.",
-		"Payments: self-draw collects 2000 from every player still in the hand; a claimed discard costs the discarder 6000. A match is 4 hands.",
+		"Payments: a self-draw collects 1000 from every player still in the hand; a claimed discard costs the discarder 3000. Fan doubles those. A match is 4 hands.",
+		"Fan: pure suit (one suit, no others) +2. All triplets +1. Seven pairs +2. Every Kong is a root, +1 each. Four fan is the cap - that is sixteen times the base.",
+		"Kongs pay on sight: a Kong claimed off a discard takes 500 from whoever threw it. A concealed Kong takes 500 from everyone, a promoted one 250.",
+		"When the wall runs dry: anyone not one tile from a win pays 1000 to each player who is. Still holding your void suit makes you the Flower Pig - 2000 to every other player, and the Kong money goes back.",
 		"Stakes: $250 buy-in, points settle at 20:1, the house rakes 10% of winnings. Short on cash? Kingpin fronts the buy-in at 20% vig. Every 7th day is the BLOODY INVITATIONAL: triple stakes.",
 		"The left seat rotates: most nights Elliot, but Kingpin and Tony drop in. While nobody is seated, The House plays your chair.",
 		"House history: founded 1999 above the Shady Lady, bankrolled by boxing debts, hosted on a server Darren 'borrowed' from the Drassen airport. The palace dial-up line was Elliot's idea; he has apologized for it daily since.",
 	};
 	// four pages, File Viewer style: three of rules, one from the management
-	static const int pageStart[4] = { 0, 3, 6, 9 };
-	int const page = std::max(0, std::min(3, static_cast<int>(gbMJRulesPage)));
+	static const int pageStart[5] = { 0, 3, 6, 9, 12 };
+	int const page = std::max(0, std::min(4, static_cast<int>(gbMJRulesPage)));
 	INT32 lineY = y + 52;
-	if (page < 3)
+	if (page < 4)
 	{
 		for (int i = pageStart[page]; i < pageStart[page + 1]; ++i)
 		{
@@ -6066,10 +6069,10 @@ static void MahjongRenderRules()
 	if (page == 0) SetFontForegroundRGB(FROMRGB(40, 96, 58));
 	MPrint(x + 14, y + h - 18, "< prev");
 	SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_LTGREEN, FONT_MCOLOR_BLACK, 0);
-	if (page == 3) SetFontForegroundRGB(FROMRGB(40, 96, 58));
+	if (page == 4) SetFontForegroundRGB(FROMRGB(40, 96, 58));
 	MPrint(x + w - 14 - StringPixLength("next >", FONT10ARIAL), y + h - 18, "next >");
 	SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_LTYELLOW, FONT_MCOLOR_BLACK, 0);
-	ST::string const pager = ST::format("page {}/4 - click elsewhere to close", page + 1);
+	ST::string const pager = ST::format("page {}/5 - click elsewhere to close", page + 1);
 	MPrint(x + (w - StringPixLength(pager, FONT10ARIAL)) / 2, y + h - 18, pager);
 }
 
