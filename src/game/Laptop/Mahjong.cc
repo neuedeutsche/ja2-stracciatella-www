@@ -2047,8 +2047,23 @@ static void MahjongEnterState(MahjongUiState state)
 				int const who = gGame->currentPlayer();
 				if (who > 0)
 				{
-					MahjongGuestPack const* const g = MahjongPackFor(who);
-					if (g)
+					if (gGame && gGame->player(who).finished)
+					{
+						// already won: they spectate the rest of the
+						// bloody battle from a very comfortable chair
+						static const char* const done[8] = {
+							"I am comfortable. continue.",
+							"from up here ze table looks very different",
+							"no rush. my winnings keep me warm.",
+							"fight, fight. the tea is excellent.",
+							"I would have discarded that too. probably.",
+							"watching you three beats television",
+							"someone lose faster, I have places to be",
+							"spectating: the only seat that pays for itself",
+						};
+						MahjongSay(who, done[MahjongChatRoll() % 8]);
+					}
+					else if (MahjongGuestPack const* const g = MahjongPackFor(who))
 					{
 						MahjongSay(who, MahjongChatRoll() % 2 == 0
 							? g->war[MahjongWarTier()]
