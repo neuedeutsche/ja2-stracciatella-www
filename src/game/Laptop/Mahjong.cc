@@ -93,10 +93,10 @@
 
 // hand + buttons + chat bar
 #define MJ_HAND_Y		218
-#define MJ_MELD_GAP		8   // rack: concealed tiles | gap | exposed sets
+#define MJ_MELD_GAP		6   // rack: concealed tiles | gap | exposed sets
 #define MJ_HAND_RAISE		6
 #define MJ_HAND_X		22
-#define MJ_DRAWN_X		450
+#define MJ_DRAWN_X		470  // the drawn tile's island, hard right
 #define MJ_SETUP_BTN_Y		156  // void/pass live mid-table, clear of the hand
 #define MJ_CLAIM_BTN_X		22
 #define MJ_CLAIM_BTN_Y		186
@@ -5105,6 +5105,41 @@ static std::vector<MahjongPondCell> MahjongPondCells(int player, size_t cap)
 	return cells;
 }
 
+// a face-up tile with nothing on it: the sheet has no blank, so it is
+// painted from the same palette the generator uses (face 250,250,246 /
+// edge 192,192,184 / shadow + highlight)
+static void MahjongDrawBlankTile(INT32 x, INT32 y, INT32 w, INT32 h)
+{
+	ColorFillVideoSurfaceArea(FRAME_BUFFER, x, y, x + w, y + h,
+				Get16BPPColor(FROMRGB(192, 192, 184)));
+	ColorFillVideoSurfaceArea(FRAME_BUFFER, x + 1, y + 1, x + w - 1, y + h - 1,
+				Get16BPPColor(FROMRGB(250, 250, 246)));
+	// the bevel: highlight top-left, shadow bottom-right
+	ColorFillVideoSurfaceArea(FRAME_BUFFER, x + 1, y + 1, x + w - 1, y + 2,
+				Get16BPPColor(FROMRGB(255, 255, 255)));
+	ColorFillVideoSurfaceArea(FRAME_BUFFER, x + 1, y + h - 2, x + w - 1, y + h - 1,
+				Get16BPPColor(FROMRGB(168, 168, 160)));
+	ColorFillVideoSurfaceArea(FRAME_BUFFER, x + w - 2, y + 1, x + w - 1, y + h - 1,
+				Get16BPPColor(FROMRGB(168, 168, 160)));
+}
+
+// a kong says so with a badge, not a numeral crowding its neighbour: a
+// red disc in the set's top-right corner with a white plus in it
+static void MahjongDrawKongBadge(INT32 cx, INT32 cy)
+{
+	UINT16 const red = Get16BPPColor(FROMRGB(204, 56, 46));
+	UINT16 const white = Get16BPPColor(FROMRGB(255, 255, 255));
+	// a 9px disc, drawn as spans so the corners round off
+	static const INT32 span[9] = { 2, 1, 0, 0, 0, 0, 0, 1, 2 };
+	for (INT32 r = 0; r < 9; ++r)
+	{
+		ColorFillVideoSurfaceArea(FRAME_BUFFER, cx - 4 + span[r], cy - 4 + r,
+					cx + 5 - span[r], cy - 3 + r, red);
+	}
+	ColorFillVideoSurfaceArea(FRAME_BUFFER, cx - 2, cy - 1, cx + 3, cy + 1, white);
+	ColorFillVideoSurfaceArea(FRAME_BUFFER, cx - 1, cy - 2, cx + 1, cy + 2, white);
+}
+
 // how many of a seat's oldest discards the pond had no room to draw
 static int MahjongPondHidden(int player, size_t cap)
 {
@@ -5144,10 +5179,7 @@ static void MahjongDrawPondCell(MahjongPondCell const& cell, INT32 x, INT32 y)
 						nx + 4, y + MJ_MINI_H + 2,
 						Get16BPPColor(FROMRGB(204, 56, 46)));
 		}
-		SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_RED, NO_SHADOW, 0);
-		MPrint(x + MJ_MINI_W - 6, y + MJ_MINI_H - 10,
-				cell.count == 4 ? "4" : "3");
-		SetFontShadow(DEFAULT_SHADOW);
+		if (cell.count == 4) MahjongDrawKongBadge(x + MJ_MINI_W - 4, y + 4);
 	}
 }
 
@@ -5274,20 +5306,50 @@ static void MahjongRenderHand()
 	// concealed run and needs exactly those three widths back. A kong draws
 	// as three tiles carrying a red 4, so it costs the same.
 	{
-		INT32 mx = MJ_HAND_X + static_cast<INT32>(hand.size()) * MJ_TILE_PITCH
-				+ MJ_MELD_GAP;
-		for (MahjongGame::Meld const& m : gGame->player(0).melds)
+		std::vector<MahjongGame::Meld> const& melds = gGame->player(0).melds;
+		INT32 const stripX = MJ_HAND_X
+				+ static_cast<INT32>(hand.size()) * MJ_TILE_PITCH + MJ_MELD_GAP;
+		// A kong is four tiles and would rather show all four. It only
+		// earns three tile widths back from the hand, though, so whether
+		// the fourth fits depends on the whole rack. Measure first: draw
+		// kongs full width when the strip still clears the drawn tile,
+		// and overlap them into a pong's footprint when it does not.
+		// Overlapping loses nothing - a kong's four tiles are identical.
+		INT32 wide = 0;
+		for (MahjongGame::Meld const& m : melds)
 		{
-			// the three tiles of a set touch: a meld is one object, and
-			// the tight pack is what keeps four of them inside the rack
+			wide += (m.count == 4 ? 4 : 3) * MJ_TILE_W + MJ_MELD_GAP;
+		}
+		bool const roomy = stripX + wide - MJ_MELD_GAP <= MJ_DRAWN_X - 4;
+		INT32 mx = stripX;
+		for (MahjongGame::Meld const& m : melds)
+		{
+			// A set is one object, packed tight. A kong shows all four of
+			// its tiles in the same width by overlapping them - they are
+			// identical tiles, so the overlap hides nothing, and the set
+			// still costs the rack exactly three tile widths. A concealed
+			// kong turns its outer two face down, as a table does.
 			INT32 const setX = mx;
-			for (int t = 0; t < 3; ++t)
+			int const tiles = m.count == 4 ? 4 : 3;
+			INT32 const step = (m.count == 4 && !roomy)
+					? (3 * MJ_TILE_W - MJ_TILE_W) / 3 : MJ_TILE_W;
+			for (int t = 0; t < tiles; ++t)
 			{
-				MahjongDrawTile(MJ_X(mx), MJ_Y(MJ_HAND_Y), MJ_TILE_W, MJ_TILE_H,
-						m.tile, false, isVoided(m.tile));
-				mx += MJ_TILE_W;
+				bool const facedown = m.concealed && (t == 0 || t == tiles - 1);
+				if (facedown && guiMJTiles)
+				{
+					BltVideoObject(FRAME_BUFFER, guiMJTiles, 27, MJ_X(mx),
+							MJ_Y(MJ_HAND_Y));
+				}
+				else
+				{
+					MahjongDrawTile(MJ_X(mx), MJ_Y(MJ_HAND_Y), MJ_TILE_W, MJ_TILE_H,
+							m.tile, false, isVoided(m.tile));
+				}
+				mx += step;
 			}
-			INT32 const setW = 3 * MJ_TILE_W;
+			mx += MJ_TILE_W - step; // the last tile's own width
+			INT32 const setW = mx - setX;
 			// the gold bar under the set, and the red notch on the side the
 			// claimed tile was fed from
 			ColorFillVideoSurfaceArea(FRAME_BUFFER, MJ_X(setX),
@@ -5304,12 +5366,7 @@ static void MahjongRenderHand()
 							MJ_X(nx + 10), MJ_Y(MJ_HAND_Y + MJ_TILE_H + 3),
 							Get16BPPColor(FROMRGB(204, 56, 46)));
 			}
-			if (m.count == 4)
-			{
-				SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_RED, NO_SHADOW, 0);
-				MPrint(MJ_X(setX + setW - 8), MJ_Y(MJ_HAND_Y + MJ_TILE_H - 12), "4");
-				SetFontShadow(DEFAULT_SHADOW);
-			}
+
 			mx += MJ_MELD_GAP;
 		}
 	}
@@ -5376,11 +5433,8 @@ static void MahjongRenderHand()
 				int const show = std::min(shanten, 6);
 				for (int i = 0; i < show; ++i)
 				{
-					if (guiMJTilesSmall)
-					{
-						BltVideoObject(FRAME_BUFFER, guiMJTilesSmall, 27, tx,
-								MJ_Y(MJ_POND_BOTTOM_Y));
-					}
+					MahjongDrawBlankTile(tx, MJ_Y(MJ_POND_BOTTOM_Y),
+							MJ_MINI_W, MJ_MINI_H);
 					SetFontAttributes(FONT10ARIAL, FONT_MCOLOR_DKGRAY, NO_SHADOW, 0);
 					MPrint(tx + MJ_MINI_W / 2 - 2,
 							MJ_Y(MJ_POND_BOTTOM_Y) + MJ_MINI_H / 2 - 6, "?");
