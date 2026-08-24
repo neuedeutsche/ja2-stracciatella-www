@@ -92,7 +92,7 @@
 
 // hand + buttons + chat bar
 #define MJ_HAND_Y		218
-#define MJ_MELD_GAP		10  // rack: concealed tiles | gap | exposed sets
+#define MJ_MELD_GAP		8   // rack: concealed tiles | gap | exposed sets
 #define MJ_HAND_RAISE		6
 #define MJ_HAND_X		22
 #define MJ_DRAWN_X		450
@@ -5248,14 +5248,16 @@ static void MahjongRenderHand()
 				+ MJ_MELD_GAP;
 		for (MahjongGame::Meld const& m : gGame->player(0).melds)
 		{
+			// the three tiles of a set touch: a meld is one object, and
+			// the tight pack is what keeps four of them inside the rack
 			INT32 const setX = mx;
 			for (int t = 0; t < 3; ++t)
 			{
 				MahjongDrawTile(MJ_X(mx), MJ_Y(MJ_HAND_Y), MJ_TILE_W, MJ_TILE_H,
 						m.tile, false, isVoided(m.tile));
-				mx += MJ_TILE_PITCH;
+				mx += MJ_TILE_W;
 			}
-			INT32 const setW = 3 * MJ_TILE_PITCH - (MJ_TILE_PITCH - MJ_TILE_W);
+			INT32 const setW = 3 * MJ_TILE_W;
 			// the gold bar under the set, and the red notch on the side the
 			// claimed tile was fed from
 			ColorFillVideoSurfaceArea(FRAME_BUFFER, MJ_X(setX),
