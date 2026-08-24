@@ -1465,7 +1465,9 @@ static void MahjongChatOnWin(int winner, int discarder)
 	{
 		MahjongPlayVoice(NPC_SPEECHDIR "/135_042.wav", MIDVOLUME, LEFTSIDE, 2800); // "he-heh, heh. You idiot!"
 	}
-	if (discarder == 3 && winner != 3 && giMJSeat3Persona == MJP_ELLIOT && giMJSeat2Persona == MJP2_QUEEN)
+	if (discarder == 3 && winner != 3 && winner != 2 &&
+		gGame && !gGame->player(2).finished &&
+		giMJSeat3Persona == MJP_ELLIOT && giMJSeat2Persona == MJP2_QUEEN)
 	{
 		MahjongSay(2, "Elliot, you idiot!");
 		// the real thing, straight from the palace
@@ -1695,10 +1697,32 @@ static void MahjongUpdateButtons()
 						MJ_Y(MahjongModalButtonY()));
 				INT32 const mw = MahjongModalWidth();
 				INT32 const mx = (502 - mw) / 2;
+				INT32 const bwFull = mw - 28;
 				gMJModalCTARegion.RegionTopLeftY = top;
 				gMJModalCTARegion.RegionBottomRightY = static_cast<INT16>(top + 30);
-				gMJModalCTARegion.RegionTopLeftX = static_cast<INT16>(MJ_X(mx + 14));
-				gMJModalCTARegion.RegionBottomRightX = static_cast<INT16>(MJ_X(mx + mw - 14));
+				gMJModalLeaveRegion.RegionTopLeftY = top;
+				gMJModalLeaveRegion.RegionBottomRightY = static_cast<INT16>(top + 30);
+				if (guiMJState == MJUI_MATCH_END)
+				{
+					INT32 const half = (bwFull - 6) / 2;
+					gMJModalLeaveRegion.RegionTopLeftX =
+							static_cast<INT16>(MJ_X(mx + 14));
+					gMJModalLeaveRegion.RegionBottomRightX =
+							static_cast<INT16>(MJ_X(mx + 14 + half));
+					gMJModalCTARegion.RegionTopLeftX =
+							static_cast<INT16>(MJ_X(mx + 14 + half + 6));
+					gMJModalCTARegion.RegionBottomRightX =
+							static_cast<INT16>(MJ_X(mx + mw - 14));
+					gMJModalLeaveRegion.Enable();
+				}
+				else
+				{
+					gMJModalCTARegion.RegionTopLeftX =
+							static_cast<INT16>(MJ_X(mx + 14));
+					gMJModalCTARegion.RegionBottomRightX =
+							static_cast<INT16>(MJ_X(mx + mw - 14));
+					gMJModalLeaveRegion.Disable();
+				}
 			}
 			gMJModalCTARegion.Enable();
 			break;
@@ -1709,6 +1733,7 @@ static void MahjongUpdateButtons()
 	if (guiMJState != MJUI_HAND_END && guiMJState != MJUI_MATCH_END)
 	{
 		gMJModalCTARegion.Disable();
+		gMJModalLeaveRegion.Disable();
 	}
 
 	if (guiMJPassBtn)
@@ -3761,6 +3786,10 @@ void EnterMahjong()
 				static_cast<UINT16>(MJ_X(353)), static_cast<UINT16>(MJ_Y(302)),
 				MSYS_PRIORITY_HIGH + 3, CURSOR_WWW, MahjongHoverRedrawCallback, MahjongModalCTACallback);
 	gMJModalCTARegion.Disable();
+	MSYS_DefineRegion(&gMJModalLeaveRegion, static_cast<UINT16>(MJ_X(149)), static_cast<UINT16>(MJ_Y(272)),
+				static_cast<UINT16>(MJ_X(250)), static_cast<UINT16>(MJ_Y(302)),
+				MSYS_PRIORITY_HIGH + 3, CURSOR_WWW, MahjongHoverRedrawCallback, MahjongModalLeaveCallback);
+	gMJModalLeaveRegion.Disable();
 
 	static const INT16 sLobbyBox[4][2] = { { 61, 124 }, { 255, 124 }, { 61, 210 }, { 255, 210 } };
 	for (int i = 0; i < 4; ++i)
@@ -3846,6 +3875,7 @@ void ExitMahjong()
 	MSYS_RemoveRegion(&gMJRulesDismissRegion);
 	MSYS_RemoveRegion(&gMJSponsorRegion);
 	MSYS_RemoveRegion(&gMJModalCTARegion);
+	MSYS_RemoveRegion(&gMJModalLeaveRegion);
 	MSYS_RemoveRegion(&gMJChatRegion);
 	for (MOUSE_REGION& r : gMJLobbyRegion) MSYS_RemoveRegion(&r);
 	MSYS_RemoveRegion(&gMJLadderBackRegion);
@@ -5153,50 +5183,66 @@ static void MahjongRenderOverlay()
 		lineY += 24;
 	}
 
-	// the advance button: chach.com's CTA construction, recut in the
-	// parlour's gold and stretched across the card's foot
+	// the advance buttons: the gold CTA, and at match end the quieter
+	// leave-table door beside it - both inside the card
 	{
-		INT32 const bx = x + 14, by = MJ_Y(MahjongModalButtonY()),
-				bw = w - 28, bh = 30;
-		INT32 const band = (bh - 2) / 3;
-		bool const hot = gMJModalCTARegion.uiFlags & MSYS_MOUSE_IN_AREA;
-		UINT16 const body = Get16BPPColor(hot ? FROMRGB(238, 208, 62) : FROMRGB(216, 184, 44));
-		UINT16 const bandc = Get16BPPColor(hot ? FROMRGB(250, 228, 100) : FROMRGB(236, 208, 76));
-		UINT16 const high = Get16BPPColor(hot ? FROMRGB(255, 246, 172) : FROMRGB(250, 232, 130));
-		MahjongFillRounded(bx, by + 2, bw, bh - 2, 5, Get16BPPColor(FROMRGB(140, 112, 18)));
-		MahjongFillRounded(bx, by, bw, bh - 2, 5, body);
-		ColorFillVideoSurfaceArea(FRAME_BUFFER, bx + 3, by + 2, bx + bw - 3, by + 2 + band, bandc);
-		ColorFillVideoSurfaceArea(FRAME_BUFFER, bx + 5, by + 1, bx + bw - 5, by + 2, high);
-		for (INT32 row = 0; row < 3; ++row)
+		INT32 const by = MJ_Y(MahjongModalButtonY());
+		INT32 const bh = 30;
+		auto const gold = [&](INT32 gbx, INT32 gbw, bool hot,
+		                      ST::string const& label)
 		{
-			INT32 const dy = by + 2 + band + row;
-			INT32 const step = row == 2 ? 4 : 2;
-			for (INT32 dx = bx + 2 + ((row + 1) & 1); dx < bx + bw - 2; dx += step)
+			INT32 const band = (bh - 2) / 3;
+			UINT16 const body = Get16BPPColor(hot ? FROMRGB(238, 208, 62) : FROMRGB(216, 184, 44));
+			UINT16 const bandc = Get16BPPColor(hot ? FROMRGB(250, 228, 100) : FROMRGB(236, 208, 76));
+			UINT16 const high = Get16BPPColor(hot ? FROMRGB(255, 246, 172) : FROMRGB(250, 232, 130));
+			MahjongFillRounded(gbx, by + 2, gbw, bh - 2, 5, Get16BPPColor(FROMRGB(140, 112, 18)));
+			MahjongFillRounded(gbx, by, gbw, bh - 2, 5, body);
+			ColorFillVideoSurfaceArea(FRAME_BUFFER, gbx + 3, by + 2, gbx + gbw - 3, by + 2 + band, bandc);
+			ColorFillVideoSurfaceArea(FRAME_BUFFER, gbx + 5, by + 1, gbx + gbw - 5, by + 2, high);
+			for (INT32 row = 0; row < 3; ++row)
 			{
-				ColorFillVideoSurfaceArea(FRAME_BUFFER, dx, dy, dx + 1, dy + 1, bandc);
+				INT32 const dy = by + 2 + band + row;
+				INT32 const step = row == 2 ? 4 : 2;
+				for (INT32 dx = gbx + 2 + ((row + 1) & 1); dx < gbx + gbw - 2; dx += step)
+				{
+					ColorFillVideoSurfaceArea(FRAME_BUFFER, dx, dy, dx + 1, dy + 1, bandc);
+				}
 			}
+			SetFontAttributes(FONT14ARIAL, FONT_MCOLOR_BLACK, NO_SHADOW, 0);
+			MPrint(gbx + gbw / 2 - StringPixLength(label, FONT14ARIAL) / 2,
+					by + 8, label);
+		};
+		if (guiMJState == MJUI_MATCH_END)
+		{
+			INT32 const bw = w - 28;
+			INT32 const half = (bw - 6) / 2;
+			bool const lh = gMJModalLeaveRegion.uiFlags & MSYS_MOUSE_IN_AREA;
+			// the quiet door: dark felt-brown, no glitter
+			MahjongFillRounded(x + 14, by + 2, half, bh - 2, 5,
+					Get16BPPColor(FROMRGB(22, 18, 14)));
+			MahjongFillRounded(x + 14, by, half, bh - 2, 5,
+					Get16BPPColor(lh ? FROMRGB(74, 66, 54) : FROMRGB(56, 50, 42)));
+			SetFontAttributes(FONT12ARIAL, FONT_MCOLOR_WHITE, FONT_MCOLOR_BLACK, 0);
+			MPrint(x + 14 + half / 2
+					- StringPixLength("Leave Table", FONT12ARIAL) / 2,
+					by + 8, "Leave Table");
+			gold(x + 14 + half + 6, bw - half - 6,
+					(gMJModalCTARegion.uiFlags & MSYS_MOUSE_IN_AREA) != 0,
+					"New Match");
 		}
-		ST::string const cta = guiMJState == MJUI_MATCH_END ? "New Match" : "Next Hand";
-		SetFontAttributes(FONT14ARIAL, FONT_MCOLOR_BLACK, NO_SHADOW, 0);
-		MPrint(x + w / 2 - StringPixLength(cta, FONT14ARIAL) / 2, by + 8, cta);
+		else
+		{
+			gold(x + 14, w - 28,
+					(gMJModalCTARegion.uiFlags & MSYS_MOUSE_IN_AREA) != 0,
+					"Next Hand");
+		}
 	}
 
 	// the closing line, a footnote under the button: the smallest type the
 	// site owns, one sentence per line
 	if (!gMJMessage.empty())
 	{
-		std::vector<ST::string> lines;
-		ST::string cur;
-		for (auto const& word : gMJMessage.split(' '))
-		{
-			cur = cur.empty() ? word : cur + " " + word;
-			if (!word.empty() && word.c_str()[word.size() - 1] == '.')
-			{
-				lines.push_back(cur);
-				cur = ST::string();
-			}
-		}
-		if (!cur.empty()) lines.push_back(cur);
+		std::vector<ST::string> const lines = MahjongModalNotes();
 		SetFontAttributes(TINYFONT1, FONT_MCOLOR_LTGREEN, FONT_MCOLOR_BLACK, 0);
 		SetFontForegroundRGB(FROMRGB(150, 132, 96));
 		INT32 fy = MJ_Y(MahjongModalButtonY()) + 34;
