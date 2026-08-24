@@ -88,6 +88,15 @@
 #define CH_FOOT_Y       (CH_PAGE_H - CH_INSET - 38)
 #define CH_HINT_Y       (CH_FOOT_Y + 6)
 #define CH_HINT_H       26
+// the puzzle's move stepper, tucked under the hint button on the left.
+// The strip lifts by CH_PUZZ_LIFT to make the row, so the hint button
+// keeps its size and simply sits that much higher.
+#define CH_PUZZ_LIFT    24
+#define CH_PUZZ_HINT_Y  (CH_HINT_Y - CH_PUZZ_LIFT)
+#define CH_PUZZNAV_X    (CH_PANEL_X + 14)
+#define CH_PUZZNAV_Y    (CH_PUZZ_HINT_Y + CH_HINT_H + 4)
+#define CH_PUZZNAV_W    24
+#define CH_PUZZNAV_H    18
 
 // The day stepper's arrows sit at fixed points on the panel edges while the
 // chip between them is centred and changes width with the day number. Glyphs
@@ -191,6 +200,11 @@ namespace
 	int                      giChessPuzzle = 0;
 	std::vector<std::string> gChessSolution;  // the line after the setup move
 	std::size_t              guiChessPly = 0; // index of the next expected move
+	// every position the puzzle has stood in, so the line can be walked
+	// back and forth once it is on the board
+	std::vector<ChessGame>   gPuzzHist;
+	std::vector<std::pair<UINT8, UINT8>> gPuzzMoves; // from/to per position
+	int                      giPuzzView = -1;  // -1 follows the live board
 	ChessGame::Color         gChessSolver = ChessGame::White;
 
 	INT8   gbChessSelected  = -1;    // 0x88 square, -1 when nothing is picked up
@@ -467,6 +481,7 @@ namespace
 	MOUSE_REGION gChessGbPostRegion;
 	MOUSE_REGION gChessGbCloseRegion;
 	MOUSE_REGION gChessHistRegion[4];  // |< < > >| under the live move lists
+	MOUSE_REGION gChessPuzzNavRegion[2]; // < > stepping the puzzle's line
 	MOUSE_REGION gChessWatchTabRegion[2];  // MOVES | CHAT
 	MOUSE_REGION gChessListWheelRegion;    // wheel scroll over the lists
 	MOUSE_REGION gChessTimeRegion[4];      // the lobby's time controls
@@ -1144,9 +1159,17 @@ namespace
 			&& size_t(giPlayView) < gPlayHist.size();
 	}
 
+	// the daily puzzle, parked on an earlier position
+	bool ChessPuzzReviewing()
+	{
+		return giChessStub < 0 && giPuzzView >= 0
+			&& size_t(giPuzzView) < gPuzzHist.size();
+	}
+
 	ChessGame& ChessActiveGame()
 	{
 		if (ChessPlayReviewing()) return gPlayHist[size_t(giPlayView)];
+		if (ChessPuzzReviewing()) return gPuzzHist[size_t(giPuzzView)];
 		if (giChessStub == 2) return gLearnGame;
 		return giChessStub == 0 ? gPlayGame : gChessGame;
 	}
@@ -1158,12 +1181,21 @@ namespace
 	UINT8 ChessActiveFrom()
 	{
 		if (ChessPlayReviewing()) return ChessGame::NO_SQUARE;
+		if (ChessPuzzReviewing()) return gPuzzMoves[size_t(giPuzzView)].first;
 		return giChessStub == 0 ? gubPlayFrom : gubChessLastFrom;
 	}
 	UINT8 ChessActiveTo()
 	{
 		if (ChessPlayReviewing()) return ChessGame::NO_SQUARE;
+		if (ChessPuzzReviewing()) return gPuzzMoves[size_t(giPuzzView)].second;
 		return giChessStub == 0 ? gubPlayTo : gubChessLastTo;
+	}
+
+	// record wherever the puzzle board has just landed
+	void ChessPuzzRecord()
+	{
+		gPuzzHist.push_back(gChessGame);
+		gPuzzMoves.emplace_back(gubChessLastFrom, gubChessLastTo);
 	}
 
 	UINT16 ChessToday() { return static_cast<UINT16>(GetWorldDay()); }
@@ -1239,6 +1271,7 @@ namespace
 	// The board serves two games: the daily puzzle and the live one. These
 	// pick whichever the open section owns.
 	ChessGame& ChessActiveGame();
+	void ChessPuzzRecord();
 	ChessGame::Color ChessActiveSolver();
 	UINT8 ChessActiveFrom();
 	UINT8 ChessActiveTo();
@@ -1403,6 +1436,7 @@ namespace
 			gubChessLastFrom = m.from;
 			gubChessLastTo   = m.to;
 			gChessGame.MakeMove(m);
+			ChessPuzzRecord();
 			++guiChessPly;
 		}
 	}
@@ -1436,6 +1470,10 @@ namespace
 		gbChessSelected  = -1;
 		guiChessReplyDue = 0;
 		gfChessHintShown = false;
+		gPuzzHist.clear();
+		gPuzzMoves.clear();
+		giPuzzView = -1;
+		ChessPuzzRecord(); // the opening position, setup move included
 	}
 
 	// Roll the daily state over when the campaign has moved on to a new day.
@@ -1607,6 +1645,7 @@ namespace
 			gubChessLastFrom = want.from;
 			gubChessLastTo   = want.to;
 			gChessGame.MakeMove(want);
+			ChessPuzzRecord();
 			ChessAnimateMove(gChessGame, want, 110);
 			ChessPlay(ChessMoveSound(want, gChessGame.IsInCheck(gChessGame.SideToMove()), true));
 			++guiChessPly;
@@ -1999,6 +2038,21 @@ namespace
 		gfChessHintShown = true;
 		giChessSaid = CHS_ST_HINT;
 		ChessSpendHeart();
+		ChessRedraw();
+	}
+
+	void ChessPuzzNavCallback(MOUSE_REGION* region, UINT32 reason)
+	{
+		if (!(reason & MSYS_CALLBACK_REASON_POINTER_UP)) return;
+		if (giChessStub >= 0 || gfChessModal) return;
+		if (gPuzzHist.size() < 2) return;
+		const int last = int(gPuzzHist.size()) - 1;
+		const int cur = giPuzzView < 0 ? last : giPuzzView;
+		const int want = cur + (MSYS_GetRegionUserData(region, 0) ? 1 : -1);
+		if (want < 0 || want > last) return;
+		// stepping back to the live end simply lets go again
+		giPuzzView = want >= last ? -1 : want;
+		ChessPlay(CH_SND_CLICK2, LOWVOLUME);
 		ChessRedraw();
 	}
 
@@ -2467,6 +2521,17 @@ namespace
 		else         { gChessGbPostRegion.Disable(); gChessGbCloseRegion.Disable(); }
 		const bool playOngoing = giPlayState == 0 || giPlayState == 1 ||
 		                         giPlayState == 5;
+		// the puzzle's stepper, and the hint button it sits under
+		{
+			const bool stepper = giChessStub < 0 && gPuzzHist.size() > 1;
+			for (MOUSE_REGION& r : gChessPuzzNavRegion)
+			{
+				if (stepper) r.Enable(); else r.Disable();
+			}
+			const INT16 hy = INT16(CH_Y(stepper ? CH_PUZZ_HINT_Y : CH_HINT_Y));
+			gChessHintRegion.RegionTopLeftY = hy;
+			gChessHintRegion.RegionBottomRightY = INT16(hy + CH_HINT_H);
+		}
 		const bool scrub = (giChessStub == 0 && playOngoing) || giChessStub == 3;
 		for (MOUSE_REGION& r : gChessHistRegion) { if (scrub) r.Enable(); else r.Disable(); }
 		for (MOUSE_REGION& r : gChessWatchTabRegion)
@@ -2539,6 +2604,21 @@ namespace
 		                  UINT16(CH_X(CH_PANEL_X + CH_PANEL_W - 14)), UINT16(CH_Y(CH_HINT_Y + CH_HINT_H)),
 		                  MSYS_PRIORITY_HIGH, CURSOR_WWW, MSYS_NO_CALLBACK, ChessHintCallback);
 		gChessHintRegion.SetFastHelpText("Costs one attempt");
+
+		for (int i = 0; i < 2; ++i)
+		{
+			const INT32 bx = CH_PUZZNAV_X + i * (CH_PUZZNAV_W + 4);
+			MSYS_DefineRegion(&gChessPuzzNavRegion[i],
+			                  UINT16(CH_X(bx)), UINT16(CH_Y(CH_PUZZNAV_Y)),
+			                  UINT16(CH_X(bx + CH_PUZZNAV_W)),
+			                  UINT16(CH_Y(CH_PUZZNAV_Y + CH_PUZZNAV_H)),
+			                  MSYS_PRIORITY_HIGH, CURSOR_WWW, MSYS_NO_CALLBACK,
+			                  ChessPuzzNavCallback);
+			MSYS_SetRegionUserData(&gChessPuzzNavRegion[i], 0, i);
+			gChessPuzzNavRegion[i].SetFastHelpText(i == 0 ? "Step back"
+			                                              : "Step forward");
+			gChessPuzzNavRegion[i].Disable();
+		}
 
 		// date stepper arrows, either side of the day chip
 		MSYS_DefineRegion(&gChessPrevDayRegion,
@@ -2717,11 +2797,11 @@ namespace
 		{
 			const INT32 mx2 = CH_MODAL_X, my2 = CH_BOARD_Y + (CH_BOARD_SIZE - 148) / 2;
 			UINT16 x0, y0, x1, y1;
-			if (i == 0) { x0 = UINT16(mx2 + 12); y0 = UINT16(my2 + 92); x1 = UINT16(mx2 + 192); y1 = UINT16(my2 + 114); }
+			if (i == 0) { x0 = UINT16(mx2 + 12); y0 = UINT16(my2 + 90); x1 = UINT16(mx2 + 192); y1 = UINT16(my2 + 90 + CH_HINT_H); }
 			else
 			{
-				x0 = UINT16(mx2 + 12 + (i - 1) * 94); y0 = UINT16(my2 + 120);
-				x1 = UINT16(x0 + 86); y1 = UINT16(my2 + 140);
+				x0 = UINT16(mx2 + 12 + (i - 1) * 94); y0 = UINT16(my2 + 122);
+				x1 = UINT16(x0 + 86); y1 = UINT16(my2 + 142);
 			}
 			MSYS_DefineRegion(&gChessPostRegion[i],
 			                  UINT16(CH_X(x0)), UINT16(CH_Y(y0)),
@@ -2823,6 +2903,7 @@ namespace
 		MSYS_RemoveRegion(&gChessGbPostRegion);
 		MSYS_RemoveRegion(&gChessGbCloseRegion);
 		for (MOUSE_REGION& r : gChessHistRegion) MSYS_RemoveRegion(&r);
+		for (MOUSE_REGION& r : gChessPuzzNavRegion) MSYS_RemoveRegion(&r);
 		for (MOUSE_REGION& r : gChessWatchTabRegion) MSYS_RemoveRegion(&r);
 		MSYS_RemoveRegion(&gChessListWheelRegion);
 		for (MOUSE_REGION& r : gChessTimeRegion) MSYS_RemoveRegion(&r);
@@ -3457,21 +3538,25 @@ namespace
 		                     UINT16(bw2 - 10), 1, FONT10ARIAL, FONT_MCOLOR_BLACK,
 		                     line, FONT_MCOLOR_WHITE, LEFT_JUSTIFIED);
 
-		ChessDrawCTAButton(mx + 12, my + 92, mw - 24, 22, CH_RGB_PANEL);
-		PrintCentred(FONT10ARIALBOLD, FONT_MCOLOR_WHITE, mx + mw / 2, my + 98,
+		// the same cut as START GAME in the sidebar - one green button size
+		// on the site, not one per screen
+		ChessDrawCTAButton(mx + 12, my + 90, mw - 24, CH_HINT_H, CH_RGB_PANEL);
+		PrintCentred(FONT14ARIAL, FONT_MCOLOR_WHITE, mx + mw / 2, my + 98,
 		             giPlayControl == 0 ? ST::string("NEW DAILY")
 		                                : ST::format("NEW {} MIN", giPlayControl));
 		for (int i = 0; i < 2; ++i)
 		{
 			const INT32 hx2 = mx + 12 + i * 94;
-			ChessDrawGreyButton(hx2, my + 120, 86, 20, CH_RGB_PANEL, true);
-			PrintCentred(FONT10ARIALBOLD, FONT_GRAY2, hx2 + 43, my + 125,
+			ChessDrawGreyButton(hx2, my + 122, 86, 20, CH_RGB_PANEL, true);
+			PrintCentred(FONT10ARIALBOLD, FONT_GRAY2, hx2 + 43, my + 127,
 			             i == 0 ? "LOBBY" : "REMATCH");
 		}
 	}
 
 	void ChessRenderPanel()
 	{
+		// the stepper needs a row of its own: the strip grows upward for it
+		const bool stepper = gPuzzHist.size() > 1;
 		FillRounded(CH_PANEL_X, CH_INSET, CH_PANEL_W, CH_PAGE_H - 2 * CH_INSET,
 		            CH_RGB_PANEL, CH_PANEL_RADIUS, CH_RGB_CHROME);
 		const INT32 cx = CH_PANEL_X + CH_PANEL_W / 2;
@@ -3480,7 +3565,8 @@ namespace
 		// header band: snug around the title, the stepper and the day's name
 		FillRect(CH_PANEL_X, CH_INSET, CH_PANEL_W, 66, CH_RGB_PANEL_SUNK);
 		// and its mirror at the foot: the hint button sits padded inside
-		FillRect(CH_PANEL_X, CH_FOOT_Y, CH_PANEL_W, 38, CH_RGB_PANEL_SUNK);
+		FillRect(CH_PANEL_X, CH_FOOT_Y - (stepper ? CH_PUZZ_LIFT : 0), CH_PANEL_W,
+		         38 + (stepper ? CH_PUZZ_LIFT : 0), CH_RGB_PANEL_SUNK);
 		RoundCorners(CH_PANEL_X, CH_INSET, CH_PANEL_W, CH_PAGE_H - 2 * CH_INSET,
 		             CH_PANEL_RADIUS, CH_RGB_CHROME);
 
@@ -3582,10 +3668,37 @@ namespace
 
 		// the hint button greys out once it has been spent
 		const bool hintLive = gChessState == CHUI_PUZZLE && !(gChessDay.flags & ChessDaily::FLAG_HINT_USED);
-		ChessDrawGreyButton(CH_PANEL_X + 14, CH_HINT_Y, CH_PANEL_W - 28, CH_HINT_H,
+		const INT32 hintY = stepper ? CH_PUZZ_HINT_Y : CH_HINT_Y;
+		ChessDrawGreyButton(CH_PANEL_X + 14, hintY, CH_PANEL_W - 28, CH_HINT_H,
 		                    CH_RGB_PANEL_SUNK, hintLive);
 		PrintCentred(FONT14ARIAL, hintLive ? FONT_GRAY2 : FONT_GRAY7,
-		             cx, CH_HINT_Y + 8, T(CHS_HINT));
+		             cx, hintY + 8, T(CHS_HINT));
+
+		// under it, the line itself: step the position back and forth. The
+		// puzzle records every board it has stood on, so the arrows walk
+		// what happened - the setup move, your move, the reply.
+		if (stepper)
+		{
+			const int last = int(gPuzzHist.size()) - 1;
+			const int cur = ChessPuzzReviewing() ? giPuzzView : last;
+			for (int i = 0; i < 2; ++i)
+			{
+				const INT32 bx = CH_PUZZNAV_X + i * (CH_PUZZNAV_W + 4);
+				const bool en = i == 0 ? cur > 0 : cur < last;
+				ChessDrawGreyButton(bx, CH_PUZZNAV_Y, CH_PUZZNAV_W,
+				                    CH_PUZZNAV_H, CH_RGB_PANEL_SUNK, en);
+				ChessDrawChevron(bx + CH_PUZZNAV_W / 2, CH_PUZZNAV_Y + 8,
+				                 i == 0,
+				                 en ? FROMRGB(190, 185, 178)
+				                    : FROMRGB(96, 90, 83));
+			}
+			// where in the line you are standing
+			PrintAt(FONT10ARIAL, FONT_GRAY6,
+			        CH_PUZZNAV_X + 2 * (CH_PUZZNAV_W + 4) + 6,
+			        CH_PUZZNAV_Y + 4,
+			        cur == last ? ST::string("live")
+			                    : ST::format("{}/{}", cur, last));
+		}
 	}
 
 	// The result card, over a scanline-dimmed board. Square corners on purpose:
@@ -5992,6 +6105,7 @@ void HandleChess()
 			gubChessLastFrom = reply.from;
 			gubChessLastTo   = reply.to;
 			gChessGame.MakeMove(reply);
+			ChessPuzzRecord();
 			ChessAnimateMove(gChessGame, reply, 140);
 			ChessPlay(ChessMoveSound(reply, gChessGame.IsInCheck(gChessGame.SideToMove()), false));
 			++guiChessPly;
