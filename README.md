@@ -47,6 +47,19 @@ Each site's page documents it in full. **Those pages contain spoilers** — how
 you find it, who you meet, what it costs. The sites are written to introduce
 themselves in game, so play first if you would rather be surprised.
 
+## What's new
+
+The fork versions by working day; the full record lives in
+[CHANGELOG.md](CHANGELOG.md). Upstream engine history stays in `changes.md`.
+
+| | | |
+|---|---|---|
+| **1.4** | The parlour learns to celebrate | fight bell, win strobe, death skull, spectator chat |
+| **1.3** | Member pages and open hands | honest chess engine, member profiles, verdict rebuild, Catzon.an |
+| **1.2** | Love and cats | C.U.P.I.D. launches, the Feline Society opens |
+| **1.1** | Chach.com becomes a site | live play, lessons, the lobby, the Neo pieces |
+| **1.0** | The parlour opens | the Sichuan engine, the Parlour, the daily puzzle |
+
 ## Installing on macOS
 
 You need the original Jagged Alliance 2 game data — any retail or
