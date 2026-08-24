@@ -99,7 +99,7 @@ reads the same config and the same saves.
 **4. Play**
 
 ```sh
-./ja2 -unittests   # optional: 213 tests, all green
+./ja2 -unittests   # optional: 214 tests, all green
 ./ja2
 ```
 
