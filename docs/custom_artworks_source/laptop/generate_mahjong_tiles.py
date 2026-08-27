@@ -252,6 +252,11 @@ def draw_sou(d, rank, w, h):
 
 def draw_back(d, w, h):
     d.rounded_rectangle([2, 2, w - 3, h - 3], radius=3, fill=BACKFELT)
+    # a lattice, so a face-down tile reads as a tile rather than a hole in
+    # the rack - flat green at this size looks like a missing sprite
+    for off in range(-h, w + h, 5):
+        d.line([off, 4, off + h - 8, h - 5], fill=DKGREEN)
+    d.rounded_rectangle([2, 2, w - 3, h - 3], radius=3, outline=BACKFELT)
     d.rounded_rectangle([4, 4, w - 5, h - 5], radius=2, outline=FACE)
 
 

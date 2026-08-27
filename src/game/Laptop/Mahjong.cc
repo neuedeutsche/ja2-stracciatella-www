@@ -5332,16 +5332,27 @@ static void MahjongRenderHand()
 		// and overlap them into a pong's footprint when it does not.
 		// Overlapping loses nothing - a kong's four tiles are identical.
 		// a claimed tile lies sideways, so it spends MJ_TILE_H of width
-		// where an upright one spends MJ_TILE_W
+		// where an upright one spends MJ_TILE_W. Measure the whole strip,
+		// then borrow back only what actually overruns: an all-or-nothing
+		// squeeze crushed a kong by 36px to save 2.
 		INT32 wide = 0;
+		int joints = 0;
 		for (MahjongGame::Meld const& m : melds)
 		{
 			int const n = m.count == 4 ? 4 : 3;
 			bool const claimed = m.from >= 0;
 			wide += (n - (claimed ? 1 : 0)) * MJ_TILE_W
 					+ (claimed ? MJ_TILE_H : 0) + MJ_MELD_GAP;
+			joints += n - 1; // the seams a set can tighten
 		}
-		bool const roomy = stripX + wide - MJ_MELD_GAP <= MJ_DRAWN_X - 4;
+		if (!melds.empty()) wide -= MJ_MELD_GAP; // no gap past the last set
+		INT32 const budget = MJ_DRAWN_X - 4 - stripX;
+		INT32 const over = wide > budget ? wide - budget : 0;
+		// spread the overrun across the seams, and never pull a tile back
+		// past a third of its face - the set must still read as its tiles
+		INT32 const shrink = (over > 0 && joints > 0)
+				? std::min<INT32>((over + joints - 1) / joints, MJ_TILE_W * 2 / 3)
+				: 0;
 		INT32 mx = stripX;
 		for (MahjongGame::Meld const& m : melds)
 		{
@@ -5360,7 +5371,7 @@ static void MahjongRenderHand()
 					: rel == 3 ? 0 : rel == 2 ? tiles / 2 : tiles - 1;
 			// out of room: overlap the set's own tiles. They repeat inside
 			// a set, so the overlap hides nothing that matters
-			bool const squeeze = !roomy;
+
 			for (int t = 0; t < tiles; ++t)
 			{
 				bool const facedown = m.concealed && (t == 0 || t == tiles - 1);
@@ -5383,7 +5394,7 @@ static void MahjongRenderHand()
 							m.tile, false, isVoided(m.tile));
 				}
 				INT32 const own = sideways ? MJ_TILE_H : MJ_TILE_W;
-				mx += (squeeze && t + 1 < tiles) ? own * 5 / 8 : own;
+				mx += (t + 1 < tiles) ? own - shrink : own;
 			}
 			INT32 const setW = mx - setX;
 			// the gold bar under the set, and the red notch on the side the
